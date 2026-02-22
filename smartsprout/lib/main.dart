@@ -1,10 +1,14 @@
-// FILE: lib/main.dart
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'screens/dashboard_page.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/constants/app_theme.dart';
+import 'routes/app_router.dart';
 
 void main() {
-  runApp(const SmartSproutApp());
+  runApp(
+    const ProviderScope(
+      child: SmartSproutApp(),
+    ),
+  );
 }
 
 class SmartSproutApp extends StatelessWidget {
@@ -12,16 +16,11 @@ class SmartSproutApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
+    return MaterialApp.router(
       title: 'Smart Sprout',
-      theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFFF5F5F7),
-        primarySwatch: Colors.green,
-        useMaterial3: true,
-        textTheme: GoogleFonts.poppinsTextTheme(),
-      ),
-      home: const DashboardPage(),
+      theme: AppTheme.lightTheme,
+      routerConfig: appRouter,
+      debugShowCheckedModeBanner: false,
     );
   }
 }
