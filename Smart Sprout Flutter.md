@@ -1,9 +1,9 @@
-﻿SMART SPROUT: MOBILE APPLICATION DEVELOPMENT PLAN
-IoT-Based Solar-Powered System for Optimized Urban Gardening
+SMART SPROUT: MOBILE APPLICATION DEVELOPMENT PLAN
+IoT-Based System for Optimized Urban Gardening
 
 
 A Research Component for:
-Smart Sprout: IoT-Based Solar-Powered System for Optimized Urban Gardening
+Smart Sprout: IoT-Based System for Optimized Urban Gardening
 
 
 Submitted by:
@@ -49,7 +49,7 @@ TABLE OF CONTENTS
 1. EXECUTIVE SUMMARY
 
 
-This document presents a comprehensive development plan for the Smart Sprout mobile application, designed to serve as the primary user interface for the IoT-based solar-powered urban gardening system. The application enables seamless connectivity to the Raspberry Pi sensor hub via Bluetooth Low Energy (BLE) for local control and WiFi/MQTT for remote monitoring, ensuring 24/7 accessibility regardless of internet availability.
+This document presents a comprehensive development plan for the Smart Sprout mobile application, designed to serve as the primary user interface for the IoT-based urban gardening system. The application enables seamless connectivity to the Raspberry Pi sensor hub via Bluetooth Low Energy (BLE) for local control and WiFi/MQTT for remote monitoring, ensuring 24/7 accessibility regardless of internet availability.
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -63,7 +63,7 @@ The Smart Sprout hardware system integrates:
 • DHT sensors (temperature and humidity)
 • Ultrasonic sensors (reservoir level monitoring)
 • Water flow sensors (usage tracking)
-• Solar-powered Raspberry Pi controller
+• Raspberry Pi controller
 
 
 The mobile application extends this system by providing real-time visualization, manual override controls, ML-based scheduling configuration, and historical analytics to urban gardeners.
@@ -91,7 +91,7 @@ The mobile application extends this system by providing real-time visualization,
 │                         │ ML-based auto mode                      │          │
 ├─────────────────────────┼─────────────────────────────────────────┼──────────┤
 │ Alerts & Notifications  │ Push notifications for critical events  │ P0       │
-│                         │ (Low Water, Leak, Low Battery)          │          │
+│                         │ (Low Water, Leak)                       │          │
 ├─────────────────────────┼─────────────────────────────────────────┼──────────┤
 │ Data Logging            │ Historical charts (7-day, 30-day trends)│ P1       │
 ├─────────────────────────┼─────────────────────────────────────────┼──────────┤
@@ -433,9 +433,7 @@ Key Features: The dashboard displays real-time sensor fusion data—soil
 moisture (0-100%), ambient temperature/humidity, reservoir volume 
 (calculated via ultrasonic distance), and cumulative flow rate. Users 
 can override ML decisions with manual controls or configure irrigation 
-thresholds. Push notifications alert users to critical events: reservoir 
-depletion (<10%), anomaly detection (unexpected flow when pump off), or 
-system power issues.
+reservoir depletion (<10%) or anomaly detection (unexpected flow when pump off).
 
 
 Technical Validation: Field testing demonstrated 100% BLE command 

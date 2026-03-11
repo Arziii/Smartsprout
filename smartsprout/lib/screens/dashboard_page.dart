@@ -1,112 +1,87 @@
 // FILE: lib/screens/dashboard_page.dart
-import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-// import 'package:http/http.dart' as http; // Uncomment for Real IoT
 
-import '../data/plant_data.dart';
-import '../widgets/vital_card.dart';
+import '../presentation/providers/sensor_provider.dart';
 import '../widgets/zone_card.dart';
-import 'plant_selector_page.dart';
 
-class DashboardPage extends StatefulWidget {
+class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
 
   @override
-  State<DashboardPage> createState() => _DashboardPageState();
+  ConsumerState<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage>
+class _DashboardPageState extends ConsumerState<DashboardPage>
     with SingleTickerProviderStateMixin {
-  // SYSTEM STATE
-  List<int> soilLevels = [0, 0, 0]; // Zone 1, 2, 3
-  List<int> plantIDs = [0, 1, 2]; // Default Plants
-  int tankLevel = 75;
-  double batteryVolts = 12.4;
-  bool isCharging = true;
-
-  Timer? _timer;
   late AnimationController _pulseController;
+
+  /// Controls whether the "Connection Lost" overlay is visible.
+  /// It shows when the device goes offline, then auto-hides after 3 s.
+  bool _showConnectionOverlay = false;
+  bool _wasOffline = false;
 
   @override
   void initState() {
     super.initState();
-    // Setup "Live Pulse" Animation
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
       lowerBound: 0.5,
       upperBound: 1.0,
     )..repeat(reverse: true);
-
-    // Start Polling Loop
-    _timer = Timer.periodic(const Duration(seconds: 2), (t) => _fetchData());
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     _pulseController.dispose();
     super.dispose();
   }
 
-  Future<void> _fetchData() async {
-    // --- REAL IOT MODE (Uncomment when ESP32 is ready) ---
-    /*
-    try {
-      final response = await http.get(Uri.parse('$databaseUrl/.json'));
-      if (response.statusCode == 200) {
-        // Parse Logic Here...
-      }
-    } catch (e) { print(e); }
-    */
 
-    // --- DEMO MODE ---
-    if (mounted) {
-      setState(() {
-        Random r = Random();
-        tankLevel = (tankLevel + r.nextInt(3) - 1).clamp(0, 100);
-        batteryVolts = 12.0 + (r.nextInt(10) / 10.0);
-        soilLevels[0] = (45 + r.nextInt(2));
-        soilLevels[1] = (60 + r.nextInt(2));
-        soilLevels[2] = (25 + r.nextInt(2));
+  Widget build(BuildContext context) {
+    final sensorData = ref.watch(sensorDataProvider);
+
+    // Extract live data (with safe fallbacks)
+    final soil = sensorData.soilMoisture;
+    final tankLevel = sensorData.tankLevel.clamp(0.0, 100.0).toInt();
+    final flowRate = sensorData.flowRate;
+    final temperature = sensorData.temperature;
+    final isOffline = sensorData.isOffline;
+    final hasFault = sensorData.hasSensorFault;
+    final isTankLow = sensorData.isTankLow;
+
+    // Show overlay when transitioning to offline, auto-hide after 3 s
+    if (isOffline && !_wasOffline) {
+      _showConnectionOverlay = true;
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _showConnectionOverlay = false);
       });
     }
-  }
+    // If back online, reset state
+    if (!isOffline && _wasOffline) {
+      _showConnectionOverlay = false;
+    }
+    _wasOffline = isOffline;
 
-  void _openPlantSelector(int zoneIndex) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-          builder: (context) => PlantSelectorPage(
-                onSelect: (plantIndex) {
-                  setState(() => plantIDs[zoneIndex] = plantIndex);
-                  // Add http.put logic here to save to Firebase
-                },
-              )),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       body: Stack(
         children: [
-          // ── Photorealistic garden background ──
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/dashboard_bg.png',
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) =>
-                  Container(color: const Color(0xFFF0F4EE)),
-            ),
-          ),
-          // ── Soft frosted overlay for legibility ──
+          // ── Gradient Background ──
           Positioned.fill(
             child: Container(
-              color: Colors.white.withValues(alpha: 0.60),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFFD1E3DF),
+                    Color(0xFF8BAEAA),
+                  ],
+                ),
+              ),
             ),
           ),
           // ── Main dashboard content ──
@@ -114,15 +89,14 @@ class _DashboardPageState extends State<DashboardPage>
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               children: [
-                _buildTopHeader(),
+                _buildTopHeader(isOffline),
+                _buildVitals(tankLevel, flowRate),
                 const SizedBox(height: 25),
-                _buildVitals(),
-                const SizedBox(height: 25),
-                const Text("All Feature",
-                    style: TextStyle(
+                Text("All Feature",
+                    style: GoogleFonts.inter(
                       fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E1E1E),
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF0F2027),
                       letterSpacing: 0.5,
                     )),
                 const SizedBox(height: 15),
@@ -137,119 +111,355 @@ class _DashboardPageState extends State<DashboardPage>
                   children: [
                     ZoneCard(
                       zoneName: "Zone 1 (Left)",
-                      moisture: soilLevels[0],
-                      plantIndex: plantIDs[0],
-                      temp: 32,
-                      onTap: () => _openPlantSelector(0),
+                      moisture: soil.isNotEmpty ? soil[0].toInt() : 0,
+                      temp: temperature.toInt(),
                       pulseAnim: _pulseController,
                     ),
                     ZoneCard(
                       zoneName: "Zone 2 (Center)",
-                      moisture: soilLevels[1],
-                      plantIndex: plantIDs[1],
-                      temp: 31,
-                      onTap: () => _openPlantSelector(1),
+                      moisture: soil.length > 1 ? soil[1].toInt() : 0,
+                      temp: temperature.toInt(),
                       pulseAnim: _pulseController,
                     ),
                     ZoneCard(
                       zoneName: "Zone 3 (Right)",
-                      moisture: soilLevels[2],
-                      plantIndex: plantIDs[2],
-                      temp: 33,
-                      onTap: () => _openPlantSelector(2),
+                      moisture: soil.length > 2 ? soil[2].toInt() : 0,
+                      temp: temperature.toInt(),
                       pulseAnim: _pulseController,
                     ),
-                    _buildSystemOverviewCard(),
+                    _buildSystemOverviewCard(sensorData),
                   ],
                 ),
                 const SizedBox(height: 80),
               ],
             ),
           ),
+
+          // ── "Connection Lost" Overlay (auto-hides after 3 s) ──
+          if (_showConnectionOverlay)
+            _buildStatusOverlay(
+              icon: Icons.wifi_off,
+              title: "Connection Lost",
+              subtitle:
+                  "Cannot reach the Smart Sprout controller.\nEnsure you are on the same Wi-Fi network.",
+              color: const Color(0xFF4A6164),
+            ),
+
+          // ── "Tank Empty" Overlay ──
+          if (isTankLow && !isOffline)
+            _buildStatusOverlay(
+              icon: Icons.water_drop_outlined,
+              title: "Tank Level Critical",
+              subtitle:
+                  "Water reservoir is below 10%.\nPump is locked for safety.",
+              color: Colors.redAccent,
+            ),
+
+          // ── "Sensor Fault" Banner ──
+          if (hasFault && !isOffline)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 10,
+              left: 20,
+              right: 20,
+              child: Material(
+                borderRadius: BorderRadius.circular(16),
+                elevation: 8,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade100,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.amber.shade400),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded,
+                          color: Colors.amber.shade800, size: 28),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          "Sensor fault detected — some readings may be inaccurate.",
+                          style: TextStyle(
+                            color: Colors.amber.shade900,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildTopHeader() {
+  Widget _buildStatusOverlay({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+  }) {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.4),
+        child: Center(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 40),
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  blurRadius: 30,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 64, color: color),
+                const SizedBox(height: 20),
+                Text(title,
+                    style: GoogleFonts.inter(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: color,
+                    )),
+                const SizedBox(height: 12),
+                Text(subtitle,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: const Color(0xFF4A6164),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    )),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopHeader(bool isOffline) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text("Good Morning,",
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                style: TextStyle(
+                    color: const Color(0xFF4A6164),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600)),
             const SizedBox(height: 4),
             Text("Smart Sprout",
                 style: GoogleFonts.inter(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1E1E1E))),
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                    color: const Color(0xFF0F2027))),
           ],
         ),
         Container(
-          padding: const EdgeInsets.all(10),
+          width: 50,
+          height: 50,
           decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: Colors.grey.shade200),
-            borderRadius: BorderRadius.circular(12),
+            color: isOffline ? Colors.red.shade50 : Colors.white,
+            shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.wifi, color: Color(0xFF1E1E1E), size: 22),
+          child: Icon(
+            isOffline ? Icons.wifi_off : Icons.mode_night,
+            color: isOffline ? Colors.redAccent : const Color(0xFF2C3E50),
+            size: 28,
+          ),
         )
       ],
     );
   }
 
-  Widget _buildVitals() {
-    return Row(
+  Widget _buildVitals(int tankLevel, double flowRate) {
+    return Column(
       children: [
-        Expanded(
-            child: VitalCard(
-          label: "Reservoir",
-          value: "$tankLevel%",
-          subValue: "Capacity",
-          icon: Icons.water_drop,
-          color: Colors.blue,
-          isAlert: tankLevel < 15,
-        )),
-        const SizedBox(width: 15),
-        Expanded(
-            child: VitalCard(
-          label: "Solar Power",
-          value: "${batteryVolts.toStringAsFixed(1)}V",
-          subValue: isCharging ? "Charging" : "Draining",
-          icon: Icons.bolt,
-          color: Colors.orange,
-        )),
+        Row(
+          children: [
+            Expanded(
+              child: _buildVitalItem(
+                label: "TANK LEVEL",
+                value: "$tankLevel%",
+                icon: Icons.waves,
+                iconColor: tankLevel < 15 ? Colors.redAccent : Colors.blue,
+                isTank: true,
+                tankLevel: tankLevel.toDouble(),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildVitalItem(
+                label: "WATER FLOW",
+                value: flowRate.toStringAsFixed(1),
+                unit: "L/m",
+                icon: Icons.water,
+                iconColor: Colors.cyan,
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
 
-  Widget _buildSystemOverviewCard() {
+  Widget _buildVitalItem({
+    required String label,
+    required String value,
+    String? unit,
+    required IconData icon,
+    required Color iconColor,
+    bool isTank = false,
+    double tankLevel = 0,
+  }) {
+    return AspectRatio(
+      aspectRatio: 0.9,
+      child: Container(
+        decoration: BoxDecoration(
+            color: const Color(0xFFF3F7F6),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              )
+            ]),
+        clipBehavior: Clip.hardEdge,
+        child: Stack(
+          children: [
+            if (isTank)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 40 + (tankLevel / 100) * 10,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.blue.withValues(alpha: 0.2),
+                        Colors.transparent,
+                      ],
+                    ),
+                    border: Border(
+                        bottom: BorderSide(
+                            color: Colors.blue.withValues(alpha: 0.3),
+                            width: 1.5)),
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: iconColor, size: 24),
+                  const Spacer(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(value,
+                          style: GoogleFonts.inter(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF0F2027))),
+                      if (unit != null)
+                        Text(" $unit",
+                            style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF0F2027))),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(label,
+                      style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                          color: Color(0xFF4A6164))),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSystemOverviewCard(sensorData) {
+    final isHealthy = sensorData.isHealthy;
+    final statusText = isHealthy
+        ? "All systems nominal"
+        : sensorData.isOffline
+            ? "Controller offline"
+            : sensorData.isTankLow
+                ? "Tank critically low"
+                : "Sensor fault detected";
+
+    final statusColor = isHealthy
+        ? const Color(0xFF2BCC71)
+        : sensorData.isOffline
+            ? Colors.grey
+            : Colors.redAccent;
+
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F7), // Light grey
-        borderRadius: BorderRadius.circular(20),
+        color: const Color(0xFFF9F9F9),
+        borderRadius: BorderRadius.circular(24),
       ),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("System\nHealth",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E1E1E),
+          Text("System\nHealth",
+              style: GoogleFonts.inter(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1E1E1E),
                 height: 1.2,
               )),
           const SizedBox(height: 8),
-          Text("All systems nominal",
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+          Text(statusText,
+              style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500)),
           const Spacer(),
-          const Align(
+          Align(
             alignment: Alignment.bottomRight,
-            child: Icon(Icons.check_circle, color: Color(0xFF2BCC71), size: 40),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: statusColor,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isHealthy ? Icons.check : Icons.warning_amber_rounded,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
           )
         ],
       ),

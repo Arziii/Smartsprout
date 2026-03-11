@@ -1,49 +1,186 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../providers/sensor_provider.dart';
 
-class ControlScreen extends StatefulWidget {
+class ControlScreen extends ConsumerStatefulWidget {
   const ControlScreen({super.key});
 
   @override
-  State<ControlScreen> createState() => _ControlScreenState();
+  ConsumerState<ControlScreen> createState() => _ControlScreenState();
 }
 
-class _ControlScreenState extends State<ControlScreen> {
-  bool _isPumpOn = false;
+class _ControlScreenState extends ConsumerState<ControlScreen> {
+  String _mode = 'manual';
 
   @override
   Widget build(BuildContext context) {
+    final sensorData = ref.watch(sensorDataProvider);
+    final notifier = ref.read(sensorDataProvider.notifier);
+    final isConnected = !sensorData.isOffline;
+    final pumpLocked = sensorData.pumpLocked;
+
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text('Irrigation Control'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
       body: Stack(
         children: [
-          // Garden background
+          // Gradient Background
           Positioned.fill(
-            child: Image.asset(
-              'assets/images/dashboard_bg.png',
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) =>
-                  Container(color: const Color(0xFFF0F4EE)),
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFD1E3DF), Color(0xFF8BAEAA)],
+                ),
+              ),
             ),
           ),
-          // 60% white frosted overlay
-          Positioned.fill(
-            child: Container(color: Colors.white.withValues(alpha: 0.60)),
-          ),
-          // Content
           SafeArea(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _buildModeSelector(context),
-                  const SizedBox(height: 32),
-                  _buildPumpControlCard(context),
+                  // Header
+                  Text("Irrigation Control",
+                      style: GoogleFonts.inter(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF0F2027),
+                      )),
+                  const SizedBox(height: 8),
+                  Text(
+                    isConnected
+                        ? "Connected to Smart Sprout"
+                        : "⚠ Offline — commands will not be sent",
+                    style: TextStyle(
+                      color: isConnected
+                          ? const Color(0xFF4A6164)
+                          : Colors.redAccent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Mode Selector Card
+                  _buildGlassCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Operation Mode',
+                            style: GoogleFonts.inter(
+                                fontSize: 18, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 16),
+                        SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(
+                                value: 'manual',
+                                label: Text('Manual'),
+                                icon: Icon(Icons.touch_app)),
+                            ButtonSegment(
+                                value: 'auto',
+                                label: Text('Auto'),
+                                icon: Icon(Icons.schedule)),
+                            ButtonSegment(
+                                value: 'ml',
+                                label: Text('Smart'),
+                                icon: Icon(Icons.psychology)),
+                          ],
+                          selected: {_mode},
+                          onSelectionChanged: (sel) =>
+                              setState(() => _mode = sel.first),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Per-Zone Force Water Controls
+                  if (_mode == 'manual') ...[
+                    _buildGlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Manual Override",
+                              style: GoogleFonts.inter(
+                                  fontSize: 18, fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 8),
+                          if (pumpLocked)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.red.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: Colors.redAccent
+                                        .withValues(alpha: 0.4)),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.lock, color: Colors.redAccent),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      "Pump is LOCKED — tank level critically low.",
+                                      style: TextStyle(
+                                          color: Colors.redAccent,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          const SizedBox(height: 16),
+                          _buildZoneButton(1, "Zone 1 (Left)",
+                              sensorData.soilMoisture[0], notifier,
+                              disabled: pumpLocked || !isConnected),
+                          const SizedBox(height: 12),
+                          _buildZoneButton(
+                              2,
+                              "Zone 2 (Center)",
+                              sensorData.soilMoisture.length > 1
+                                  ? sensorData.soilMoisture[1]
+                                  : 0,
+                              notifier,
+                              disabled: pumpLocked || !isConnected),
+                          const SizedBox(height: 12),
+                          _buildZoneButton(
+                              3,
+                              "Zone 3 (Right)",
+                              sensorData.soilMoisture.length > 2
+                                  ? sensorData.soilMoisture[2]
+                                  : 0,
+                              notifier,
+                              disabled: pumpLocked || !isConnected),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // Emergency Stop
+                  SizedBox(
+                    height: 56,
+                    child: ElevatedButton.icon(
+                      onPressed: isConnected
+                          ? () {
+                              HapticFeedback.heavyImpact();
+                              notifier.emergencyStop();
+                            }
+                          : null,
+                      icon: const Icon(Icons.power_settings_new, size: 24),
+                      label: Text("EMERGENCY STOP",
+                          style: GoogleFonts.inter(
+                              fontSize: 16, fontWeight: FontWeight.w800)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.redAccent,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(28)),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 80),
                 ],
               ),
@@ -54,107 +191,68 @@ class _ControlScreenState extends State<ControlScreen> {
     );
   }
 
-  Widget _buildModeSelector(BuildContext context) {
-    return Card(
-      elevation: 4,
-      color: Colors.white.withValues(alpha: 0.90),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Operation Mode',
-                style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 16),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(
-                    value: 'manual',
-                    label: Text('Manual'),
-                    icon: Icon(Icons.touch_app)),
-                ButtonSegment(
-                    value: 'auto',
-                    label: Text('Auto'),
-                    icon: Icon(Icons.schedule)),
-                ButtonSegment(
-                    value: 'ml',
-                    label: Text('Smart (ML)'),
-                    icon: Icon(Icons.psychology)),
-              ],
-              selected: const {'manual'},
-              onSelectionChanged: (Set<String> newSelection) {},
-              style: ButtonStyle(
-                side: WidgetStateProperty.all(BorderSide(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.5))),
-              ),
+  Widget _buildZoneButton(
+      int zone, String label, double moisture, SensorDataNotifier notifier,
+      {bool disabled = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F7F6),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 15)),
+              Text("Moisture: ${moisture.toStringAsFixed(0)}%",
+                  style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500)),
+            ],
+          ),
+          const Spacer(),
+          ElevatedButton(
+            onPressed: disabled
+                ? null
+                : () {
+                    HapticFeedback.lightImpact();
+                    notifier.forceWater(zone);
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2BCC71),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             ),
-          ],
-        ),
+            child: const Text("Water Now",
+                style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildPumpControlCard(BuildContext context) {
-    return Card(
-      elevation: 4,
-      color: _isPumpOn
-          ? Colors.teal.shade50.withValues(alpha: 0.92)
-          : Colors.white.withValues(alpha: 0.90),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 32.0, horizontal: 20.0),
-        child: Column(
-          children: [
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: Icon(
-                Icons.water_drop,
-                key: ValueKey(_isPumpOn),
-                size: 64,
-                color: _isPumpOn ? Colors.teal : Colors.grey.shade400,
-              ),
-            ),
-            const SizedBox(height: 24),
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 200),
-              style: Theme.of(context).textTheme.headlineSmall!.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color:
-                        _isPumpOn ? Colors.teal.shade800 : Colors.grey.shade600,
-                  ),
-              child: Text(_isPumpOn ? 'Pump is running...' : 'Pump is OFF'),
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: 200,
-              height: 60,
-              child: ElevatedButton(
-                onPressed: () => setState(() => _isPumpOn = !_isPumpOn),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isPumpOn
-                      ? Colors.redAccent
-                      : Theme.of(context).colorScheme.primary,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30)),
-                  elevation: 6,
-                ),
-                child: Text(
-                  _isPumpOn ? 'STOP PUMP' : 'START PUMP',
-                  style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
+  Widget _buildGlassCard({required Widget child}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
+      padding: const EdgeInsets.all(20),
+      child: child,
     );
   }
 }
