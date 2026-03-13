@@ -1,0 +1,32 @@
+# Firebase
+firebase-adminsdk.json
+google-services.json
+GoogleService-Info.plist
+
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDEs
+.vscode/
+
+# Local build artifacts
+smartsprout/analysis_output.txt
+smartsprout/build.log
+smartsprout/build_err_sync.txt
+smartsprout/build_error.txt
+smartsprout/build_error_utf8.txt
+smartsprout/build_output.txt
+smartsprout/build_output2.txt
+smartsprout/devices.txt
+smartsprout/doctor.txt
+smartsprout/doctor_utf8.txt
+smartsprout/flutter_01.log
+
+# TestSprite (just in case)
+.testsprite/
+testsprite_tests/

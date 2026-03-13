@@ -12,21 +12,6 @@ import signal
 import sys
 import threading
 
-import paho.mqtt.client as mqtt
-
-import config
-import sensors
-
-# ═══════════════════════════════════════════════════════
-# MQTT Topics
-# ═══════════════════════════════════════════════════════
-TOPIC_TELEMETRY = "smartsprout/telemetry"
-TOPIC_COMMAND = "smartsprout/command"
-TOPIC_STATUS = "smartsprout/status"
-TOPIC_ALERT = "smartsprout/alert"
-TOPIC_SETTINGS = "smartsprout/settings"       # System setting responses
-TOPIC_SETTINGS_CMD = "smartsprout/settings/cmd" # Incoming setting commands
-
 # ═══════════════════════════════════════════════════════
 # Global State
 # ═══════════════════════════════════════════════════════
@@ -44,110 +29,7 @@ signal.signal(signal.SIGINT, _signal_handler)
 signal.signal(signal.SIGTERM, _signal_handler)
 
 
-# ═══════════════════════════════════════════════════════
-# MQTT Callbacks
-# ═══════════════════════════════════════════════════════
-def on_connect(client: mqtt.Client, userdata, flags, rc):
-    if rc == 0:
-        print(f"[MQTT] Connected to broker at {config.MQTT_HOST}:{config.MQTT_PORT}")
-        client.subscribe(TOPIC_COMMAND)
-        client.subscribe(TOPIC_SETTINGS_CMD)
-        # Publish online status
-        client.publish(TOPIC_STATUS, json.dumps({"status": "online"}), retain=True)
-    else:
-        print(f"[MQTT] Connection failed with code {rc}")
-
-
-def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
-    """Handle incoming commands from the Flutter app."""
-    global _pump_locked
-
-    try:
-        payload = json.loads(msg.payload.decode())
-        command = payload.get("command", "")
-        print(f"[MQTT] Received command: {payload}")
-
-        if command == "force_water":
-            zone = payload.get("zone", 0)
-
-            # Safety check: don't run pump if tank is critically low
-            if _pump_locked:
-                alert = {
-                    "type": "tank_empty",
-                    "message": "PUMP LOCKED — Tank level below safety threshold!",
-                }
-                client.publish(TOPIC_ALERT, json.dumps(alert))
-                print(f"[SAFETY] Force water BLOCKED for zone {zone} — tank too low")
-                return
-
-            if zone in (1, 2, 3):
-                duration = payload.get("duration_seconds", 10)
-                print(f"[CMD] Force watering zone {zone} for {duration}s")
-
-                # Run watering in a separate thread to avoid blocking telemetry
-                threading.Thread(
-                    target=_force_water_task,
-                    args=(zone, duration),
-                    daemon=True,
-                ).start()
-            else:
-                print(f"[CMD] Invalid zone in force_water: {zone}")
-
-        elif command == "stop_all":
-            sensors.deactivate_all()
-            print("[CMD] Emergency stop — all zones deactivated")
-
-        # ── Settings Commands ──
-        elif command == "wifi_scan":
-            networks = sensors.scan_wifi()
-            client.publish(TOPIC_SETTINGS, json.dumps({
-                "response": "wifi_scan",
-                "networks": networks,
-            }))
-            print(f"[SETTINGS] Wi-Fi scan: found {len(networks)} networks")
-
-        elif command == "wifi_connect":
-            ssid = payload.get("ssid", "")
-            password = payload.get("password", "")
-            result = sensors.connect_wifi(ssid, password)
-            client.publish(TOPIC_SETTINGS, json.dumps({
-                "response": "wifi_connect",
-                **result,
-            }))
-            print(f"[SETTINGS] Wi-Fi connect: {result}")
-
-        elif command == "wifi_status":
-            status = sensors.get_wifi_status()
-            client.publish(TOPIC_SETTINGS, json.dumps({
-                "response": "wifi_status",
-                **status,
-            }))
-            print(f"[SETTINGS] Wi-Fi status: {status}")
-
-        elif command == "calibrate":
-            print("[SETTINGS] Starting calibration routine...")
-            result = sensors.run_calibration()
-            client.publish(TOPIC_SETTINGS, json.dumps({
-                "response": "calibrate",
-                **result,
-            }))
-            print(f"[SETTINGS] Calibration complete: {result}")
-
-        elif command == "firmware_info":
-            info = sensors.get_firmware_info()
-            client.publish(TOPIC_SETTINGS, json.dumps({
-                "response": "firmware_info",
-                **info,
-            }))
-            print(f"[SETTINGS] Firmware info: {info}")
-
-        else:
-            print(f"[CMD] Unknown command: {command}")
-
-    except json.JSONDecodeError:
-        print(f"[MQTT] Invalid JSON payload: {msg.payload}")
-    except Exception as e:
-        print(f"[MQTT] Command processing error: {e}")
+# Local handling removed. All commands come through Firebase.
 
 
 def _force_water_task(zone: int, duration: int):
@@ -161,6 +43,48 @@ def _force_water_task(zone: int, duration: int):
         print(f"[ERROR] Force water task failed: {e}")
         sensors.deactivate_all()
 
+def handle_firebase_command(payload: dict):
+    """Handle incoming commands from Firebase Cloud Firestore."""
+    global _pump_locked
+    command = payload.get("command", "")
+    print(f"[FIREBASE_CMD_PROCESS] {payload}")
+    
+    if command == "force_water":
+        zone = payload.get("zone", 0)
+        if _pump_locked:
+            print(f"[SAFETY] Force water BLOCKED for zone {zone} — tank too low")
+            return
+            
+        if zone in (1, 2, 3):
+            duration = payload.get("duration_seconds", 10)
+            threading.Thread(
+                target=_force_water_task,
+                args=(zone, duration),
+                daemon=True,
+            ).start()
+    elif command == "stop_all":
+        sensors.deactivate_all()
+        print("[CMD] Emergency stop — all zones deactivated")
+    elif command == "calibrate":
+        print("[SETTINGS] Starting calibration routine from Firebase...")
+        result = sensors.run_calibration()
+        print(f"[SETTINGS] Calibration complete: {result}")
+    elif command == "dry_calibrate":
+        print("[SETTINGS] Starting dry calibration from Firebase...")
+        zone = payload.get("zone", None)
+        result = sensors.run_dry_calibration(target_zone=zone)
+        print(f"[SETTINGS] Dry calibration complete: {result}")
+    elif command == "adjust_offset":
+        zone = payload.get("zone", 1)
+        adjustment = payload.get("adjustment", 0)
+        print(f"[SETTINGS] Adjusting manual offset for zone {zone} by {adjustment}%")
+        cal_data = sensors.load_calibration()
+        zone_key = f"zone_{zone}"
+        if zone_key in cal_data:
+            new_offset = cal_data[zone_key].get("manual_offset_pct", 0) + adjustment
+            new_offset = max(-50, min(50, new_offset))
+            cal_data[zone_key]["manual_offset_pct"] = new_offset
+            sensors.save_calibration()
 
 # ═══════════════════════════════════════════════════════
 # Telemetry Collection
@@ -229,28 +153,11 @@ def main():
     sensors.setup_flow_sensor()
     print("[INIT] Hardware initialized.")
 
-    # ── Connect MQTT ──
-    client = mqtt.Client(client_id="smartsprout-pi", clean_session=True)
-    client.on_connect = on_connect
-    client.on_message = on_message
+    # MQTT logic removed for Zero-Trust Architecture
 
-    # Set last-will so clients know when the Pi goes offline
-    client.will_set(
-        TOPIC_STATUS,
-        json.dumps({"status": "offline"}),
-        qos=1,
-        retain=True,
-    )
-
-    try:
-        client.connect(config.MQTT_HOST, config.MQTT_PORT, keepalive=60)
-    except ConnectionRefusedError:
-        print(f"[MQTT] Cannot connect to broker at {config.MQTT_HOST}:{config.MQTT_PORT}")
-        print("[MQTT] Please ensure Mosquitto is running: sudo systemctl start mosquitto")
-        sys.exit(1)
-
-    # Start MQTT network loop in background thread
-    client.loop_start()
+    # ── Connect Firebase ──
+    if firebase_manager.init_firebase():
+        firebase_manager.listen_for_commands(handle_firebase_command)
 
     interval = config.TELEMETRY_INTERVAL
     print(f"[MAIN] Starting telemetry loop (every {interval}s)...\n")
@@ -260,21 +167,15 @@ def main():
         while _running:
             telemetry = collect_telemetry(interval)
 
-            # Publish telemetry
-            payload = json.dumps(telemetry)
-            client.publish(TOPIC_TELEMETRY, payload, qos=0)
+            try:
+                # Publish telemetry to Firebase
+                firebase_manager.push_telemetry(telemetry)
 
-            # Publish alerts separately for the Flutter app to handle
-            if telemetry["alerts"]:
-                client.publish(
-                    TOPIC_ALERT,
-                    json.dumps({
-                        "type": "system",
-                        "alerts": telemetry["alerts"],
-                        "tank_level": telemetry["tank_level"],
-                    }),
-                    qos=1,
-                )
+                # Publish alerts separately to Firebase
+                if telemetry["alerts"]:
+                    firebase_manager.push_alerts(telemetry["alerts"])
+            except Exception as e:
+                print(f"[FIREBASE] Offline or error pushing to cloud: {e}")
 
             print(
                 f"[TEL] Soil={telemetry['soil_moisture']} | "
@@ -289,10 +190,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        print("\n[MAIN] Shutting down...")
-        client.publish(TOPIC_STATUS, json.dumps({"status": "offline"}), retain=True)
-        client.loop_stop()
-        client.disconnect()
+        firebase_manager.cleanup()
         sensors.cleanup()
         print("[MAIN] Goodbye! 🌿")
 

@@ -1,35 +1,17 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/sensor_model.dart';
-import '../../data/services/mqtt_service.dart';
+import '../../data/services/firebase_service.dart';
 
 // ═══════════════════════════════════════════════════════
-// MQTT Service Provider (singleton)
-// ═══════════════════════════════════════════════════════
-final mqttServiceProvider = Provider<MqttService>((ref) {
-  // Default to Pi's local IP — update in settings or .env
-  final service = MqttService(host: '192.168.1.100', port: 1883);
-  ref.onDispose(() => service.dispose());
-  return service;
-});
-
-// ═══════════════════════════════════════════════════════
-// Connection State Provider
-// ═══════════════════════════════════════════════════════
-final mqttConnectionProvider = StreamProvider<bool>((ref) {
-  final service = ref.watch(mqttServiceProvider);
-  return service.connectionStream;
-});
-
-// ═══════════════════════════════════════════════════════
-// Live Sensor Data Provider (replaces old mock data)
+// Live Sensor Data Provider (Secure Firebase Sync)
 // ═══════════════════════════════════════════════════════
 final sensorDataProvider = NotifierProvider<SensorDataNotifier, SensorData>(() {
   return SensorDataNotifier();
 });
 
 class SensorDataNotifier extends Notifier<SensorData> {
-  StreamSubscription<SensorData>? _telemetrySub;
+  StreamSubscription<SensorData>? _firebaseTelemetrySub;
   Timer? _timeoutTimer;
 
   @override
@@ -40,41 +22,35 @@ class SensorDataNotifier extends Notifier<SensorData> {
       systemStatus: 'offline',
     );
 
-    // Auto-connect to MQTT on build
+    // Auto-connect to Firebase stream on build
     _connectAndListen();
 
     ref.onDispose(() {
-      _telemetrySub?.cancel();
+      _firebaseTelemetrySub?.cancel();
       _timeoutTimer?.cancel();
     });
 
     return initialData;
   }
 
-  Future<void> _connectAndListen() async {
-    final mqtt = ref.read(mqttServiceProvider);
+  void _connectAndListen() {
+    final firebase = ref.read(firebaseServiceProvider);
 
-    final connected = await mqtt.connect();
-    if (connected) {
-      _telemetrySub = mqtt.telemetryStream.listen((data) {
+    // 1. Setup Firebase Listener (Cloud source of truth & offline cache)
+    if (firebase != null) {
+      _firebaseTelemetrySub?.cancel();
+      _firebaseTelemetrySub = firebase.telemetryStream.listen((data) {
         state = data;
         _resetTimeout();
       });
       _startTimeout();
-    } else {
-      // Retry connection after 5 seconds
-      Future.delayed(const Duration(seconds: 5), () {
-        if (state.isOffline) {
-          _connectAndListen();
-        }
-      });
     }
   }
 
   /// If no telemetry received for 10 seconds, mark as offline.
   void _startTimeout() {
     _timeoutTimer?.cancel();
-    _timeoutTimer = Timer(const Duration(seconds: 10), () {
+    _timeoutTimer = Timer(const Duration(seconds: 15), () {
       if (!state.isOffline) {
         state = state.copyWith(systemStatus: 'offline');
       }
@@ -87,15 +63,21 @@ class SensorDataNotifier extends Notifier<SensorData> {
   }
 
   /// Manually trigger a watering cycle on a specific zone.
-  void forceWater(int zone, {int durationSeconds = 10}) {
+  Future<void> forceWater(int zone, {int durationSeconds = 10}) async {
     if (state.pumpLocked) return; // Respect safety lock
-    final mqtt = ref.read(mqttServiceProvider);
-    mqtt.forceWater(zone, durationSeconds: durationSeconds);
+    
+    // Send to Firestore for secure cloud sync and IoT queue processing
+    final firebase = ref.read(firebaseServiceProvider);
+    if (firebase != null) {
+      await firebase.forceWater(zone, durationSeconds: durationSeconds);
+    }
   }
 
   /// Emergency stop all watering.
-  void emergencyStop() {
-    final mqtt = ref.read(mqttServiceProvider);
-    mqtt.emergencyStop();
+  Future<void> emergencyStop() async {
+    final firebase = ref.read(firebaseServiceProvider);
+    if (firebase != null) {
+      await firebase.emergencyStop();
+    }
   }
 }

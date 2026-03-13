@@ -5,6 +5,8 @@ All reads are wrapped in try/except to prevent crashes from I2C IOErrors or volt
 """
 import time
 import threading
+import json
+import os
 import config
 
 # ──────────────────────────────────────────────────────
@@ -37,6 +39,30 @@ except ImportError:
 # ═══════════════════════════════════════════════════════
 # ADS1115 — 3-Channel Soil Moisture via I2C ADC
 # ═══════════════════════════════════════════════════════
+CALIBRATION_FILE = os.path.join(os.path.dirname(__file__), 'calibration_offsets.json')
+_calibration_data = None
+
+def load_calibration():
+    global _calibration_data
+    if _calibration_data is None:
+        try:
+            with open(CALIBRATION_FILE, 'r') as f:
+                _calibration_data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            print("[WARN] Could not load calibration_offsets.json. Creating default.")
+            _calibration_data = {
+                "zone_1": {"dry_raw": config.SOIL_DRY, "wet_raw": config.SOIL_WET, "manual_offset_pct": 0},
+                "zone_2": {"dry_raw": config.SOIL_DRY, "wet_raw": config.SOIL_WET, "manual_offset_pct": 0},
+                "zone_3": {"dry_raw": config.SOIL_DRY, "wet_raw": config.SOIL_WET, "manual_offset_pct": 0}
+            }
+            save_calibration()
+    return _calibration_data
+
+def save_calibration():
+    if _calibration_data is not None:
+        with open(CALIBRATION_FILE, 'w') as f:
+            json.dump(_calibration_data, f, indent=4)
+
 # ADS1115 Register addresses
 _ADS_CONVERSION_REG = 0x00
 _ADS_CONFIG_REG = 0x01
@@ -64,18 +90,37 @@ def _read_ads1115_channel(bus: "SMBus", channel: int) -> int:
 def read_soil_moisture() -> list[float]:
     """
     Returns a list of 3 soil moisture percentages [zone1, zone2, zone3].
-    Maps raw ADC values to 0-100% using calibrated wet/dry thresholds.
+    Maps raw ADC values to 0-100% using calibrated wet/dry thresholds and applies manual offsets.
     """
+    cal_data = load_calibration()
+    
     if not _SMBUS_AVAILABLE:
-        return [45.0, 60.0, 25.0]  # Mock fallback
+        # Mock fallback using offsets for demonstration
+        results = [45.0 + cal_data["zone_1"].get("manual_offset_pct", 0),
+                   60.0 + cal_data["zone_2"].get("manual_offset_pct", 0),
+                   25.0 + cal_data["zone_3"].get("manual_offset_pct", 0)]
+        return [max(0.0, min(100.0, r)) for r in results]
 
     try:
         bus = SMBus(config.ADS1115_I2C_BUS)
         results = []
         for ch in range(3):
+            zone_key = f"zone_{ch+1}"
+            dry_raw = cal_data[zone_key].get("dry_raw", config.SOIL_DRY)
+            wet_raw = cal_data[zone_key].get("wet_raw", config.SOIL_WET)
+            offset = cal_data[zone_key].get("manual_offset_pct", 0)
+
             raw = _read_ads1115_channel(bus, ch)
-            # Invert: capacitive sensors read HIGH when dry
-            pct = (config.SOIL_DRY - raw) / (config.SOIL_DRY - config.SOIL_WET) * 100.0
+            
+            # Avoid division by zero
+            if dry_raw == wet_raw:
+               pct = 0.0
+            else:
+               # Invert: capacitive sensors read HIGH when dry
+               pct = (dry_raw - raw) / (dry_raw - wet_raw) * 100.0
+            
+            # Apply manual offset and clamp
+            pct += offset
             pct = max(0.0, min(100.0, pct))
             results.append(round(pct, 1))
         bus.close()
@@ -83,6 +128,43 @@ def read_soil_moisture() -> list[float]:
     except (IOError, OSError) as e:
         print(f"[ERROR] I2C soil read failed: {e}")
         return [-1.0, -1.0, -1.0]  # Sentinel for "Sensor Fault"
+
+def run_dry_calibration(target_zone=None) -> dict:
+    """
+    Samples current sensor values and sets them as the new 'dry' reference (0%).
+    target_zone: 1, 2, 3 or None (all zones)
+    """
+    cal_data = load_calibration()
+    results = {"status": "success", "updates": {}}
+    
+    if not _SMBUS_AVAILABLE:
+        print("[WARN] Dry calibration called but SMBus not available.")
+        return {"status": "error", "message": "Simulation mode, hardware not available."}
+        
+    try:
+        bus = SMBus(config.ADS1115_I2C_BUS)
+        zones_to_test = [target_zone - 1] if target_zone in (1, 2, 3) else [0, 1, 2]
+        
+        for ch in zones_to_test:
+            readings = []
+            for _ in range(10):
+                readings.append(_read_ads1115_channel(bus, ch))
+                time.sleep(0.02)
+            avg_raw = int(sum(readings) / len(readings))
+            
+            zone_key = f"zone_{ch+1}"
+            cal_data[zone_key]["dry_raw"] = avg_raw
+            cal_data[zone_key]["manual_offset_pct"] = 0 # Reset manual offset on recalibration
+            results["updates"][zone_key] = avg_raw
+            
+        bus.close()
+        save_calibration()
+        return results
+    except (IOError, OSError) as e:
+        print(f"[ERROR] Dry calibration failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
 
 
 # ═══════════════════════════════════════════════════════

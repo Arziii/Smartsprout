@@ -21,8 +21,8 @@ class SensorData {
     this.timestamp = 0,
   });
 
-  /// Create SensorData from the MQTT JSON telemetry payload.
-  factory SensorData.fromMqttJson(Map<String, dynamic> json) {
+  /// Create SensorData from the Firebase JSON telemetry payload.
+  factory SensorData.fromJson(Map<String, dynamic> json) {
     final soilRaw = json['soil_moisture'];
     List<double> soil = [0.0, 0.0, 0.0];
     if (soilRaw is List) {

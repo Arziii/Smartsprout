@@ -1,9 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'firebase_options.dart';
+
 import 'core/constants/app_theme.dart';
 import 'routes/app_router.dart';
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // Disable Firestore offline persistence to avoid stale cache issues
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: false,
+  );
+
   runApp(
     const ProviderScope(
       child: SmartSproutApp(),
@@ -11,15 +26,33 @@ void main() {
   );
 }
 
-class SmartSproutApp extends StatelessWidget {
+class SmartSproutApp extends ConsumerStatefulWidget {
   const SmartSproutApp({super.key});
 
   @override
+  ConsumerState<SmartSproutApp> createState() => _SmartSproutAppState();
+}
+
+class _SmartSproutAppState extends ConsumerState<SmartSproutApp> {
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final goRouter = ref.watch(routerProvider);
+
     return MaterialApp.router(
+      scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'Smart Sprout',
       theme: AppTheme.lightTheme,
-      routerConfig: appRouter,
+      routerConfig: goRouter,
       debugShowCheckedModeBanner: false,
     );
   }

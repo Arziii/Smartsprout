@@ -88,7 +88,7 @@ class DashboardScreen extends ConsumerWidget {
             end: Alignment.bottomRight,
             colors: [
               Colors.white,
-              color.withValues(alpha: 0.1),
+              color.withOpacity(0.1),
             ],
           ),
         ),
@@ -146,7 +146,7 @@ class DashboardScreen extends ConsumerWidget {
                   duration: const Duration(milliseconds: 500),
                   height: 100 * (tankLevel / 100),
                   decoration: BoxDecoration(
-                      color: waterColor.withValues(alpha: 0.8),
+                      color: waterColor.withOpacity(0.8),
                       borderRadius: const BorderRadius.vertical(
                           bottom: Radius.circular(6))),
                 ),

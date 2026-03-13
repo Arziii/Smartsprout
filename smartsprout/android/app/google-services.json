@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "892907522158",
+    "project_id": "smartsproutadmin",
+    "storage_bucket": "smartsproutadmin.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:892907522158:android:3682672edc0b1982ee7e7f",
+        "android_client_info": {
+          "package_name": "com.example.smartsprout"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANlBxYFTPv0t7_RuGlRApt_aCtI8M-s44"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

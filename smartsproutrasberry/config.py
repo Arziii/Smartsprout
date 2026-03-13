@@ -42,6 +42,10 @@ TANK_LOW_THRESHOLD = int(os.getenv("TANK_LOW_THRESHOLD", "10"))
 MQTT_HOST = os.getenv("MQTT_BROKER_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_BROKER_PORT", "1883"))
 
+# ── Firebase ──
+FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase-adminsdk.json")
+DEVICE_ID = os.getenv("DEVICE_ID", "SPROUT_A1B2")
+
 # ── Timing ──
 TELEMETRY_INTERVAL = int(os.getenv("TELEMETRY_INTERVAL", "3"))
 CLOUD_SYNC_INTERVAL = int(os.getenv("CLOUD_SYNC_INTERVAL", "1800"))
