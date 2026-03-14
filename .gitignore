@@ -1,10 +1,12 @@
 # Firebase
 firebase-adminsdk.json
+**/firebase-adminsdk.json
 google-services.json
 GoogleService-Info.plist
 
 # Environment variables
 .env
+**/.env
 
 # Python
 __pycache__/
