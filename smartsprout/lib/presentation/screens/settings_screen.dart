@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/auth_provider.dart';
+import '../../data/services/data_service.dart';
+import '../../widgets/system_settings_dialog.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -16,6 +19,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _entranceController;
+  bool _isSyncing = false;
 
   @override
   void initState() {
@@ -83,16 +87,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   color: const Color(0xFFFFA726),
                   onTap: () => context.push('/calibration'),
                 )),
+                _buildAnimatedItem(2, _buildSettingsCard(
+                  title: 'Hardware Controls',
+                  subtitle: 'Restart dashboard or reboot Kiosk',
+                  icon: Icons.settings_system_daydream_rounded,
+                  color: const Color(0xFF2BCC71),
+                  onTap: () => showDialog(context: context, builder: (_) => const SystemSettingsDialog()),
+                )),
+                if (!Platform.isLinux)
+                  _buildAnimatedItem(3, _buildSettingsCard(
+                    title: 'Force Sync',
+                    subtitle: 'Request live data from Raspberry Pi now',
+                    icon: Icons.sync_rounded,
+                    color: const Color(0xFF29B6F6),
+                    isLoading: _isSyncing,
+                    onTap: _isSyncing ? null : () => _handleForceSync(),
+                  )),
                 const SizedBox(height: 25),
-                _buildAnimatedItem(2, _buildSectionHeader('Account')),
-                _buildAnimatedItem(3, _buildSettingsCard(
+                _buildAnimatedItem(3, _buildSectionHeader('Account')),
+                _buildAnimatedItem(4, _buildSettingsCard(
                   title: 'Change Device PIN',
                   subtitle: 'Update your hardware access PIN',
                   icon: Icons.lock_outline_rounded,
                   color: const Color(0xFF78909C),
                   onTap: () => _showChangePinDialog(),
                 )),
-                _buildAnimatedItem(4, _buildSettingsCard(
+                _buildAnimatedItem(5, _buildSettingsCard(
                   title: 'Disconnect Device',
                   subtitle: 'Log out of current hardware',
                   icon: Icons.logout_rounded,
@@ -133,13 +153,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     bool isLoading = false,
     bool isDestructive = false,
   }) {
+    final listTile = ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      onTap: onTap,
+      leading: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: color, size: 24),
+      ),
+      title: Text(title,
+        style: GoogleFonts.outfit(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: isDestructive ? Colors.redAccent : const Color(0xFF0F2027),
+        )),
+      subtitle: Text(subtitle,
+        style: GoogleFonts.outfit(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: const Color(0xFF4A6164).withOpacity(0.7),
+        )),
+      trailing: isLoading
+          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+          : Icon(Icons.chevron_right_rounded, color: const Color(0xFF4A6164).withOpacity(0.3)),
+    );
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.7),
+        color: Colors.white.withOpacity(Platform.isLinux ? 0.95 : 0.7),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white, width: 2),
-        boxShadow: [
+        boxShadow: Platform.isLinux ? null : [
           BoxShadow(
             color: Colors.black.withOpacity(0.03),
             blurRadius: 20,
@@ -149,39 +197,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            onTap: onTap,
-            leading: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                shape: BoxShape.circle,
+        child: Platform.isLinux 
+            ? listTile 
+            : BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: listTile,
               ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            title: Text(title,
-              style: GoogleFonts.outfit(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: isDestructive ? Colors.redAccent : const Color(0xFF0F2027),
-              )),
-            subtitle: Text(subtitle,
-              style: GoogleFonts.outfit(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: const Color(0xFF4A6164).withOpacity(0.7),
-              )),
-            trailing: isLoading
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : Icon(Icons.chevron_right_rounded, color: const Color(0xFF4A6164).withOpacity(0.3)),
-          ),
-        ),
       ),
     );
   }
+
 
   Widget _buildBlob({double? top, double? left, double? right, double? bottom, required double size, required Color color}) {
     return Positioned(
@@ -193,7 +218,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         width: size,
         height: size,
         decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        child: BackdropFilter(
+        child: Platform.isLinux ? null : BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
           child: Container(color: Colors.transparent),
         ),
@@ -219,6 +244,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         );
       },
     );
+  }
+
+  Future<void> _handleForceSync() async {
+    final dataService = ref.read(dataServiceProvider);
+    if (dataService == null) return;
+
+    setState(() => _isSyncing = true);
+
+    try {
+      await dataService.forceSync();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Requesting live data from Raspberry Pi...',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: const Color(0xFF0F2027),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (_) {
+      // Silently fail
+    }
+
+    await Future.delayed(const Duration(seconds: 5));
+    if (mounted) setState(() => _isSyncing = false);
   }
 
   // ── Actions & Dialogs (Kept functional logic, restyled UI) ──

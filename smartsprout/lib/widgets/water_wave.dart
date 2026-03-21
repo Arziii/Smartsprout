@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+import 'dart:io';
+
 class WaterWave extends StatefulWidget {
   final double value; // 0 to 100
   final Color color;
@@ -21,7 +23,11 @@ class _WaterWaveState extends State<WaterWave>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
-    )..repeat();
+    );
+    // CRITICAL PERF: Don't repeat animation loop on Linux
+    if (!Platform.isLinux) {
+      _controller.repeat();
+    }
   }
 
   @override
@@ -71,18 +77,23 @@ class _WavePainter extends CustomPainter {
     final yBase = size.height * (1 - fillLevel);
     
     // Wave parameters
-    final double waveHeight = fillLevel > 0 && fillLevel < 1 ? 4.0 : 0.0;
+    final double waveHeight = fillLevel > 0 && fillLevel < 1 && !Platform.isLinux ? 4.0 : 0.0;
     const double waveFrequency = 1.5;
 
     path.moveTo(0, yBase);
 
     if (fillLevel > 0) {
-      for (double x = 0; x <= size.width; x += 1) {
-        final y = yBase +
-            math.sin((x / size.width * waveFrequency * math.pi) +
-                    (waveValue * 2 * math.pi)) *
-                waveHeight;
-        path.lineTo(x, y);
+      if (Platform.isLinux) {
+        // PERF: Draw flat level to skip heavy sine generation on Kiosk
+        path.lineTo(size.width, yBase);
+      } else {
+        for (double x = 0; x <= size.width; x += 1) {
+          final y = yBase +
+              math.sin((x / size.width * waveFrequency * math.pi) +
+                      (waveValue * 2 * math.pi)) *
+                  waveHeight;
+          path.lineTo(x, y);
+        }
       }
     }
 
@@ -101,12 +112,16 @@ class _WavePainter extends CustomPainter {
     pathDark.moveTo(0, yBase);
     
     if (fillLevel > 0) {
-      for (double x = 0; x <= size.width; x += 1) {
-        final y = yBase +
-            math.cos((x / size.width * waveFrequency * math.pi) +
-                    (waveValue * 2 * math.pi)) *
-                waveHeight;
-        pathDark.lineTo(x, y);
+      if (Platform.isLinux) {
+        pathDark.lineTo(size.width, yBase);
+      } else {
+        for (double x = 0; x <= size.width; x += 1) {
+          final y = yBase +
+              math.cos((x / size.width * waveFrequency * math.pi) +
+                      (waveValue * 2 * math.pi)) *
+                  waveHeight;
+          pathDark.lineTo(x, y);
+        }
       }
     }
     

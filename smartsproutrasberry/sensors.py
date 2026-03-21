@@ -96,23 +96,28 @@ def _read_ads1115_channel(bus: "SMBus", channel: int) -> int:
     return raw
 
 
-def read_soil_moisture() -> list[float]:
+def read_soil_moisture() -> tuple[dict, dict, bool]:
     """
-    Returns a list of 3 soil moisture percentages [zone1, zone2, zone3].
-    Maps raw ADC values to 0-100% using calibrated wet/dry thresholds and applies manual offsets.
+    Returns a 3-tuple: (calibrated_dict, raw_dict, is_fault_boolean)
+    calibrated_dict: {bed1: float, ...} with manual offsets applied (0-100%)
+    raw_dict:        {bed1: float, ...} raw sensor percentage BEFORE offsets (0-100%)
     """
     cal_data = load_calibration()
     
     if not _SMBUS_AVAILABLE:
-        return {
+        # No hardware: raw is 0%, calibrated is 0% + offset
+        raw_results = {"bed1": 0.0, "bed2": 0.0, "bed3": 0.0}
+        cal_results = {
             "bed1": max(0.0, min(100.0, 0.0 + cal_data["zone_1"].get("manual_offset_pct", 0))),
             "bed2": max(0.0, min(100.0, 0.0 + cal_data["zone_2"].get("manual_offset_pct", 0))),
             "bed3": max(0.0, min(100.0, 0.0 + cal_data["zone_3"].get("manual_offset_pct", 0)))
         }
+        return cal_results, raw_results, False
 
     try:
         bus = SMBus(config.ADS1115_I2C_BUS)
-        results = {}
+        cal_results = {}
+        raw_results = {}
         for ch in range(3):
             zone_key = f"zone_{ch+1}"
             dry_raw = cal_data[zone_key].get("dry_raw", config.SOIL_DRY)
@@ -128,15 +133,19 @@ def read_soil_moisture() -> list[float]:
                # Invert: capacitive sensors read HIGH when dry
                pct = (dry_raw - raw) / (dry_raw - wet_raw) * 100.0
             
-            # Apply manual offset and clamp
-            pct += offset
-            pct = max(0.0, min(100.0, pct))
-            results[f"bed{ch+1}"] = round(pct, 1)
+            # Raw sensor percentage (before offset), clamped
+            raw_pct = max(0.0, min(100.0, pct))
+            raw_results[f"bed{ch+1}"] = round(raw_pct, 1)
+
+            # Calibrated = raw + offset, clamped
+            cal_pct = max(0.0, min(100.0, pct + offset))
+            cal_results[f"bed{ch+1}"] = round(cal_pct, 1)
         bus.close()
-        return results
+        return cal_results, raw_results, False
     except (IOError, OSError) as e:
         print(f"[ERROR] I2C soil read failed: {e}")
-        return {"bed1": -1.0, "bed2": -1.0, "bed3": -1.0}  # Sentinel for "Sensor Fault"
+        fault_results = {"bed1": -1.0, "bed2": -1.0, "bed3": -1.0}
+        return fault_results, fault_results, True  # Sentinel for "Sensor Fault"
 
 def run_dry_calibration(target_zone=None) -> dict:
     """

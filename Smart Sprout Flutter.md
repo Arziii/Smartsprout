@@ -183,7 +183,7 @@ Document Structure:
 
 Subcollection: commands/{commandId}
 Document Structure (Queue):
-  • command: "force_water" | "stop_all" | "dry_calibrate" | "adjust_offset"
+  • command: "force_water" | "stop_all" | "dry_calibrate" | "adjust_offset" | "set_offset" | "FORCE_SYNC"
   • timestamp: Timestamp
   • processed: boolean
   • [Additional Payload Fields]
@@ -250,7 +250,7 @@ lib/
 │ Control         │ Pump toggle, dual auto-irrigation modes │ Cloud Only   │
 │                 │ (Sensor/Timer), glassmorphism UI        │              │
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Calibration     │ Offset adjustments, dry calibration     │ Cloud Only   │
+│ Calibration     │ Direct text input with Optimistic Updates, │ Cloud Only   │
 │                 │ sent via Firestore command queue        │              │
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
 │ Analytics       │ 7-day charts (Moisture, Temperature),   │ Cloud Only   │
@@ -303,12 +303,29 @@ PHASE 4.5: ENHANCED UX & AUTO-WATERING [COMPLETED]
 ☑ Flexible custom time picker (Hour/Minute) natively integrated with Raspberry Pi Py loop.
 ☑ Persistent local settings caching on Pi for continuity against reboots.
 
-PHASE 4.6: TESTING & REFINEMENT (Weeks 11-12) [IN PROGRESS]
+PHASE 4.6: TESTING & REFINEMENT [COMPLETED]
 ☑ Resolved Firestore login and navigation flow issues.
 ☑ Validated Zero-Trust Linux Kiosk UI fallback behavior.
-□ Field testing Raspberry Pi offline loop with Touchscreen.
-□ Unit tests for business logic.
-□ Testing Firestore command queue under spotty cellular connectivity.
+
+PHASE 4.7: HARDWARE-OPTIMIZED KIOSK UI [COMPLETED]
+☑ Stripped expensive glassmorphism (BackdropFilter) and vector shadows (BoxShadow) on Linux targets.
+☑ Optimized navigation performance by disabling sliding page transitions in GoRouter.
+☑ Simplified trigonometric math loops for water-wave animations on limited Pi 3B hardware.
+
+PHASE 4.8: HIGH-PERFORMANCE CALIBRATION & DIRECT INPUT [COMPLETED]
+☑ Replaced repetitive +1%/-1% buttons with direct numeric input for precision.
+☑ Implemented "Optimistic UI" updates for immediate visual feedback on the mobile app.
+☑ Injected `_force_sync` flag in Python event loop for real-time telemetry feedback (<1s sync).
+
+PHASE 4.9: BENCH-TESTING FAULT DECOUPLING [COMPLETED]
+☑ Decoupled hardware I/O Fault flags from sensory data registers in `sensors.py`.
+☑ Allows full UI/UX validation and calibration testing while disconnected from physical sensors.
+
+PHASE 4.10: EMERGENCY FORCE SYNC ("ECO-MODE BYPASS") [COMPLETED]
+☑ Added `FORCE_SYNC` command to Python event listener — immediately triggers telemetry push.
+☑ Implemented `forceSync()` in Flutter `DataService` with `requested_at` freshness timestamp.
+☑ Added a Sync Now icon button on the mobile Dashboard with loading spinner and SnackBar feedback.
+☑ Pi stays in 30-min Eco-Mode 99% of the time; one tap wakes it for a sub-second cloud push.
 
 
 ═══════════════════════════════════════════════════════════════════

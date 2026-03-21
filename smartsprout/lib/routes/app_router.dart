@@ -61,33 +61,39 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: '/pairing',
-            builder: (context, state) => const PairingScreen(),
+            pageBuilder: (context, state) => _buildPage(state, const PairingScreen()),
           ),
           GoRoute(
             path: '/dashboard',
-            builder: (context, state) => const DashboardPage(),
+            pageBuilder: (context, state) => _buildPage(state, const DashboardPage()),
           ),
           GoRoute(
             path: '/control',
-            builder: (context, state) => const ControlScreen(),
+            pageBuilder: (context, state) => _buildPage(state, const ControlScreen()),
           ),
           GoRoute(
             path: '/analytics',
-            builder: (context, state) => const AnalyticsScreen(),
+            pageBuilder: (context, state) => _buildPage(state, const AnalyticsScreen()),
           ),
           GoRoute(
             path: '/settings',
-            builder: (context, state) => const SettingsScreen(),
+            pageBuilder: (context, state) => _buildPage(state, const SettingsScreen()),
           ),
           GoRoute(
             path: '/calibration',
-            builder: (context, state) => const CalibrationScreen(),
+            pageBuilder: (context, state) => _buildPage(state, const CalibrationScreen()),
           ),
         ],
       ),
     ],
   );
 });
+
+Page<dynamic> _buildPage(GoRouterState state, Widget child) {
+  return Platform.isLinux
+      ? NoTransitionPage(key: state.pageKey, child: child)
+      : MaterialPage(key: state.pageKey, child: child);
+}
 
 // ─────────────────────────────────────────────
 // ScaffoldWithNavBar — premium frosted-glass nav

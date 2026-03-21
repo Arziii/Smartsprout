@@ -120,12 +120,16 @@ To make the dashboard launch automatically when the Pi turns on:
     mkdir -p ~/.config/autostart
     nano ~/.config/autostart/smartsprout.desktop
     ```
-2.  **Paste this configuration**:
+2.  **Make the launcher executable**:
+    ```bash
+    chmod +x /home/pi/Smartsprout/smartsproutrasberry/start_smartsprout.sh
+    ```
+3.  **Paste this configuration**:
     ```ini
     [Desktop Entry]
     Type=Application
-    Name=SmartSprout
-    Exec=/home/pi/Smartsprout/smartsprout/build/linux/arm64/release/bundle/smartsprout
+    Name=SmartSprout Kiosk
+    Exec=/home/pi/Smartsprout/smartsproutrasberry/start_smartsprout.sh
     X-GNOME-Autostart-enabled=true
     ```
 3.  **Hide the Mouse Cursor** (Optional):

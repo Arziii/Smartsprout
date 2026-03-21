@@ -53,7 +53,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   Widget build(BuildContext context) {
     final sensorData = ref.watch(sensorDataProvider);
 
-    final soil = sensorData.soilMoisture;
+    final rawSoil = sensorData.soilMoistureRaw;
+    final offsets = sensorData.soilOffsets;
     final tankLevel = sensorData.tankLevel.clamp(0.0, 100.0).toDouble();
     final temperature = sensorData.temperature;
     // On Linux (Pi), never show as offline — the Pi IS the system.
@@ -135,19 +136,22 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   children: [
                     ZoneCard(
                       zoneName: "Zone 1 (Left)",
-                      moisture: soil.isNotEmpty ? soil[0].toInt() : 0,
+                      rawMoisture: rawSoil.isNotEmpty ? rawSoil[0].toInt() : 0,
+                      calibratedValue: offsets.isNotEmpty ? offsets[0] : 0.0,
                       temp: temperature.toInt(),
                       pulseAnim: _pulseController,
                     ),
                     ZoneCard(
                       zoneName: "Zone 2 (Center)",
-                      moisture: soil.length > 1 ? soil[1].toInt() : 0,
+                      rawMoisture: rawSoil.length > 1 ? rawSoil[1].toInt() : 0,
+                      calibratedValue: offsets.length > 1 ? offsets[1] : 0.0,
                       temp: temperature.toInt(),
                       pulseAnim: _pulseController,
                     ),
                     ZoneCard(
                       zoneName: "Zone 3 (Right)",
-                      moisture: soil.length > 2 ? soil[2].toInt() : 0,
+                      rawMoisture: rawSoil.length > 2 ? rawSoil[2].toInt() : 0,
+                      calibratedValue: offsets.length > 2 ? offsets[2] : 0.0,
                       temp: temperature.toInt(),
                       pulseAnim: _pulseController,
                     ),
@@ -193,10 +197,12 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           color: color,
           shape: BoxShape.circle,
         ),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-          child: Container(color: Colors.transparent),
-        ),
+        child: Platform.isLinux 
+            ? null 
+            : BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+                child: Container(color: Colors.transparent),
+              ),
       ),
     );
   }
@@ -317,10 +323,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     return Container(
       height: 160,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.8),
+        color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.8),
         borderRadius: BorderRadius.circular(32),
         border: Border.all(color: Colors.white, width: 2),
-        boxShadow: [
+        boxShadow: Platform.isLinux ? null : [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
             blurRadius: 20,
@@ -405,7 +411,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.8),
+        color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.8),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: Colors.white, width: 2),
       ),
@@ -448,20 +454,17 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   }
 
   Widget _buildStatusOverlay({required IconData icon, required String title, required String subtitle, required Color color}) {
-    return Positioned.fill(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+    final content = Container(
+      color: Colors.black.withOpacity(0.3),
+      child: Center(
         child: Container(
-          color: Colors.black.withOpacity(0.3),
-          child: Center(
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 40),
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(32),
-                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 30, offset: const Offset(0, 10))],
-              ),
+          margin: const EdgeInsets.symmetric(horizontal: 40),
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(32),
+            boxShadow: Platform.isLinux ? null : [BoxShadow(color: Colors.black26, blurRadius: 30, offset: const Offset(0, 10))],
+          ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -475,11 +478,18 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   const SizedBox(height: 12),
                   Text(subtitle, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 14, height: 1.5)),
                 ],
-              ),
-            ),
           ),
         ),
       ),
+    );
+
+    return Positioned.fill(
+      child: Platform.isLinux 
+          ? content 
+          : BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+              child: content,
+            ),
     );
   }
 }

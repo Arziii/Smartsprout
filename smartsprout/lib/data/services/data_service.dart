@@ -138,10 +138,27 @@ class DataService {
             return 0.0;
          }).toList();
       }
+
+      // Handle Firestore REST mapValue (e.g., soil_moisture: {bed1: ..., bed2: ..., bed3: ...})
+      if (val.containsKey('mapValue')) {
+        final mapFields = val['mapValue']['fields'] as Map<String, dynamic>?;
+        if (mapFields == null) return {};
+        final result = <String, dynamic>{};
+        mapFields.forEach((k, v) {
+          if (v is Map) {
+            if (v.containsKey('doubleValue')) result[k] = v['doubleValue'];
+            else if (v.containsKey('integerValue')) result[k] = double.tryParse(v['integerValue'].toString()) ?? 0.0;
+            else if (v.containsKey('stringValue')) result[k] = v['stringValue'];
+          }
+        });
+        return result;
+      }
       return null;
     }
 
-    final soilRaw = getField('soil_moisture') as List?;
+    final soilCal = getField('soil_moisture') as List?;
+    final soilRaw = getField('soil_moisture_raw') as List?;
+    final soilOffsets = getField('soil_offsets') as List?;
     final alertsRaw = getField('alerts') as List?;
 
     Map<String, dynamic> mapped = {
@@ -150,7 +167,9 @@ class DataService {
       'pump_locked': getField('pump_locked') ?? false,
       'temperature': getField('temperature') ?? 0.0,
       'humidity': getField('humidity') ?? 0.0,
-      'soil_moisture': soilRaw,
+      'soil_moisture': soilCal,
+      'soil_moisture_raw': soilRaw,
+      'soil_offsets': soilOffsets,
       'alerts': alertsRaw,
     };
     return SensorData.fromJson(mapped);
@@ -206,6 +225,57 @@ class DataService {
       'zone': zone,
       'duration_seconds': durationSeconds,
     });
+  }
+
+  /// Sends a FORCE_SYNC command to the Pi, triggering an immediate telemetry push.
+  Future<void> forceSync() async {
+    await sendCommand({
+      'command': 'FORCE_SYNC',
+      'requested_at': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
+  /// Writes calibration offsets directly to the device document in Firestore.
+  /// This ensures the database reflects the user's calibration immediately,
+  /// without waiting for the Pi to process and push telemetry.
+  Future<void> updateCalibrationInFirestore(int zone, double value) async {
+    final bedKey = 'bed$zone';
+    if (Platform.isLinux) {
+      try {
+        // REST API: PATCH the soil_offsets field
+        final url = '$_baseUrl?updateMask.fieldPaths=soil_offsets.$bedKey&key=$_apiKey';
+        final token = await _getAuthToken();
+        final headers = <String, String>{'Content-Type': 'application/json'};
+        if (token != null) headers['Authorization'] = 'Bearer $token';
+        await http.patch(
+          Uri.parse(url),
+          headers: headers,
+          body: json.encode({
+            'fields': {
+              'soil_offsets': {
+                'mapValue': {
+                  'fields': {
+                    bedKey: {'doubleValue': value},
+                  }
+                }
+              }
+            }
+          }),
+        );
+      } catch (e) {
+        debugPrint('[REST_ERROR] updateCalibration: $e');
+      }
+    } else {
+      // Native Firestore on mobile
+      try {
+        await _firestore.collection('devices').doc(deviceId).set(
+          {'soil_offsets': {bedKey: value}},
+          SetOptions(merge: true),
+        );
+      } catch (e) {
+        debugPrint('[FIREBASE_ERROR] updateCalibration: $e');
+      }
+    }
   }
 
   Future<void> emergencyStop() async {
