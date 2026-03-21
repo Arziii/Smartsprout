@@ -27,6 +27,12 @@ class SensorData {
     List<double> soil = [0.0, 0.0, 0.0];
     if (soilRaw is List) {
       soil = soilRaw.map<double>((e) => (e as num).toDouble()).toList();
+    } else if (soilRaw is Map) {
+      soil = [
+        (soilRaw['bed1'] as num?)?.toDouble() ?? 0.0,
+        (soilRaw['bed2'] as num?)?.toDouble() ?? 0.0,
+        (soilRaw['bed3'] as num?)?.toDouble() ?? 0.0,
+      ];
     }
 
     final alertsRaw = json['alerts'];

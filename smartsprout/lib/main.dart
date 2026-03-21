@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -7,19 +8,24 @@ import 'firebase_options.dart';
 
 import 'core/constants/app_theme.dart';
 import 'routes/app_router.dart';
-final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  
+  if (!Platform.isLinux) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
 
-  // Disable Firestore offline persistence to avoid stale cache issues
-  FirebaseFirestore.instance.settings = const Settings(
-    persistenceEnabled: false,
-  );
+    // Disable Firestore offline persistence to avoid stale cache issues
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: false,
+    );
+  }
 
   runApp(
     const ProviderScope(
@@ -36,16 +42,6 @@ class SmartSproutApp extends ConsumerStatefulWidget {
 }
 
 class _SmartSproutAppState extends ConsumerState<SmartSproutApp> {
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final goRouter = ref.watch(routerProvider);

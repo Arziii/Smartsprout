@@ -1,10 +1,11 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/sensor_provider.dart';
-import '../../data/services/firebase_service.dart';
+import '../../data/services/data_service.dart';
 class CalibrationScreen extends ConsumerStatefulWidget {
   const CalibrationScreen({super.key});
 
@@ -34,7 +35,9 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
   @override
   Widget build(BuildContext context) {
     final sensorData = ref.watch(sensorDataProvider);
-    final isConnected = !sensorData.isOffline;
+    // On Linux (Pi), always treat as connected — the Pi IS the system.
+    // On mobile, require real Firestore data to confirm connection.
+    final isConnected = Platform.isLinux || !sensorData.isOffline;
     final moistureData = sensorData.soilMoisture;
 
     return Scaffold(
@@ -283,7 +286,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                   label: '-1%',
                   color: Colors.redAccent,
                   onTap: isConnected
-                      ? () => ref.read(firebaseServiceProvider)?.sendCommand({'command': 'adjust_offset', 'zone': zone, 'adjustment': -1})
+                      ? () => ref.read(dataServiceProvider)?.sendCommand({'command': 'adjust_offset', 'zone': zone, 'adjustment': -1})
                       : null,
                 ),
               ),
@@ -294,7 +297,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                   label: '+1%',
                   color: const Color(0xFF2BCC71),
                   onTap: isConnected
-                      ? () => ref.read(firebaseServiceProvider)?.sendCommand({'command': 'adjust_offset', 'zone': zone, 'adjustment': 1})
+                      ? () => ref.read(dataServiceProvider)?.sendCommand({'command': 'adjust_offset', 'zone': zone, 'adjustment': 1})
                       : null,
                 ),
               ),
@@ -444,7 +447,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
             ),
             ElevatedButton(
               onPressed: () {
-                ref.read(firebaseServiceProvider)?.sendCommand({'command': 'dry_calibrate'});
+                ref.read(dataServiceProvider)?.sendCommand({'command': 'dry_calibrate'});
                 Navigator.pop(dialogCtx);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(

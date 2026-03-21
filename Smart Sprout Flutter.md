@@ -72,8 +72,7 @@ The Smart Sprout hardware system integrates:
 • Soil moisture sensors (volumetric water content)
 • DHT sensors (temperature and humidity)
 • Ultrasonic sensors (reservoir level monitoring)
-• Water flow sensors (usage tracking)
-• Raspberry Pi controller with Physical Touchscreen Display
+• Raspberry Pi controller with Physical Touchscreen Display (Flutter Kiosk Mode)
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -92,10 +91,10 @@ The Smart Sprout hardware system integrates:
 │                         │ Cloud-only remote communication.        │          │
 ├─────────────────────────┼─────────────────────────────────────────┼──────────┤
 │ Real-time Dashboard     │ Live sensor readings: Soil Moisture %,  │ P0       │
-│                         │ Battery Voltage, Tank Level, Flow Rate  │          │
+│                         │ Temperature, Tank Level, Status         │          │
 ├─────────────────────────┼─────────────────────────────────────────┼──────────┤
-│ Irrigation Control      │ Manual pump on/off, schedule creation,  │ P0       │
-│                         │ ML-based auto mode                      │          │
+│ Irrigation Control      │ Manual pump on/off, Dual-strategy       │ P0       │
+│                         │ auto mode (Sensor threshold & Timer)    │          │
 ├─────────────────────────┼─────────────────────────────────────────┼──────────┤
 │ Local Touchscreen Mode  │ Complete local offline control and      │ P0       │
 │                         │ calibration via the Raspberry Pi UI     │          │
@@ -156,7 +155,7 @@ The Smart Sprout hardware system integrates:
 │ Local Database   │ Hive/Isar           │ Fast, offline-first app  │
 │                  │                     │ state storage            │
 ├──────────────────┼─────────────────────┼──────────────────────────┤
-│ Local Hardware UI│ Python Tkinter/PyQt │ GUI framework for        │
+│ Local Hardware UI│ Flutter Desktop     │ Kiosk-mode GUI for       │
 │                  │                     │ physical touchscreen     │
 ├──────────────────┼─────────────────────┼──────────────────────────┤
 │ Charts           │ fl_chart            │ Customizable sensor      │
@@ -180,7 +179,6 @@ Document Structure:
   • soil_moisture: [double, double, double]
   • temperature: double
   • humidity: double
-  • flow_rate: double
   • hashed_pin: string
 
 Subcollection: commands/{commandId}
@@ -246,19 +244,19 @@ lib/
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
 │ Hardware Login  │ Authenticate using Device ID and PIN    │ Cloud Only   │
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Dashboard       │ Live sensor cards (Moisture, Battery),  │ Cloud Only   │
+│ Dashboard       │ Live sensor cards (Moisture, Temperature),│ Cloud Only   │
 │                 │ tank visualization, cloud sync status   │              │
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Control         │ Pump toggle, irrigation mode (Manual/   │ Cloud Only   │
-│                 │ Auto/ML), glassmorphism UI              │              │
+│ Control         │ Pump toggle, dual auto-irrigation modes │ Cloud Only   │
+│                 │ (Sensor/Timer), glassmorphism UI        │              │
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
 │ Calibration     │ Offset adjustments, dry calibration     │ Cloud Only   │
 │                 │ sent via Firestore command queue        │              │
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Analytics       │ 7/30-day charts, water usage reports,   │ Cloud Only   │
+│ Analytics       │ 7-day charts (Moisture, Temperature),   │ Cloud Only   │
 │                 │ efficiency metrics, glassmorphism UI    │              │
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Settings        │ App configuration, PIN change           │ Cloud Only   │
+│ Settings        │ App configuration, PIN change, Logout   │ Cloud Only   │
 └─────────────────┴─────────────────────────────────────────┴──────────────┘
 
 
@@ -269,7 +267,7 @@ lib/
 
 
 PHASE 4.1: UI/UX IMPLEMENTATION [COMPLETED]
-☑ Dashboard with real-time sensor cards (Moisture, Battery)
+☑ Dashboard with real-time sensor cards (Moisture, Temperature, Tank)
 ☑ Animated tank level indicator
 ☑ Pump control with safety confirmations
 ☑ Historical charts with fl_chart
@@ -281,6 +279,8 @@ PHASE 4.2: FIREBASE & DEVICE-CENTRIC AUTHENTICATION [COMPLETED]
 ☑ Firebase Authentication (Anonymous Auth) + Firestore credential validation
 ☑ Device-centric login model (Device ID + PIN)
 ☑ Device-specific Firestore architecture implementations.
+☑ Embedded Linux compatibility via `Platform.isLinux` lazy-loading (bypasses Firebase missing plugins).
+☑ Physical Touchscreen Kiosk-mode authentication bypass.
 
 
 PHASE 4.3: ZERO-TRUST REFACTOR [COMPLETED]
@@ -290,8 +290,22 @@ PHASE 4.3: ZERO-TRUST REFACTOR [COMPLETED]
 ☑ Wiring of Calibration, Settings, and Dashboard screens to exclusively use Firestore.
 
 
-PHASE 4.4: TESTING & REFINEMENT (Weeks 11-12) [IN PROGRESS]
+PHASE 4.4: HARDWARE-AGNOSTIC BACKEND & STORAGE [COMPLETED]
+☑ Implementation of fault-tolerant 'Mock Mode' for sensorless boot validation.
+☑ Complete deprecation and removal of YF-S201 Flow Sensor from architecture (replaced with Temperature monitoring).
+☑ Decoupling of telemetry polling (3s) and cloud sync (30min) to optimize bandwidth.
+☑ Implementation of automated 30-day storage rotation capability via Firebase pruning.
+
+
+PHASE 4.5: ENHANCED UX & AUTO-WATERING [COMPLETED]
+☑ Implementation of Dual-Strategy Auto-Watering (Sensor Threshold & Scheduled Timer).
+☑ Complete overhaul of status indicators to non-intrusive, space-efficient Row on Dashboard.
+☑ Flexible custom time picker (Hour/Minute) natively integrated with Raspberry Pi Py loop.
+☑ Persistent local settings caching on Pi for continuity against reboots.
+
+PHASE 4.6: TESTING & REFINEMENT (Weeks 11-12) [IN PROGRESS]
 ☑ Resolved Firestore login and navigation flow issues.
+☑ Validated Zero-Trust Linux Kiosk UI fallback behavior.
 □ Field testing Raspberry Pi offline loop with Touchscreen.
 □ Unit tests for business logic.
 □ Testing Firestore command queue under spotty cellular connectivity.
@@ -311,8 +325,8 @@ PHASE 4.4: TESTING & REFINEMENT (Weeks 11-12) [IN PROGRESS]
 ├────────────────────┼─────────────────────┼─────────────────────────┤
 │ Core Loop          │ Python              │ Local offline manager   │
 ├────────────────────┼─────────────────────┼─────────────────────────┤
-│ Local UI           │ Mobile-first Window │ Direct touchscreen      │
-│                    │ Framework (Python)  │ control & calibration   │
+│ Local UI           │ Flutter Desktop APP │ Direct touchscreen      │
+│                    │ (Kiosk Mode)        │ control & calibration   │
 ├────────────────────┼─────────────────────┼─────────────────────────┤
 │ Sensor Interface   │ Python RPi.GPIO +   │ Hardware sensor reading │
 │                    │ Adafruit_DHT        │                         │
@@ -337,10 +351,40 @@ Mobile App                           Cloud Firestore                          Ra
      │◄════ Listen to telemetry ═══════════│◄════ Update main document ════════════│
      │                                     │                                       │
      │───── Write Command (e.g., pump) ───►│                                       │
+     │───── Write Mode (Sensor/Timer) ────►│                                       │
      │                                     │───── Notify commands subcollection ──►│
      │                                     │                                       │
      │◄════ Observe status transition ═════│◄════ Set processed=True ══════════════│
      │                                     │                                       │
+
+
+7.3 HARDWARE PIN ASSIGNMENTS
+
+
+The following represents the physical GPIO mapping configured for the Raspberry Pi 
+backend. These can be securely overridden locally via the `.env` configuration file.
+
+┌───────────────────────┬───────────────────────────┬─────────────────────────────┐
+│ Component             │ Interface                 │ Physical Pin Allocation     │
+├───────────────────────┼───────────────────────────┼─────────────────────────────┤
+│ DHT22 (Temp/Hum)      │ Digital GPIO              │ GPIO 4                      │
+├───────────────────────┼───────────────────────────┼─────────────────────────────┤
+│ Ultrasonic Reservoir  │ Digital GPIO              │ Trigger: GPIO 5, Echo: GPIO6│
+├───────────────────────┼───────────────────────────┼─────────────────────────────┤
+│ ADS1115 ADC (I2C)     │ I2C Bus 1 (Address 0x48)  │ SDA: GPIO 2, SCL: GPIO 3    │
+│  ↳ Soil Moisture Bed 1│ Analog                    │ ADC Channel A0              │
+│  ↳ Soil Moisture Bed 2│ Analog                    │ ADC Channel A1              │
+│  ↳ Soil Moisture Bed 3│ Analog                    │ ADC Channel A2              │
+├───────────────────────┼───────────────────────────┼─────────────────────────────┤
+│ Relay Header (Pump)   │ Digital GPIO (Active-Low) │ GPIO 17 (IN1)               │
+├───────────────────────┼───────────────────────────┼─────────────────────────────┤
+│ Relay Header (Valve 1)│ Digital GPIO (Active-Low) │ GPIO 27 (IN2)               │
+├───────────────────────┼───────────────────────────┼─────────────────────────────┤
+│ Relay Header (Valve 2)│ Digital GPIO (Active-Low) │ GPIO 22 (IN3)               │
+├───────────────────────┼───────────────────────────┼─────────────────────────────┤
+│ Relay Header (Valve 3)│ Digital GPIO (Active-Low) │ GPIO 23 (IN4)               │
+└───────────────────────┴───────────────────────────┴─────────────────────────────┘
+
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -406,9 +450,8 @@ exploitation vectors.
 
 
 Key Features: The dashboard displays real-time sensor fusion data—soil 
-moisture (0-100%), ambient temperature/humidity, reservoir volume 
-(calculated via ultrasonic distance), and cumulative flow rate. The 
-system utilizes a device-centric authentication model, where users gain 
+moisture (0-100%), ambient temperature/humidity, and reservoir volume 
+(calculated via ultrasonic distance). The system utilizes a device-centric authentication model, where users gain 
 access by verifying device-specific credentials (Device ID and PIN) via 
 Firebase Authentication. Cloud Firestore provides the scalable database 
 backend, naturally supporting offline-first data caching and automatic 

@@ -2,15 +2,17 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/analytics_provider.dart';
 
-class AnalyticsScreen extends StatefulWidget {
+class AnalyticsScreen extends ConsumerStatefulWidget {
   const AnalyticsScreen({super.key});
 
   @override
-  State<AnalyticsScreen> createState() => _AnalyticsScreenState();
+  ConsumerState<AnalyticsScreen> createState() => _AnalyticsScreenState();
 }
 
-class _AnalyticsScreenState extends State<AnalyticsScreen>
+class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _entranceController;
 
@@ -64,45 +66,41 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
           // ── Content ──
           SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                   _buildAnimatedItem(0, _buildChartCard(
-                    title: 'Soil Moisture Trend (7 Days)',
-                    subtitle: 'Average across all zones',
-                    color: const Color(0xFF8D6E63),
-                    icon: Icons.grass_rounded,
-                    spots: const [
-                      FlSpot(0, 45),
-                      FlSpot(1, 40),
-                      FlSpot(2, 35),
-                      FlSpot(3, 80),
-                      FlSpot(4, 75),
-                      FlSpot(5, 68),
-                      FlSpot(6, 60),
-                    ],
-                  )),
-                  const SizedBox(height: 24),
-                  _buildAnimatedItem(1, _buildChartCard(
-                    title: 'Water Usage',
-                    subtitle: 'Daily consumption in Liters',
-                    color: const Color(0xFF29B6F6),
-                    icon: Icons.water_drop_rounded,
-                    spots: const [
-                      FlSpot(0, 2.5),
-                      FlSpot(1, 2.0),
-                      FlSpot(2, 2.8),
-                      FlSpot(3, 1.5),
-                      FlSpot(4, 3.0),
-                      FlSpot(5, 2.2),
-                      FlSpot(6, 2.4),
-                    ],
-                  )),
-                  const SizedBox(height: 100),
-                ],
+            child: ref.watch(analyticsProvider).when(
+              loading: () => const Center(
+                child: CircularProgressIndicator(color: Color(0xFF2BCC71)),
               ),
+              error: (e, st) => Center(child: Text('Error loading analytics: $e', style: const TextStyle(color: Colors.red))),
+              data: (data) {
+                // Generate UI FlSpots
+                final moistureSpots = data.map((d) => FlSpot(d.dayIndex.toDouble(), d.avgMoisture)).toList();
+                final tempSpots = data.map((d) => FlSpot(d.dayIndex.toDouble(), d.avgTemp)).toList();
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                       _buildAnimatedItem(0, _buildChartCard(
+                        title: 'Soil Moisture Trend (7 Days)',
+                        subtitle: 'Average across all zones',
+                        color: const Color(0xFF8D6E63),
+                        icon: Icons.grass_rounded,
+                        spots: moistureSpots,
+                      )),
+                      const SizedBox(height: 24),
+                      _buildAnimatedItem(1, _buildChartCard(
+                        title: 'Temperature Trend',
+                        subtitle: 'Daily average in °C',
+                        color: const Color(0xFFFF7043),
+                        icon: Icons.thermostat_rounded,
+                        spots: tempSpots,
+                      )),
+                      const SizedBox(height: 100),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -195,7 +193,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                           sideTitles: SideTitles(
                             showTitles: true,
                             reservedSize: 30,
+                            interval: 1,
                             getTitlesWidget: (value, meta) {
+                              if (value != value.toInt()) return const SizedBox.shrink();
                               return Text('${value.toInt()}', 
                                 style: GoogleFonts.outfit(
                                   fontSize: 12, 
@@ -208,7 +208,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
+                            interval: 1,
                             getTitlesWidget: (value, meta) {
+                              if (value != value.toInt()) return const SizedBox.shrink();
                               return Padding(
                                 padding: const EdgeInsets.only(top: 8.0),
                                 child: Text('D${value.toInt() + 1}', 

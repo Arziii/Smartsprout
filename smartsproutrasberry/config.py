@@ -15,7 +15,6 @@ ADS1115_I2C_ADDRESS = int(os.getenv("ADS1115_I2C_ADDRESS", "0x48"), 16)
 DHT22_PIN = int(os.getenv("DHT22_GPIO_PIN", "4"))
 ULTRASONIC_TRIGGER = int(os.getenv("ULTRASONIC_TRIGGER_PIN", "5"))
 ULTRASONIC_ECHO = int(os.getenv("ULTRASONIC_ECHO_PIN", "6"))
-FLOW_SENSOR = int(os.getenv("FLOW_SENSOR_PIN", "13"))
 
 # ── Relay Module (Active LOW) ──
 RELAY_PUMP = int(os.getenv("RELAY_PUMP_PIN", "17"))
@@ -33,9 +32,6 @@ TANK_HEIGHT_CM = float(os.getenv("TANK_HEIGHT_CM", "40"))
 TANK_EMPTY_DISTANCE = float(os.getenv("TANK_EMPTY_DISTANCE_CM", "40"))
 TANK_FULL_DISTANCE = float(os.getenv("TANK_FULL_DISTANCE_CM", "5"))
 
-FLOW_CALIBRATION = float(os.getenv("FLOW_CALIBRATION_FACTOR", "7.5"))
-
-
 # ── Safety ──
 TANK_LOW_THRESHOLD = int(os.getenv("TANK_LOW_THRESHOLD", "10"))
 # ── MQTT ──
@@ -49,6 +45,10 @@ DEVICE_ID = os.getenv("DEVICE_ID", "SPROUT_A1B2")
 # ── Timing ──
 TELEMETRY_INTERVAL = int(os.getenv("TELEMETRY_INTERVAL", "3"))
 CLOUD_SYNC_INTERVAL = int(os.getenv("CLOUD_SYNC_INTERVAL", "1800"))
+
+# ── Storage Management ──
+STORAGE_RETENTION_DAYS = int(os.getenv("STORAGE_RETENTION_DAYS", "30"))
+CLEANUP_INTERVAL_HOURS = int(os.getenv("CLEANUP_INTERVAL_HOURS", "24"))
 
 # ── System Info ──
 FIRMWARE_VERSION = os.getenv("FIRMWARE_VERSION", "1.0.4")

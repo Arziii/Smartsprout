@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,6 +22,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
 
   bool _showConnectionOverlay = false;
   bool _wasOffline = false;
+  
+  bool _showTankLowOverlay = false;
+  bool _wasTankLow = false;
 
   @override
   void initState() {
@@ -51,9 +55,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
 
     final soil = sensorData.soilMoisture;
     final tankLevel = sensorData.tankLevel.clamp(0.0, 100.0).toDouble();
-    final flowRate = sensorData.flowRate;
     final temperature = sensorData.temperature;
-    final isOffline = sensorData.isOffline;
+    // On Linux (Pi), never show as offline — the Pi IS the system.
+    final isOffline = Platform.isLinux ? false : sensorData.isOffline;
     final hasFault = sensorData.hasSensorFault;
     final isTankLow = sensorData.isTankLow;
 
@@ -67,6 +71,17 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
       _showConnectionOverlay = false;
     }
     _wasOffline = isOffline;
+
+    if (isTankLow && !_wasTankLow) {
+      _showTankLowOverlay = true;
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _showTankLowOverlay = false);
+      });
+    }
+    if (!isTankLow && _wasTankLow) {
+      _showTankLowOverlay = false;
+    }
+    _wasTankLow = isTankLow;
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
@@ -97,9 +112,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               children: [
-                _buildAnimatedWidget(0, _buildTopHeader(isOffline)),
+                _buildAnimatedWidget(0, _buildTopHeader(isOffline, isTankLow, hasFault)),
                 const SizedBox(height: 10),
-                _buildAnimatedWidget(1, _buildVitals(tankLevel, flowRate)),
+                _buildAnimatedWidget(1, _buildVitals(tankLevel, temperature)),
                 const SizedBox(height: 30),
                 _buildAnimatedWidget(2, Text("System Overview",
                     style: GoogleFonts.outfit(
@@ -153,17 +168,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               color: const Color(0xFF4A6164),
             ),
 
-          if (isTankLow && !isOffline)
+          if (_showTankLowOverlay && !isOffline)
             _buildStatusOverlay(
               icon: Icons.water_drop_rounded,
               title: "Low Water Level",
               subtitle: "Water reservoir is below 10%.\nPump protection active.",
               color: Colors.redAccent,
             ),
-
-          // ── Fault Banner ──
-          if (hasFault && !isOffline)
-            _buildFaultBanner(),
         ],
       ),
     );
@@ -211,7 +222,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
   }
 
-  Widget _buildTopHeader(bool isOffline) {
+  Widget _buildTopHeader(bool isOffline, bool isTankLow, bool hasFault) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
       child: Row(
@@ -233,9 +244,21 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                       color: const Color(0xFF0F2027))),
             ],
           ),
-          _buildGlassIconButton(
-            icon: isOffline ? Icons.wifi_off_rounded : Icons.notifications_none_rounded,
-            color: isOffline ? Colors.redAccent : const Color(0xFF0F2027),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (hasFault) ...[
+                _buildGlassIconButton(icon: Icons.warning_amber_rounded, color: Colors.amber),
+                const SizedBox(width: 8),
+              ],
+              if (isTankLow) ...[
+                _buildGlassIconButton(icon: Icons.water_drop_rounded, color: Colors.redAccent),
+                const SizedBox(width: 8),
+              ],
+              isOffline
+                  ? _buildGlassIconButton(icon: Icons.wifi_off_rounded, color: Colors.redAccent)
+                  : _buildGlassIconButton(icon: Icons.wifi_rounded, color: const Color(0xFF2BCC71)),
+            ],
           ),
         ],
       ),
@@ -244,18 +267,18 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
 
   Widget _buildGlassIconButton({required IconData icon, required Color color}) {
     return Container(
-      width: 54,
-      height: 54,
+      width: 48,
+      height: 48,
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.5),
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
       ),
-      child: Icon(icon, color: color, size: 26),
+      child: Icon(icon, color: color, size: 24),
     );
   }
 
-  Widget _buildVitals(double tankLevel, double flowRate) {
+  Widget _buildVitals(double tankLevel, double systemTemp) {
     return Row(
       children: [
         Expanded(
@@ -271,11 +294,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         const SizedBox(width: 15),
         Expanded(
           child: _buildVitalCard(
-            label: "WATER FLOW",
-            value: flowRate.toStringAsFixed(1),
-            unit: "L/m",
-            icon: Icons.water_rounded,
-            color: const Color(0xFF00ACC1),
+            label: "TEMPERATURE",
+            value: systemTemp.toStringAsFixed(1),
+            unit: "°C",
+            icon: Icons.thermostat_rounded,
+            color: const Color(0xFFFF7043),
           ),
         ),
       ],
@@ -420,40 +443,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             ],
           )
         ],
-      ),
-    );
-  }
-
-  Widget _buildFaultBanner() {
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + 10,
-      left: 20,
-      right: 20,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.amber.withOpacity(0.8),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white24),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 28),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    "Sensor fault detected. Some readings may be inaccurate.",
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

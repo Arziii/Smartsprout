@@ -9,10 +9,13 @@ from firebase_admin import credentials, firestore
 import time
 import threading
 import sys
+import datetime
+from datetime import timedelta
 import config
 
 _db = None
 _command_listener = None
+_last_cleanup_time = 0
 
 def init_firebase():
     global _db
@@ -109,6 +112,52 @@ def listen_for_commands(callback):
         print("[FIREBASE] Listening for remote commands.")
     except Exception as e:
         print(f"[FIREBASE_ERROR] Failed to setup command listener: {e}")
+
+def perform_storage_cleanup(force=False):
+    """Deletes telemetry and processed commands older than the retention period."""
+    global _last_cleanup_time
+    if not _db:
+        return
+        
+    current_time = time.time()
+    # Only run once every CLEANUP_INTERVAL_HOURS unless forced
+    if not force and (current_time - _last_cleanup_time) < (config.CLEANUP_INTERVAL_HOURS * 3600):
+        return
+
+    try:
+        retention_days = config.STORAGE_RETENTION_DAYS
+        # Calculate cutoff timestamp (Unix integer)
+        cutoff_timestamp = int(current_time - (retention_days * 86400))
+        # Calculate cutoff for Firestore Timestamps
+        cutoff_date = datetime.datetime.now(datetime.timezone.utc) - timedelta(days=retention_days)
+        
+        print(f"[FIREBASE] Starting storage cleanup (Retention: {retention_days} days)...")
+        
+        doc_ref = _db.collection('devices').document(config.DEVICE_ID)
+        
+        # 1. Cleanup Telemetry (using the integer timestamp)
+        telemetry_ref = doc_ref.collection('telemetry').where('timestamp', '<', cutoff_timestamp)
+        docs = telemetry_ref.limit(500).stream()
+        deleted_count = 0
+        for doc in docs:
+            doc.reference.delete()
+            deleted_count += 1
+            
+        # 2. Cleanup Processed Commands (using Firestore timestamp)
+        commands_ref = doc_ref.collection('commands').where('processed', '==', True).where('processedAt', '<', cutoff_date)
+        docs = commands_ref.limit(500).stream()
+        cmd_deleted_count = 0
+        for doc in docs:
+            doc.reference.delete()
+            cmd_deleted_count += 1
+            
+        if deleted_count > 0 or cmd_deleted_count > 0:
+            print(f"[FIREBASE] Cleanup finished: Deleted {deleted_count} telemetry and {cmd_deleted_count} commands.")
+        
+        _last_cleanup_time = current_time
+            
+    except Exception as e:
+        print(f"[FIREBASE_ERROR] Storage cleanup failed: {e}")
 
 def cleanup():
     """Clean up Firebase listeners."""

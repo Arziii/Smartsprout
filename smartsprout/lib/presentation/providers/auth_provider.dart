@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,8 +30,10 @@ class AuthState {
 }
 
 class AuthNotifier extends Notifier<AuthState> {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  // Use lazy initialization so these instances are NEVER evaluated on Linux Kiosk.
+  // Using `late final` ensures they are only created if actually accessed.
+  late final FirebaseAuth _auth = FirebaseAuth.instance;
+  late final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   AuthState build() {
@@ -41,6 +44,13 @@ class AuthNotifier extends Notifier<AuthState> {
 
   Future<void> _init() async {
     state = state.copyWith(isLoading: true);
+    
+    // Auto-login bypass for Raspberry Pi Kiosk (Linux)
+    if (Platform.isLinux) {
+      state = AuthState(isLoading: false, deviceId: 'SPROUT_A1B2');
+      return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final savedDeviceId = prefs.getString('device_id');
     
@@ -53,6 +63,8 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<bool> login(String deviceId, String pin) async {
+    if (Platform.isLinux) return true; // Bypass on local Pi
+
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       // 1. Sign in anonymously FIRST to get Firestore read permission
@@ -93,6 +105,8 @@ class AuthNotifier extends Notifier<AuthState> {
     final currentDevice = state.deviceId;
     if (currentDevice == null) return false;
 
+    if (Platform.isLinux) return false;
+
     try {
       state = state.copyWith(isLoading: true, clearError: true);
       await _firestore.collection('devices').doc(currentDevice).update({
@@ -107,6 +121,8 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<void> logout() async {
+    if (Platform.isLinux) return;
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('device_id');
     await _auth.signOut();

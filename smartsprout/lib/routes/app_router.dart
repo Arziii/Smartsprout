@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -20,15 +21,19 @@ final GlobalKey<NavigatorState> _shellNavigatorKey =
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: '/login',
+    // Start on the dashboard immediately for Linux, login for mobile
+    initialLocation: Platform.isLinux ? '/dashboard' : '/login',
     redirect: (context, state) {
+      // Hard guard at the top to ensure Raspberry Pi ignores auth states
+      if (Platform.isLinux) return null;
+
       final authState = ref.read(authProvider);
       final isLoggedIn = authState.deviceId != null;
       final isLoggingIn = state.matchedLocation == '/login';
 
       // If still loading initial state from local storage, don't redirect yet
       if (authState.isLoading && !isLoggedIn) {
-        return null; 
+        return null;
       }
 
       if (!isLoggedIn) {
@@ -298,8 +303,7 @@ class _NavButtonState extends State<_NavButton>
                         boxShadow: widget.isSelected
                             ? [
                                 BoxShadow(
-                                  color: widget.activeColor
-                                      .withOpacity(0.35),
+                                  color: widget.activeColor.withOpacity(0.35),
                                   blurRadius: 12,
                                   spreadRadius: 1,
                                   offset: const Offset(0, 3),

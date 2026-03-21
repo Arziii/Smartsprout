@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/sensor_provider.dart';
+import '../../data/services/data_service.dart';
 
 class ControlScreen extends ConsumerStatefulWidget {
   const ControlScreen({super.key});
@@ -15,6 +17,8 @@ class ControlScreen extends ConsumerStatefulWidget {
 class _ControlScreenState extends ConsumerState<ControlScreen>
     with SingleTickerProviderStateMixin {
   String _mode = 'manual';
+  String _autoStrategy = 'sensor';
+  TimeOfDay _autoTime = const TimeOfDay(hour: 8, minute: 0);
   late AnimationController _entranceController;
 
   @override
@@ -36,7 +40,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   Widget build(BuildContext context) {
     final sensorData = ref.watch(sensorDataProvider);
     final notifier = ref.read(sensorDataProvider.notifier);
-    final isConnected = !sensorData.isOffline;
+    // On Linux (Pi), always treat as connected — the Pi IS the system.
+    final isConnected = Platform.isLinux || !sensorData.isOffline;
     final pumpLocked = sensorData.pumpLocked;
 
     return Scaffold(
@@ -136,10 +141,6 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                   value: 'auto',
                                   label: Text('Auto'),
                                   icon: Icon(Icons.schedule_rounded)),
-                              ButtonSegment(
-                                  value: 'ml',
-                                  label: Text('Smart'),
-                                  icon: Icon(Icons.psychology_rounded)),
                             ],
                             selected: {_mode},
                             showSelectedIcon: false,
@@ -209,6 +210,153 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                   : 0,
                               notifier,
                               disabled: pumpLocked || !isConnected),
+                        ],
+                      ),
+                    )),
+                    const SizedBox(height: 24),
+                  ],
+
+                  if (_mode == 'auto') ...[
+                    _buildAnimatedItem(2, _buildGlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text("Automatic Strategy",
+                              style: GoogleFonts.outfit(
+                                  fontSize: 18, fontWeight: FontWeight.w800, color: const Color(0xFF0F2027))),
+                          const SizedBox(height: 16),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            padding: const EdgeInsets.all(4),
+                            child: SegmentedButton<String>(
+                              style: SegmentedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                selectedForegroundColor: Colors.white,
+                                selectedBackgroundColor: const Color(0xFF29B6F6),
+                                textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                side: BorderSide.none,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              segments: const [
+                                ButtonSegment(
+                                  value: 'sensor',
+                                  label: Text('Sensor Target'),
+                                  icon: Icon(Icons.water_drop_rounded),
+                                ),
+                                ButtonSegment(
+                                  value: 'timer',
+                                  label: Text('Daily Timer'),
+                                  icon: Icon(Icons.access_time_filled_rounded),
+                                ),
+                              ],
+                              selected: {_autoStrategy},
+                              showSelectedIcon: false,
+                              onSelectionChanged: (sel) => setState(() => _autoStrategy = sel.first),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          
+                          if (_autoStrategy == 'sensor') ...[
+                             Row(
+                               children: [
+                                 Container(
+                                   padding: const EdgeInsets.all(12),
+                                   decoration: BoxDecoration(color: const Color(0xFF29B6F6).withOpacity(0.15), shape: BoxShape.circle),
+                                   child: const Icon(Icons.water_drop_rounded, color: Color(0xFF29B6F6)),
+                                 ),
+                                 const SizedBox(width: 16),
+                                 Expanded(
+                                   child: Column(
+                                     crossAxisAlignment: CrossAxisAlignment.start,
+                                     children: [
+                                       Text("Sensor Thresholds", style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: const Color(0xFF0F2027))),
+                                       Text("Waters automatically when soil moisture is low across any zone.", style: GoogleFonts.outfit(color: const Color(0xFF4A6164), fontSize: 13, fontWeight: FontWeight.w500)),
+                                     ]
+                                   )
+                                 )
+                               ]
+                             )
+                          ] else ...[
+                             Row(
+                               children: [
+                                 Container(
+                                   padding: const EdgeInsets.all(12),
+                                   decoration: BoxDecoration(color: const Color(0xFF29B6F6).withOpacity(0.15), shape: BoxShape.circle),
+                                   child: const Icon(Icons.access_time_filled_rounded, color: Color(0xFF29B6F6)),
+                                 ),
+                                 const SizedBox(width: 16),
+                                 Expanded(
+                                   child: Column(
+                                     crossAxisAlignment: CrossAxisAlignment.start,
+                                     children: [
+                                       Text("Daily Schedule", style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: const Color(0xFF0F2027))),
+                                       Text("Waters all zones every day at the time selected below.", style: GoogleFonts.outfit(color: const Color(0xFF4A6164), fontSize: 13, fontWeight: FontWeight.w500)),
+                                     ]
+                                   )
+                                 )
+                               ]
+                             ),
+                             const SizedBox(height: 16),
+                             InkWell(
+                               onTap: () async {
+                                 final time = await showTimePicker(context: context, initialTime: _autoTime);
+                                 if (time != null) setState(() => _autoTime = time);
+                               },
+                               borderRadius: BorderRadius.circular(12),
+                               child: Container(
+                                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                                 decoration: BoxDecoration(
+                                   color: Colors.white.withOpacity(0.8),
+                                   borderRadius: BorderRadius.circular(12),
+                                   border: Border.all(color: const Color(0xFF29B6F6).withOpacity(0.3)),
+                                 ),
+                                 child: Row(
+                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                   children: [
+                                     Text("Execution Time", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 15, color: const Color(0xFF0F2027))),
+                                     Text(_autoTime.format(context), style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 18, color: const Color(0xFF29B6F6))),
+                                   ]
+                                 )
+                               )
+                             )
+                          ],
+
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            onPressed: (!isConnected || pumpLocked)
+                                ? null
+                                : () {
+                                    HapticFeedback.heavyImpact();
+                                    ref.read(dataServiceProvider)?.setWateringMode(
+                                      'auto',
+                                      strategy: _autoStrategy,
+                                      timerHour: _autoTime.hour,
+                                      timerMinute: _autoTime.minute,
+                                    );
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Auto Watering Mode Activated', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                                        backgroundColor: const Color(0xFF2BCC71),
+                                        behavior: SnackBarBehavior.floating,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      ),
+                                    );
+                                  },
+                            icon: const Icon(Icons.check_circle_rounded),
+                            label: Text("Activate Auto Mode",
+                                style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 16)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2BCC71),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              elevation: 0,
+                            ),
+                          ),
                         ],
                       ),
                     )),
