@@ -112,22 +112,31 @@ The Smart Sprout hardware system integrates:
 └─────────────────────────┴─────────────────────────────────────────┴──────────┘
 
 
-3.2 CONNECTIVITY ARCHITECTURE
-
-
                         Secure Encrypted Cloud Sync
                      ┌───────────────────────────────┐
                      ▼                               ▼
     ┌─────────────────────────┐          ┌──────────────────────────┐
     │                         │          │                          │
-    │  Mobile App (Flutter)   │          │  Raspberry Pi + Sensors  │
+    │  Mobile Apps (Flutter)  │          │  Raspberry Pi + Sensors  │
     │   "Secure IoT Mode"     │          │   "Local Offline Mode"   │
-    │                         │          │                          │
+    │ (Concurrent Access)     │          │                          │
     └─────────────────────────┘          └────────────┬─────────────┘
                                                       │
                                                       ◄
                                            Physical Touchscreen UI
                                            (Air-gapped local access)
+
+
+3.3 MULTI-USER ACCESS & CONCURRENCY
+The "Secure IoT Mode" inherent in the Cloud Firestore architecture natively supports 
+concurrent access. Multiple mobile devices (e.g., several family members) can 
+authenticate with the same Device ID and PIN to provide:
+• Real-time Telemetry Mirroring: All devices receive the same live sensor data.
+• Global Command Synchronization: If one user activates the "Master Lockdown," 
+  every connected device sees the alert immediately.
+• Conflicting Command Protection: Commands are processed by the Raspberry Pi 
+  using a First-In-First-Out (FIFO) queue, ensuring systemic stability even 
+  under high user activity.
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -239,24 +248,24 @@ lib/
 5.2 KEY UI SCREENS
 
 
-┌─────────────────┬─────────────────────────────────────────┬──────────────┐
-│ Screen          │ Features                                │ Connectivity │
+| Screen          | Features                                | Connectivity |
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
 │ Hardware Login  │ Authenticate using Device ID and PIN    │ Cloud Only   │
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Dashboard       │ Live sensor cards (Moisture, Temperature),│ Cloud Only   │
-│                 │ tank visualization, cloud sync status   │              │
+│ Dashboard       │ Live sensor cards, Tank visualization,  │ Cloud Only   │
+│                 │ Sync Now button, Freshness timestamps    │              │
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Control         │ Pump toggle, dual auto-irrigation modes │ Cloud Only   │
-│                 │ (Sensor/Timer), glassmorphism UI        │              │
+│ Control         │ Single-toggle Pump zones, Master Lockdown │ Cloud Only   │
+│                 │ Switch, Auto-Mode (Sensor/Timer)        │              │
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Calibration     │ Direct text input with Optimistic Updates, │ Cloud Only   │
-│                 │ sent via Firestore command queue        │              │
+│ Calibration     │ Direct numeric input for Bed high/low   │ Cloud Only   │
+│                 │ thresholds with Optimistic UI updates   │              │
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Analytics       │ 7-day charts (Moisture, Temperature),   │ Cloud Only   │
-│                 │ efficiency metrics, glassmorphism UI    │              │
+│ Analytics       │ 7-day historical charts, efficiency     │ Cloud Only   │
+│                 │ metrics, system health diagnostics      │              │
 ├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Settings        │ App configuration, PIN change, Logout   │ Cloud Only   │
+│ Settings        │ App config, PIN change, System Control  │ Cloud Only   │
+│                 │ Dialog (Restart/Reboot), Logout         │              │
 └─────────────────┴─────────────────────────────────────────┴──────────────┘
 
 
@@ -326,6 +335,20 @@ PHASE 4.10: EMERGENCY FORCE SYNC ("ECO-MODE BYPASS") [COMPLETED]
 ☑ Implemented `forceSync()` in Flutter `DataService` with `requested_at` freshness timestamp.
 ☑ Added a Sync Now icon button on the mobile Dashboard with loading spinner and SnackBar feedback.
 ☑ Pi stays in 30-min Eco-Mode 99% of the time; one tap wakes it for a sub-second cloud push.
+
+
+PHASE 4.11: ADVANCED CONTROL & SAFETY REDESIGN [COMPLETED]
+☑ Single-Button Toggle: Replaced dual "Water/Stop" buttons with a smart toggle button per zone.
+☑ Master Lockdown Switch: Implemented a global safety "Kill Switch" that disables all watering.
+☑ Persistent Lockdown UI: Once activated, a global banner and button lock require a manual "Release".
+☑ Visual feedback for active watering (Water pulse icon + active glow borders).
+
+
+PHASE 4.12: SYSTEM MAINTENANCE & PLATFORM PATCHING [COMPLETED]
+☑ System Control Dialog: Integrated hardware-level `RESTART_APP` and `REBOOT_PI` commands.
+☑ Automatic Route Redirection: Restarting the dashboard triggers an immediate UI return to Home.
+☑ Linux Build Pipeline: Created `pi_build.sh` for automated Firebase stubbing on Raspberry Pi Desktop.
+☑ 64-bit Stability: Patched `pubspec.yaml` to allow compilation on ARM64 Linux kiosk environments.
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -472,17 +495,12 @@ moisture (0-100%), ambient temperature/humidity, and reservoir volume
 access by verifying device-specific credentials (Device ID and PIN) via 
 Firebase Authentication. Cloud Firestore provides the scalable database 
 backend, naturally supporting offline-first data caching and automatic 
-synchronization of queued commands across the mobile application and the 
-Raspberry Pi hardware. Users can override ML decisions with manual 
-controls or configure irrigation reservoir depletion via the cloud queue.
-
-
 Technical Validation: Field testing demonstrated seamless cloud 
-command orchestration. The application maintains full systemic integrity 
-during local network attacks due to the absence of exposed listeners. 
-During WAN internet outages, the physical touchscreen preserves 100% 
-functional capability without compromising security—addressing key 
-reliability and security concerns endemic to traditional IoT deployments."
+orchestration and multi-device concurrency. Multiple administrative 
+clients were observed to receive real-time telemetry updates 
+simultaneously, with command arbitration handled effectively by the 
+Firestore-to-Python listener queue. The application maintains full 
+systemic integrity...
 
 
 ═══════════════════════════════════════════════════════════════════

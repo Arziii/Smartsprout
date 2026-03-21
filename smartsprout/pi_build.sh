@@ -62,8 +62,13 @@ class StubQueryDocumentSnapshot { Map<String, dynamic> data() => {}; }
 class StubDocumentReference {
   Future<StubDocumentSnapshot> get([dynamic options]) async => StubDocumentSnapshot();
   Future<void> update(Map<String, dynamic> data) async {}
+  Future<void> set(Map<String, dynamic> data, [dynamic options]) async {}
   Stream<StubDocumentSnapshot> snapshots() => const Stream.empty();
   StubCollectionReference collection(String path) => StubCollectionReference();
+}
+class SetOptions {
+  final bool? merge;
+  const SetOptions({this.merge});
 }
 class StubDocumentSnapshot {
   bool get exists => false;
