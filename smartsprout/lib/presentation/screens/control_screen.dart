@@ -27,6 +27,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   // Track if auto mode is active
   bool _autoModeActive = false;
 
+  // Master lockdown state — like a real industrial e-stop
+  bool _masterLockdown = false;
+
   @override
   void initState() {
     super.initState();
@@ -81,8 +84,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     // Block watering if: tank fault (-1), empty (0%), or below 10%
     final isTankLow = tankLevel < 10;
 
-    // Auto-lock watering if tank is low or pump locked
-    if (isTankLow || pumpLocked) {
+    // Auto-lock watering if tank is low, pump locked, or MASTER LOCKDOWN active
+    if (isTankLow || pumpLocked || _masterLockdown) {
       for (var z in [1, 2, 3]) {
         _wateringActive[z] = false;
       }
@@ -130,7 +133,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                   _buildAnimatedItem(0, Container(
+                  _buildAnimatedItem(0, Container(
                     padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                     decoration: BoxDecoration(
                       color: isConnected ? const Color(0xFF2BCC71).withOpacity(0.1) : Colors.redAccent.withOpacity(0.1),
@@ -419,43 +422,98 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                     const SizedBox(height: 24),
                   ],
 
-                  // Emergency Stop
-                  _buildAnimatedItem(3, Container(
+                  // ── Emergency Stop / Lockdown Controller ──
+                  _buildAnimatedItem(3, AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    padding: _masterLockdown ? const EdgeInsets.all(16) : EdgeInsets.zero,
                     decoration: BoxDecoration(
+                      color: _masterLockdown ? Colors.redAccent.withOpacity(0.1) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(24),
+                      border: _masterLockdown 
+                          ? Border.all(color: Colors.redAccent.withOpacity(0.3), width: 2)
+                          : null,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.redAccent.withOpacity(0.3),
+                          color: _masterLockdown 
+                             ? Colors.redAccent.withOpacity(0.1)
+                             : Colors.redAccent.withOpacity(0.3),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         )
                       ]
                     ),
-                    child: SizedBox(
-                      height: 56,
-                      child: ElevatedButton.icon(
-                        onPressed: isConnected
-                            ? () {
-                                HapticFeedback.heavyImpact();
-                                notifier.emergencyStop();
-                                setState(() {
-                                  _wateringActive[1] = false;
-                                  _wateringActive[2] = false;
-                                  _wateringActive[3] = false;
-                                });
-                              }
-                            : null,
-                        icon: const Icon(Icons.power_settings_new_rounded, size: 24),
-                        label: Text("EMERGENCY STOP",
-                            style: GoogleFonts.outfit(
-                                fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.redAccent,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20)),
-                          elevation: 0,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_masterLockdown) ...[
+                          Row(
+                            children: [
+                              const Icon(Icons.report_problem_rounded, color: Colors.redAccent, size: 24),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text("MASTER LOCKDOWN ACTIVE",
+                                        style: GoogleFonts.outfit(
+                                            color: Colors.redAccent,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 13,
+                                            letterSpacing: 0.5)),
+                                    Text("All watering disabled for safety.",
+                                        style: GoogleFonts.outfit(
+                                            color: Colors.redAccent.withOpacity(0.7),
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 11)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        SizedBox(
+                          height: 56,
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: isConnected
+                                ? () {
+                                    HapticFeedback.heavyImpact();
+                                    if (!_masterLockdown) {
+                                      notifier.emergencyStop();
+                                      setState(() {
+                                        _masterLockdown = true;
+                                        _wateringActive[1] = false;
+                                        _wateringActive[2] = false;
+                                        _wateringActive[3] = false;
+                                        _autoModeActive = false;
+                                      });
+                                    } else {
+                                      setState(() => _masterLockdown = false);
+                                    }
+                                  }
+                                : null,
+                            icon: Icon(
+                              _masterLockdown 
+                                ? Icons.lock_open_rounded 
+                                : Icons.power_settings_new_rounded, 
+                              size: 24),
+                            label: Text(
+                              _masterLockdown ? "RELEASE SYSTEM LOCK" : "EMERGENCY STOP",
+                              style: GoogleFonts.outfit(
+                                  fontSize: 16, 
+                                  fontWeight: FontWeight.w800, 
+                                  letterSpacing: 1.0)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _masterLockdown ? const Color(0xFF1B1B1B) : Colors.redAccent,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20)),
+                              elevation: 0,
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   )),
                   const SizedBox(height: 100),
