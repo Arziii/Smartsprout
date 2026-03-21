@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 
 import '../data/services/data_service.dart';
 
@@ -10,12 +11,23 @@ class SystemSettingsDialog extends ConsumerWidget {
 
   void _sendCommand(BuildContext context, WidgetRef ref, String command) {
     ref.read(dataServiceProvider)?.sendCommand({'command': command});
-    Navigator.pop(context);
+    
+    // Close the settings dialog
+    Navigator.of(context).pop();
+    
+    // If it's a restart command, automatically go back to the Home/Dashboard
+    if (command == 'RESTART_APP') {
+      context.go('/dashboard');
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Command sent: $command'),
+        content: Text(command == 'RESTART_APP' 
+          ? 'Restarting Dashboard...' 
+          : 'Command sent: $command'),
         backgroundColor: const Color(0xFF0F2027),
         behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
