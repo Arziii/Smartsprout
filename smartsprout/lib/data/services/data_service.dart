@@ -180,6 +180,8 @@ class DataService {
       'soil_moisture': soilCal,
       'soil_moisture_raw': soilRaw,
       'soil_offsets': soilOffsets,
+      'target_moisture': getField('target_moisture'),
+      'max_pump_runtime': getField('max_pump_runtime'),
       'alerts': alertsRaw,
       'last_heartbeat': lastHb,
     };
@@ -238,6 +240,41 @@ class DataService {
     });
   }
 
+  /// Dead-Man's Switch: writes a heartbeat timestamp while manual watering is active.
+  /// The Pi monitors this — if stale >5s, it kills the pump immediately.
+  Future<void> updateManualHeartbeat() async {
+    if (Platform.isLinux) {
+      try {
+        final url = '$_baseUrl?updateMask.fieldPaths=manual_heartbeat&key=$_apiKey';
+        final token = await _getAuthToken();
+        final headers = <String, String>{'Content-Type': 'application/json'};
+        if (token != null) headers['Authorization'] = 'Bearer $token';
+        await http.patch(
+          Uri.parse(url),
+          headers: headers,
+          body: json.encode({
+            'fields': {
+              'manual_heartbeat': {
+                'timestampValue': DateTime.now().toUtc().toIso8601String(),
+              }
+            }
+          }),
+        );
+      } catch (e) {
+        debugPrint('[REST_ERROR] updateManualHeartbeat: $e');
+      }
+    } else {
+      try {
+        await _firestore.collection('devices').doc(deviceId).set(
+          {'manual_heartbeat': FieldValue.serverTimestamp()},
+          SetOptions(merge: true),
+        );
+      } catch (e) {
+        debugPrint('[FIREBASE_ERROR] updateManualHeartbeat: $e');
+      }
+    }
+  }
+
   /// Sends a FORCE_SYNC command to the Pi, triggering an immediate telemetry push.
   Future<void> forceSync() async {
     await sendCommand({
@@ -285,6 +322,55 @@ class DataService {
         );
       } catch (e) {
         debugPrint('[FIREBASE_ERROR] updateCalibration: $e');
+      }
+    }
+  }
+
+  /// Writes target moisture and max pump runtime to Firestore for a zone.
+  Future<void> updateZoneTargets(int zone, double target, int timeout) async {
+    final bedKey = 'bed$zone';
+    if (Platform.isLinux) {
+      try {
+        final url = '$_baseUrl?updateMask.fieldPaths=target_moisture.$bedKey&updateMask.fieldPaths=max_pump_runtime.$bedKey&key=$_apiKey';
+        final token = await _getAuthToken();
+        final headers = <String, String>{'Content-Type': 'application/json'};
+        if (token != null) headers['Authorization'] = 'Bearer $token';
+        await http.patch(
+          Uri.parse(url),
+          headers: headers,
+          body: json.encode({
+            'fields': {
+              'target_moisture': {
+                'mapValue': {
+                  'fields': {
+                    bedKey: {'doubleValue': target},
+                  }
+                }
+              },
+              'max_pump_runtime': {
+                'mapValue': {
+                  'fields': {
+                    bedKey: {'integerValue': timeout.toString()},
+                  }
+                }
+              },
+            }
+          }),
+        );
+      } catch (e) {
+        debugPrint('[REST_ERROR] updateZoneTargets: $e');
+      }
+    } else {
+      try {
+        await _firestore.collection('devices').doc(deviceId).set(
+          {
+            'target_moisture': {bedKey: target},
+            'max_pump_runtime': {bedKey: timeout},
+          },
+          SetOptions(merge: true),
+        );
+      } catch (e) {
+        debugPrint('[FIREBASE_ERROR] updateZoneTargets: $e');
       }
     }
   }

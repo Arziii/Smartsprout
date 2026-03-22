@@ -181,6 +181,80 @@ def perform_storage_cleanup(force=False):
     except Exception as e:
         print(f"[FIREBASE_ERROR] Storage cleanup failed: {e}")
 
+# ═══════════════════════════════════════════════════════
+# Zone Targets — Precision Saturation Settings
+# ═══════════════════════════════════════════════════════
+_cached_zone_targets = None
+_zone_targets_last_fetch = 0
+
+def get_zone_targets() -> dict:
+    """
+    Reads target_moisture and max_pump_runtime from the device document.
+    Returns: { 1: {"target": 65.0, "timeout": 30}, 2: {...}, 3: {...} }
+    Cached for 5 minutes to reduce Firestore reads.
+    """
+    global _cached_zone_targets, _zone_targets_last_fetch
+    import time as _t
+
+    now = _t.time()
+    if _cached_zone_targets and (now - _zone_targets_last_fetch) < 300:
+        return _cached_zone_targets
+
+    defaults = {
+        1: {"target": config.DEFAULT_TARGET_MOISTURE, "timeout": config.DEFAULT_MAX_PUMP_RUNTIME},
+        2: {"target": config.DEFAULT_TARGET_MOISTURE, "timeout": config.DEFAULT_MAX_PUMP_RUNTIME},
+        3: {"target": config.DEFAULT_TARGET_MOISTURE, "timeout": config.DEFAULT_MAX_PUMP_RUNTIME},
+    }
+
+    if not _db:
+        _cached_zone_targets = defaults
+        return defaults
+
+    try:
+        doc_ref = _db.collection('devices').document(config.DEVICE_ID)
+        doc = doc_ref.get()
+        if doc.exists:
+            data = doc.to_dict()
+            target_map = data.get('target_moisture', {})
+            timeout_map = data.get('max_pump_runtime', {})
+            for z in [1, 2, 3]:
+                bed_key = f"bed{z}"
+                defaults[z]["target"] = float(target_map.get(bed_key, config.DEFAULT_TARGET_MOISTURE))
+                defaults[z]["timeout"] = int(timeout_map.get(bed_key, config.DEFAULT_MAX_PUMP_RUNTIME))
+        _cached_zone_targets = defaults
+        _zone_targets_last_fetch = now
+        print(f"[FIREBASE] Zone targets refreshed: {defaults}")
+    except Exception as e:
+        print(f"[FIREBASE_ERROR] Failed to fetch zone targets: {e}")
+        _cached_zone_targets = defaults
+
+    return defaults
+
+
+def get_manual_heartbeat() -> float:
+    """
+    Reads the manual_heartbeat timestamp from the device document.
+    Returns seconds since last heartbeat, or 999 if unavailable.
+    """
+    if not _db:
+        return 999.0
+    try:
+        doc = _db.collection('devices').document(config.DEVICE_ID).get()
+        if doc.exists:
+            data = doc.to_dict()
+            hb = data.get('manual_heartbeat')
+            if hb and hasattr(hb, 'timestamp'):
+                # Firestore Timestamp → epoch seconds
+                age = time.time() - hb.timestamp()
+                return max(0, age)
+            elif isinstance(hb, (int, float)):
+                return max(0, time.time() - hb)
+        return 999.0
+    except Exception as e:
+        print(f"[FIREBASE_ERROR] get_manual_heartbeat: {e}")
+        return 999.0
+
+
 def cleanup():
     """Clean up Firebase listeners."""
     global _command_listener

@@ -11,6 +11,7 @@ class ZoneCard extends ConsumerStatefulWidget {
   final String zoneName;
   final int rawMoisture;         // Actual sensor reading from the Pi/database
   final double calibratedValue;  // User-set threshold from Calibration screen
+  final double targetMoisture;   // Precision saturation target
   final int temp;
   final Animation<double> pulseAnim;
 
@@ -20,6 +21,7 @@ class ZoneCard extends ConsumerStatefulWidget {
     required this.zoneName,
     this.rawMoisture = 0,
     this.calibratedValue = 0.0,
+    this.targetMoisture = 65.0,
     required this.temp,
     required this.pulseAnim,
   });
@@ -39,7 +41,7 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
     if (isMoistureFault) return Colors.grey.shade400;
 
     final val = widget.rawMoisture;
-    const int target = 50;
+    final target = widget.targetMoisture.round();
     if (val < target - 15) return const Color(0xFFFFA726); // Dry
     if (val > target + 15) return const Color(0xFF29B6F6); // Wet
     return const Color(0xFF2BCC71); // Healthy
@@ -212,7 +214,7 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                       ),
               ),
 
-              // ── BOTTOM-LEFT: Raw Sensor Value (PRIMARY — from the Pi) ──
+              // ── BOTTOM-LEFT: Raw Sensor Value + Ghost Target ──
               Positioned(
                 left: 18,
                 bottom: 18,
@@ -234,6 +236,21 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                         ),
                       ),
                     ),
+                    // Ghost target label
+                    if (!isMoistureFault && widget.targetMoisture > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 6, bottom: 2),
+                        child: Text(
+                          '→ ${widget.targetMoisture.round()}%',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                            color: Colors.grey.shade400,
+                            letterSpacing: -0.3,
+                            height: 1.0,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),

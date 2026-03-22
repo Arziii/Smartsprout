@@ -22,6 +22,11 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
   // Local optimistic offset values
   final Map<int, double?> _localOffsets = {1: null, 2: null, 3: null};
 
+  // Local optimistic precision saturation values
+  final Map<int, double> _localTargets = {1: 65.0, 2: 65.0, 3: 65.0};
+  final Map<int, int> _localTimeouts = {1: 30, 2: 30, 3: 30};
+  bool _targetsLoaded = false;
+
   // Text controllers for each zone
   late final TextEditingController _ctrl1;
   late final TextEditingController _ctrl2;
@@ -111,6 +116,15 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
     final sensorData = ref.watch(sensorDataProvider);
     final isConnected = Platform.isLinux || !sensorData.isOffline;
     final moistureData = sensorData.soilMoisture;
+
+    // Initialize local targets from Firestore data on first build
+    if (!_targetsLoaded) {
+      for (int z = 1; z <= 3; z++) {
+        _localTargets[z] = sensorData.targetMoisture[z - 1];
+        _localTimeouts[z] = sensorData.maxPumpRuntime[z - 1];
+      }
+      _targetsLoaded = true;
+    }
 
     // Live sensor moisture per zone
     double liveMoisture(int zoneIndex) {
@@ -514,9 +528,160 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
               ),
             ],
           ),
+
+          // ── Precision Saturation Controls ──
+          _buildPrecisionControls(zone, isConnected),
         ],
       ),
     );
+  }
+
+  /// Builds the precision saturation controls for a zone.
+  Widget _buildPrecisionControls(int zone, bool isConnected) {
+    final target = _localTargets[zone] ?? 65.0;
+    final timeout = _localTimeouts[zone] ?? 30;
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      child: Container(
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0F9F4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFF2BCC71).withOpacity(0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.track_changes_rounded, size: 16, color: const Color(0xFF2BCC71)),
+                const SizedBox(width: 6),
+                Text(
+                  'PRECISION SATURATION',
+                  style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                    letterSpacing: 1.2,
+                    color: const Color(0xFF4A6164),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // Target Saturation Slider
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Target Saturation',
+                    style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: const Color(0xFF37474F))),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2BCC71).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('${target.round()}%',
+                      style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          color: const Color(0xFF2BCC71))),
+                ),
+              ],
+            ),
+            Slider(
+              value: target,
+              min: 10,
+              max: 100,
+              divisions: 18,
+              activeColor: const Color(0xFF2BCC71),
+              inactiveColor: const Color(0xFF2BCC71).withOpacity(0.15),
+              onChanged: isConnected
+                  ? (val) {
+                      setState(() => _localTargets[zone] = val);
+                    }
+                  : null,
+              onChangeEnd: isConnected
+                  ? (val) => _submitZoneTargets(zone)
+                  : null,
+            ),
+
+            const SizedBox(height: 8),
+
+            // Safety Timeout Slider
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Safety Timeout',
+                    style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: const Color(0xFF37474F))),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFA726).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('${timeout}s',
+                      style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          color: const Color(0xFFE65100))),
+                ),
+              ],
+            ),
+            Slider(
+              value: timeout.toDouble(),
+              min: 5,
+              max: 120,
+              divisions: 23,
+              activeColor: const Color(0xFFFFA726),
+              inactiveColor: const Color(0xFFFFA726).withOpacity(0.15),
+              onChanged: isConnected
+                  ? (val) {
+                      setState(() => _localTimeouts[zone] = val.round());
+                    }
+                  : null,
+              onChangeEnd: isConnected
+                  ? (val) => _submitZoneTargets(zone)
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _submitZoneTargets(int zone) {
+    final target = _localTargets[zone] ?? 65.0;
+    final timeout = _localTimeouts[zone] ?? 30;
+
+    // Write to Firestore
+    final dataService = ref.read(dataServiceProvider);
+    dataService?.updateZoneTargets(zone, target, timeout);
+
+    // Show feedback
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Zone $zone: Target ${target.round()}%, Timeout ${timeout}s',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: const Color(0xFF0F2027),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Widget _buildDryCalibrationButton(bool isConnected) {

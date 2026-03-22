@@ -4,6 +4,18 @@ This guide covers the deployment of the **Python Backend** and **Flutter UI** to
 
 ---
 
+## 📑 Table of Contents
+- [How to Copy Files via VNC Viewer](#-how-to-copy-files-via-vnc-viewer)
+- [Alternative: Rapid File Transfer (SCP)](#-alternative-rapid-file-transfer-scp)
+- [Step 1: Install & Prepare the OS](#-step-1-install--prepare-the-os)
+- [Step 2: Setup the Python Backend](#-step-2-setup-the-python-backend-smartsproutrasberry)
+- [Step 3: Install Flutter SDK on the Pi](#-step-3-install-flutter-sdk-on-the-pi)
+- [Step 4: Build & Launch the Kiosk UI](#-step-4-build--launch-the-kiosk-ui)
+- [Step 5: Configure Kiosk Auto-Start](#-step-5-configure-kiosk-auto-start-boot-to-dashboard)
+- [Recommended Resources](#-recommended-resources)
+
+---
+
 ## 📂 How to Copy Files via VNC Viewer
 
 If you are using **RealVNC Viewer** (the default for Raspberry Pi) to remotely control your Pi's desktop, copying files from your Windows PC is built-in.

@@ -29,6 +29,14 @@ _last_daily_water_date = ""
 _last_sent_telemetry = {}  # Tracks last cloud-pushed values for differential sync
 _force_sync = False
 
+# Dead-Man's Switch state
+_manual_pump_active = False
+_manual_pump_zone = 0
+
+# External Hydration Detection
+_prev_moisture = {}  # {"bed1": 42.0, "bed2": 55.0, ...}
+_pump_running = False  # True when any pump/valve is active
+
 
 def _signal_handler(sig, frame):
     global _running
@@ -43,16 +51,104 @@ signal.signal(signal.SIGTERM, _signal_handler)
 # Local handling removed. All commands come through Firebase.
 
 
-def _force_water_task(zone: int, duration: int):
-    """Run a watering cycle in its own thread."""
+def _force_water_task(zone: int, duration: int, target_moisture: float = 0.0):
+    """
+    Run a watering cycle in its own thread.
+    
+    AUTO-MODE (target_moisture > 0):  Pulse & Soak cycle
+      - Burst: pump ON for PULSE_BURST_SECONDS (5s)
+      - Soak:  pump OFF for PULSE_SOAK_SECONDS (20s)
+      - Check: re-read moisture. If >= target → done.
+      - Repeat until target reached OR elapsed >= duration (safety timeout)
+    
+    MANUAL MODE (target_moisture == 0):  Continuous run
+      - Protected by Dead-Man's Switch heartbeat monitor.
+    """
+    global _pump_running
     try:
+        _pump_running = True
         sensor_manager.activate_zone(zone)
-        time.sleep(duration)
+        start_time = time.time()
+
+        if target_moisture > 0:
+            # ── Pulse & Soak (Indoor Auto-Watering) ──
+            burst = config.PULSE_BURST_SECONDS
+            soak = config.PULSE_SOAK_SECONDS
+            cycle = 0
+
+            while True:
+                elapsed = time.time() - start_time
+                if elapsed >= duration:
+                    print(f"[AUTO] Zone {zone}: Safety timeout ({duration}s) reached. Stopping.")
+                    break
+
+                cycle += 1
+                print(f"[AUTO] Zone {zone}: Pulse #{cycle} — burst {burst}s")
+                sensor_manager.activate_zone(zone)
+                time.sleep(burst)
+
+                # Deactivate for soak period
+                sensor_manager.deactivate_all()
+                print(f"[AUTO] Zone {zone}: Soaking {soak}s...")
+                time.sleep(soak)
+
+                # Re-read moisture after soak
+                soil, _, _ = sensor_manager.read_soil_moisture()
+                current = soil.get(f"bed{zone}", 0.0)
+                elapsed = time.time() - start_time
+                print(f"[AUTO] Zone {zone}: {current:.1f}% / target {target_moisture:.1f}% (elapsed {elapsed:.0f}s/{duration}s)")
+
+                if current >= target_moisture:
+                    print(f"[AUTO] Zone {zone}: ✅ Target saturation reached ({current:.1f}% >= {target_moisture:.1f}%)")
+                    break
+        else:
+            # ── Legacy continuous run (manual force water) ──
+            time.sleep(duration)
+
         sensor_manager.deactivate_all()
-        print(f"[CMD] Force water zone {zone} completed ({duration}s)")
+        _pump_running = False
+        print(f"[CMD] Force water zone {zone} completed ({time.time() - start_time:.0f}s)")
     except Exception as e:
         print(f"[ERROR] Force water task failed: {e}")
         sensor_manager.deactivate_all()
+        _pump_running = False
+
+
+def _manual_heartbeat_monitor(zone: int):
+    """
+    Dead-Man's Switch: monitors the manual_heartbeat timestamp in Firestore.
+    If heartbeat becomes stale (>5 seconds), force pump OFF immediately.
+    Runs in its own thread while manual water is active.
+    """
+    global _manual_pump_active, _pump_running
+    print(f"[DEADMAN] Heartbeat monitor started for Zone {zone}")
+
+    while _manual_pump_active and _running:
+        try:
+            age = firebase_manager.get_manual_heartbeat()
+            if age > 5.0:
+                print("=" * 60)
+                print(f"[DEADMAN] ⚠️  HEARTBEAT STALE ({age:.1f}s) — KILLING PUMP!")
+                print(f"[DEADMAN] Zone {zone}: CONNECTION_LOST_SHUTDOWN")
+                print("=" * 60)
+                sensor_manager.deactivate_all()
+                _manual_pump_active = False
+                _pump_running = False
+                # Push alert to Firestore
+                try:
+                    firebase_manager.push_telemetry({
+                        'system_status': 'CONNECTION_LOST_SHUTDOWN',
+                        'pump_status': {'pump': 'OFF', 'zone': 0},
+                        'alerts': [f'Manual heartbeat lost — Zone {zone} pump killed for safety.'],
+                    })
+                except Exception:
+                    pass
+                return
+        except Exception as e:
+            print(f"[DEADMAN] Error checking heartbeat: {e}")
+        time.sleep(2)  # Check every 2 seconds
+
+    print(f"[DEADMAN] Heartbeat monitor stopped for Zone {zone}")
 
 def handle_firebase_command(payload: dict):
     """Handle incoming commands from Firebase Cloud Firestore."""
@@ -73,8 +169,19 @@ def handle_firebase_command(payload: dict):
                 args=(zone, duration),
                 daemon=True,
             ).start()
+            # Start Dead-Man's Switch monitor for manual water only
+            if duration >= 60:  # Manual water uses 600s, auto uses shorter
+                _manual_pump_active = True
+                _manual_pump_zone = zone
+                threading.Thread(
+                    target=_manual_heartbeat_monitor,
+                    args=(zone,),
+                    daemon=True,
+                ).start()
     elif command == "stop_all":
+        _manual_pump_active = False  # Stop heartbeat monitor
         sensor_manager.deactivate_all()
+        _pump_running = False
         print("[CMD] Emergency stop — all zones deactivated")
     elif command == "calibrate":
         print("[SETTINGS] Starting calibration routine from Firebase...")
@@ -326,11 +433,32 @@ def main():
                 f"Status={telemetry['system_status']}"
             )
 
+            # ── External Hydration Detection ──
+            if not _pump_running:
+                raw_moisture = telemetry.get("soil_moisture_raw", {})
+                for bed_key, val in raw_moisture.items():
+                    if val < 0:  # Skip fault readings
+                        continue
+                    prev_val = _prev_moisture.get(bed_key, val)
+                    delta = val - prev_val
+                    if delta > 10:
+                        zone_num = bed_key.replace("bed", "")
+                        alert_msg = f"MANUAL_WATERING_DETECTED: Zone {zone_num} moisture rose +{delta:.1f}% while pump OFF."
+                        print(f"[HYDRATION] ⚡ {alert_msg}")
+                        try:
+                            firebase_manager.push_alerts([alert_msg])
+                        except Exception:
+                            pass
+                # Update previous moisture
+                for bed_key, val in raw_moisture.items():
+                    if val >= 0:
+                        _prev_moisture[bed_key] = val
+
             # ── Auto Watering AI ──
             if _current_mode == "auto" and telemetry["system_status"] != "tank_low":
                 if _auto_strategy == "sensor":
-                    # Sensor strategy: trigger if raw moisture < user's calibration threshold
-                    # The threshold is the value the user SET in the Calibration screen
+                    # Precision Saturation: fetch per-zone targets from Firestore
+                    zone_targets = firebase_manager.get_zone_targets()
                     cal_data = sensor_manager.load_calibration()
                     for key, raw_moisture in telemetry["soil_moisture_raw"].items():
                         if raw_moisture < 0:  # Skip fault readings
@@ -343,9 +471,18 @@ def main():
                                 continue
                             if raw_moisture < threshold:
                                 if current_time - _last_auto_water.get(z_num, 0) > 3600:  # 1 hour cooldown
-                                    print(f"[AUTO-SENSOR] Triggering Zone {z_num} (Raw: {raw_moisture}% < Threshold: {threshold}%)")
+                                    zt = zone_targets.get(z_num, {})
+                                    target = zt.get("target", config.DEFAULT_TARGET_MOISTURE)
+                                    timeout = zt.get("timeout", config.DEFAULT_MAX_PUMP_RUNTIME)
+                                    print(f"[AUTO-SENSOR] Triggering Zone {z_num} "
+                                          f"(Raw: {raw_moisture}% < Threshold: {threshold}%) "
+                                          f"→ Target: {target}%, Timeout: {timeout}s")
                                     _last_auto_water[z_num] = current_time
-                                    threading.Thread(target=_force_water_task, args=(z_num, 10), daemon=True).start()
+                                    threading.Thread(
+                                        target=_force_water_task,
+                                        args=(z_num, timeout, target),
+                                        daemon=True,
+                                    ).start()
                         except ValueError:
                             pass
                 

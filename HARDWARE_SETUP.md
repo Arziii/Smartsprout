@@ -4,6 +4,15 @@ This document serves as the permanent reference for configuring the Raspberry Pi
 
 ---
 
+## 📑 Table of Contents
+1. [Physical Sensor Specifications](#1-physical-sensor-specifications)
+2. [One-Line Install Script](#2-one-line-install-script)
+3. [System Configuration Checklist](#3-system-configuration-checklist)
+4. [Pinout Reference Table](#4-pinout-reference-table)
+5. [Maintenance Note](#5-maintenance-note)
+
+---
+
 ## 1. Physical Sensor Specifications
 
 *   **Soil Moisture:** Capacitive v1.2 (Analog 1.2V-2.5V).

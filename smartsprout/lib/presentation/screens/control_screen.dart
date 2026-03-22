@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -24,6 +25,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   // Track which zones are actively watering
   final Map<int, bool> _wateringActive = {1: false, 2: false, 3: false};
 
+  // Dead-Man's Switch: heartbeat timer for manual watering safety
+  Timer? _manualHeartbeatTimer;
+
   // Track if auto mode is active
   bool _autoModeActive = false;
 
@@ -41,8 +45,26 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
 
   @override
   void dispose() {
+    _manualHeartbeatTimer?.cancel();
     _entranceController.dispose();
     super.dispose();
+  }
+
+  /// Start the Dead-Man's Switch heartbeat (every 2s while manual watering)
+  void _startManualHeartbeat() {
+    _manualHeartbeatTimer?.cancel();
+    final dataService = ref.read(dataServiceProvider);
+    // Send initial heartbeat immediately
+    dataService?.updateManualHeartbeat();
+    _manualHeartbeatTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      dataService?.updateManualHeartbeat();
+    });
+  }
+
+  /// Stop the Dead-Man's Switch heartbeat
+  void _stopManualHeartbeat() {
+    _manualHeartbeatTimer?.cancel();
+    _manualHeartbeatTimer = null;
   }
 
   /// Toggle watering for a specific zone
@@ -54,6 +76,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       // STOP watering this zone
       HapticFeedback.heavyImpact();
       notifier.emergencyStop();
+      _stopManualHeartbeat();
       setState(() {
         _wateringActive[1] = false;
         _wateringActive[2] = false;
@@ -64,6 +87,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       HapticFeedback.lightImpact();
       // Send force_water with a long duration (user will manually stop)
       notifier.forceWater(zone, durationSeconds: 600); // 10 min max safety
+      _startManualHeartbeat();
       setState(() {
         // Only one zone can water at a time for safety
         _wateringActive[1] = false;

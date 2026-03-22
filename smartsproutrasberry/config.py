@@ -70,7 +70,15 @@ RESET_HOLD_SECONDS = int(os.getenv("RESET_HOLD_SECONDS", "5"))
 RESET_LED_PIN = int(os.getenv("RESET_LED_PIN", "18"))
 
 # ── Safety ──
-PUMP_TIMEOUT_SECONDS = int(os.getenv("PUMP_TIMEOUT_SECONDS", "120"))
+PUMP_TIMEOUT_SECONDS = int(os.getenv("PUMP_TIMEOUT_SECONDS", "30"))
+
+# ── Precision Saturation Defaults ──
+DEFAULT_TARGET_MOISTURE = float(os.getenv("DEFAULT_TARGET_MOISTURE", "65.0"))
+DEFAULT_MAX_PUMP_RUNTIME = int(os.getenv("DEFAULT_MAX_PUMP_RUNTIME", "30"))
+
+# ── Pulse & Soak (Indoor Auto-Watering) ──
+PULSE_BURST_SECONDS = int(os.getenv("PULSE_BURST_SECONDS", "5"))
+PULSE_SOAK_SECONDS = int(os.getenv("PULSE_SOAK_SECONDS", "20"))
 
 # ── Calibration ──
 SOIL_DRY = int(os.getenv("SOIL_SENSOR_DRY", "26000"))

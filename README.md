@@ -6,6 +6,16 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
 
 ---
 
+## 📑 Table of Contents
+- [System Architecture](#-system-architecture)
+- [Core Features](#-core-features)
+- [Hardware Pin Mapping](#-hardware-pin-mapping)
+- [Quick Start Guide](#-quick-start-guide)
+- [Repository Structure](#-repository-structure)
+- [License & Academic Context](#-license--academic-context)
+
+---
+
 ## 🏗️ System Architecture
 
 ```text

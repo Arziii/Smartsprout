@@ -56,6 +56,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
 
     final rawSoil = sensorData.soilMoistureRaw;
     final offsets = sensorData.soilOffsets;
+    final targets = sensorData.targetMoisture;
     final tankLevel = sensorData.tankLevel.clamp(0.0, 100.0).toDouble();
     final temperature = sensorData.temperature;
     // On Linux (Pi), never show as offline — the Pi IS the system.
@@ -116,9 +117,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             child: Platform.isWindows
                 ? Scrollbar(
                     thumbVisibility: true,
-                    child: _buildMainList(tankLevel, temperature, rawSoil, offsets, isOffline, isTankLow, hasFault, sensorData),
+                    child: _buildMainList(tankLevel, temperature, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, sensorData),
                   )
-                : _buildMainList(tankLevel, temperature, rawSoil, offsets, isOffline, isTankLow, hasFault, sensorData),
+                : _buildMainList(tankLevel, temperature, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, sensorData),
           ),
 
           // ── Status Overlays ──
@@ -178,7 +179,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   }
 
   // ── Extracted ListView for Scrollbar wrapping on Windows ──
-  Widget _buildMainList(double tankLevel, double temperature, List<double> rawSoil, List<double> offsets, bool isOffline, bool isTankLow, bool hasFault, dynamic sensorData) {
+  Widget _buildMainList(double tankLevel, double temperature, List<double> rawSoil, List<double> offsets, List<double> targets, bool isOffline, bool isTankLow, bool hasFault, dynamic sensorData) {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       children: [
@@ -207,6 +208,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               zoneName: "Zone 1 (Left)",
               rawMoisture: rawSoil.isNotEmpty ? rawSoil[0].toInt() : 0,
               calibratedValue: offsets.isNotEmpty ? offsets[0] : 0.0,
+              targetMoisture: targets.isNotEmpty ? targets[0] : 65.0,
               temp: temperature.toInt(),
               pulseAnim: _pulseController,
             ),
@@ -215,6 +217,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               zoneName: "Zone 2 (Center)",
               rawMoisture: rawSoil.length > 1 ? rawSoil[1].toInt() : 0,
               calibratedValue: offsets.length > 1 ? offsets[1] : 0.0,
+              targetMoisture: targets.length > 1 ? targets[1] : 65.0,
               temp: temperature.toInt(),
               pulseAnim: _pulseController,
             ),
@@ -223,6 +226,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               zoneName: "Zone 3 (Right)",
               rawMoisture: rawSoil.length > 2 ? rawSoil[2].toInt() : 0,
               calibratedValue: offsets.length > 2 ? offsets[2] : 0.0,
+              targetMoisture: targets.length > 2 ? targets[2] : 65.0,
               temp: temperature.toInt(),
               pulseAnim: _pulseController,
             ),
