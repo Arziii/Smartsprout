@@ -11,10 +11,10 @@ class SystemSettingsDialog extends ConsumerWidget {
 
   void _sendCommand(BuildContext context, WidgetRef ref, String command) {
     ref.read(dataServiceProvider)?.sendCommand({'command': command});
-    
+
     // Close the settings dialog
     Navigator.of(context).pop();
-    
+
     // If it's a restart command, automatically go back to the Home/Dashboard
     if (command == 'RESTART_APP') {
       context.go('/dashboard');
@@ -22,9 +22,9 @@ class SystemSettingsDialog extends ConsumerWidget {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(command == 'RESTART_APP' 
-          ? 'Restarting Dashboard...' 
-          : 'Command sent: $command'),
+        content: Text(command == 'RESTART_APP'
+            ? 'Restarting Dashboard...'
+            : 'Command sent: $command'),
         backgroundColor: const Color(0xFF0F2027),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -45,7 +45,8 @@ class SystemSettingsDialog extends ConsumerWidget {
             color: Colors.white.withOpacity(0.95),
             borderRadius: BorderRadius.circular(32),
             boxShadow: const [
-              BoxShadow(color: Colors.black26, blurRadius: 30, offset: Offset(0, 10))
+              BoxShadow(
+                  color: Colors.black26, blurRadius: 30, offset: Offset(0, 10))
             ],
             border: Border.all(color: Colors.white, width: 2),
           ),
@@ -58,7 +59,8 @@ class SystemSettingsDialog extends ConsumerWidget {
                   color: const Color(0xFF0F2027).withOpacity(0.05),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.settings_system_daydream_rounded, size: 48, color: Color(0xFF0F2027)),
+                child: const Icon(Icons.settings_system_daydream_rounded,
+                    size: 48, color: Color(0xFF0F2027)),
               ),
               const SizedBox(height: 24),
               Text(
@@ -81,7 +83,7 @@ class SystemSettingsDialog extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 32),
-              
+
               // Restart Dashboard Button
               _buildControlButton(
                 icon: Icons.refresh_rounded,
@@ -90,9 +92,9 @@ class SystemSettingsDialog extends ConsumerWidget {
                 color: const Color(0xFF29B6F6),
                 onTap: () => _sendCommand(context, ref, 'RESTART_APP'),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Reboot Hardware Button
               _buildControlButton(
                 icon: Icons.power_settings_new_rounded,
@@ -101,7 +103,7 @@ class SystemSettingsDialog extends ConsumerWidget {
                 color: Colors.redAccent,
                 onTap: () => _showConfirmReboot(context, ref),
               ),
-              
+
               const SizedBox(height: 24),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -205,19 +207,24 @@ class SystemSettingsDialog extends ConsumerWidget {
             onPressed: () => Navigator.pop(dialogCtx),
             child: Text(
               'CANCEL',
-              style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: Colors.grey),
+              style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w800, color: Colors.grey),
             ),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(dialogCtx); // Close confirm
-              _sendCommand(context, ref, 'REBOOT_PI'); // Sends command and closes settings dialog
+              _sendCommand(context, ref,
+                  'REBOOT_PI'); // Sends command and closes settings dialog
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.redAccent,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
-            child: Text('REBOOT', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: Colors.white)),
+            child: Text('REBOOT',
+                style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w800, color: Colors.white)),
           ),
         ],
       ),

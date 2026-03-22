@@ -1,34 +1,73 @@
-# Firebase
-firebase-adminsdk.json
-**/firebase-adminsdk.json
-google-services.json
-GoogleService-Info.plist
+# ======================================================================
+# Smart Sprout — Production .gitignore
+# ======================================================================
 
-# Environment variables
-.env
-**/.env
-
-# Python
+# ── 1. Python & Raspberry Pi ──
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+*.egg
+*.egg-info/
+.Python
+env/
+venv/
+.venv/
 
-# IDEs
+# Environment configurations & Secrets
+.env
+.env.*
+!**/.env.example
+smartsproutrasberry/firebase-adminsdk.json
+
+# Local runtime data
+smartsproutrasberry/device_config.json
+smartsproutrasberry/calibration_offsets.json
+
+# ── 2. Flutter & Dart ──
+# Core
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+lib/generated_plugin_registrant.dart
+
+# App packaging
+*.ipa
+*.apk
+*.aab
+*.app
+*.tar.gz
+*.dmg
+
+# Firebase credentials
+google-services.json
+GoogleService-Info.plist
+firebase_options.dart
+
+# Exceptions to above rules
+!default.pbxproj
+!Pods/
+
+# ── 3. IDEs & OS Files ──
+.idea/
 .vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
 
-# Local build artifacts
-smartsprout/analysis_output.txt
-smartsprout/build.log
-smartsprout/build_err_sync.txt
-smartsprout/build_error.txt
-smartsprout/build_error_utf8.txt
-smartsprout/build_output.txt
-smartsprout/build_output2.txt
-smartsprout/devices.txt
-smartsprout/doctor.txt
-smartsprout/doctor_utf8.txt
-smartsprout/flutter_01.log
+# ── 4. Debug & Log Files ──
+*.log
+smartsprout/*.log
+smartsprout/*.txt
+!smartsprout/CMakeLists.txt
+flutter_*.log
+crash_*.log
 
-# TestSprite (just in case)
+# ── 5. Test Tools ──
 .testsprite/
 testsprite_tests/

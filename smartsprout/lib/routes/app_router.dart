@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui';
+import '../core/utils/platform_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -158,48 +159,54 @@ class _FrostedNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
 
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          decoration: BoxDecoration(
-            // 60% white frosted glass matching the dashboard overlay
-            color: Colors.white.withOpacity(0.60),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border(
-              top: BorderSide(
-                color: Colors.white.withOpacity(0.50),
-                width: 1.0,
-              ),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.10),
-                blurRadius: 24,
-                offset: const Offset(0, -4),
-              ),
-            ],
+    final navContent = Container(
+      decoration: BoxDecoration(
+        // Lite: fully opaque  |  Premium: 60% frosted glass
+        color: Colors.white.withOpacity(isLiteMode ? 1.0 : 0.60),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(
+          top: BorderSide(
+            color: Colors.white.withOpacity(0.50),
+            width: 1.0,
           ),
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: 68,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List.generate(items.length, (i) {
-                  return _NavButton(
-                    data: items[i],
-                    isSelected: i == selectedIndex,
-                    activeColor: primary,
-                    onTap: () => onTap(items[i].path),
-                  );
-                }),
-              ),
-            ),
+        ),
+        boxShadow: isLiteMode
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.10),
+                  blurRadius: 24,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 68,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: List.generate(items.length, (i) {
+              return _NavButton(
+                data: items[i],
+                isSelected: i == selectedIndex,
+                activeColor: primary,
+                onTap: () => onTap(items[i].path),
+              );
+            }),
           ),
         ),
       ),
+    );
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: isPremiumMode
+          ? BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: navContent,
+            )
+          : navContent,
     );
   }
 }

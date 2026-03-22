@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../presentation/providers/sensor_provider.dart';
 import '../widgets/zone_card.dart';
 import '../widgets/water_wave.dart';
+import 'system_health_page.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -61,6 +62,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     final isOffline = Platform.isLinux ? false : sensorData.isOffline;
     final hasFault = sensorData.hasSensorFault;
     final isTankLow = sensorData.isTankLow;
+    final isHeartbeatStale = !Platform.isLinux && sensorData.isControllerDisconnected;
 
     if (isOffline && !_wasOffline) {
       _showConnectionOverlay = true;
@@ -109,58 +111,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withOpacity(0.1)),
           
           // ── Main dashboard content ──
+          // Windows: wrap in Scrollbar for mouse/keyboard UX
           SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              children: [
-                _buildAnimatedWidget(0, _buildTopHeader(isOffline, isTankLow, hasFault)),
-                const SizedBox(height: 10),
-                _buildAnimatedWidget(1, _buildVitals(tankLevel, temperature)),
-                const SizedBox(height: 30),
-                _buildAnimatedWidget(2, Text("System Overview",
-                    style: GoogleFonts.outfit(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0F2027),
-                      letterSpacing: -0.5,
-                    ))),
-                const SizedBox(height: 15),
-                // Feature Cards Grid
-                _buildAnimatedWidget(3, GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 18,
-                  mainAxisSpacing: 18,
-                  childAspectRatio: 0.9,
-                  children: [
-                    ZoneCard(
-                      zoneName: "Zone 1 (Left)",
-                      rawMoisture: rawSoil.isNotEmpty ? rawSoil[0].toInt() : 0,
-                      calibratedValue: offsets.isNotEmpty ? offsets[0] : 0.0,
-                      temp: temperature.toInt(),
-                      pulseAnim: _pulseController,
-                    ),
-                    ZoneCard(
-                      zoneName: "Zone 2 (Center)",
-                      rawMoisture: rawSoil.length > 1 ? rawSoil[1].toInt() : 0,
-                      calibratedValue: offsets.length > 1 ? offsets[1] : 0.0,
-                      temp: temperature.toInt(),
-                      pulseAnim: _pulseController,
-                    ),
-                    ZoneCard(
-                      zoneName: "Zone 3 (Right)",
-                      rawMoisture: rawSoil.length > 2 ? rawSoil[2].toInt() : 0,
-                      calibratedValue: offsets.length > 2 ? offsets[2] : 0.0,
-                      temp: temperature.toInt(),
-                      pulseAnim: _pulseController,
-                    ),
-                    _buildSystemOverviewCard(sensorData),
-                  ],
-                )),
-                const SizedBox(height: 100),
-              ],
-            ),
+            child: Platform.isWindows
+                ? Scrollbar(
+                    thumbVisibility: true,
+                    child: _buildMainList(tankLevel, temperature, rawSoil, offsets, isOffline, isTankLow, hasFault, sensorData),
+                  )
+                : _buildMainList(tankLevel, temperature, rawSoil, offsets, isOffline, isTankLow, hasFault, sensorData),
           ),
 
           // ── Status Overlays ──
@@ -179,8 +137,100 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               subtitle: "Water reservoir is below 10%.\nPump protection active.",
               color: Colors.redAccent,
             ),
+
+          // ── Heartbeat Disconnected Warning ──
+          if (isHeartbeatStale && !isOffline)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade800.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.orange.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.link_off_rounded, color: Colors.white, size: 16),
+                    const SizedBox(width: 6),
+                    Text('Controller Disconnected',
+                      style: GoogleFonts.outfit(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
+    );
+  }
+
+  // ── Extracted ListView for Scrollbar wrapping on Windows ──
+  Widget _buildMainList(double tankLevel, double temperature, List<double> rawSoil, List<double> offsets, bool isOffline, bool isTankLow, bool hasFault, dynamic sensorData) {
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      children: [
+        _buildAnimatedWidget(0, _buildTopHeader(isOffline, isTankLow, hasFault)),
+        const SizedBox(height: 10),
+        _buildAnimatedWidget(1, _buildVitals(tankLevel, temperature)),
+        const SizedBox(height: 30),
+        _buildAnimatedWidget(2, Text("System Overview",
+            style: GoogleFonts.outfit(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF0F2027),
+              letterSpacing: -0.5,
+            ))),
+        const SizedBox(height: 15),
+        _buildAnimatedWidget(3, GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          crossAxisSpacing: 18,
+          mainAxisSpacing: 18,
+          childAspectRatio: 0.9,
+          children: [
+            ZoneCard(
+              zoneId: '1',
+              zoneName: "Zone 1 (Left)",
+              rawMoisture: rawSoil.isNotEmpty ? rawSoil[0].toInt() : 0,
+              calibratedValue: offsets.isNotEmpty ? offsets[0] : 0.0,
+              temp: temperature.toInt(),
+              pulseAnim: _pulseController,
+            ),
+            ZoneCard(
+              zoneId: '2',
+              zoneName: "Zone 2 (Center)",
+              rawMoisture: rawSoil.length > 1 ? rawSoil[1].toInt() : 0,
+              calibratedValue: offsets.length > 1 ? offsets[1] : 0.0,
+              temp: temperature.toInt(),
+              pulseAnim: _pulseController,
+            ),
+            ZoneCard(
+              zoneId: '3',
+              zoneName: "Zone 3 (Right)",
+              rawMoisture: rawSoil.length > 2 ? rawSoil[2].toInt() : 0,
+              calibratedValue: offsets.length > 2 ? offsets[2] : 0.0,
+              temp: temperature.toInt(),
+              pulseAnim: _pulseController,
+            ),
+            _buildSystemOverviewCard(context, sensorData),
+          ],
+        )),
+        const SizedBox(height: 100),
+      ],
     );
   }
 
@@ -405,27 +455,31 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
   }
 
-  Widget _buildSystemOverviewCard(sensorData) {
+  Widget _buildSystemOverviewCard(BuildContext context, sensorData) {
     final isHealthy = sensorData.isHealthy;
     final statusColor = isHealthy ? const Color(0xFF2BCC71) : Colors.redAccent;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.8),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white, width: 2),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text("System\nHealth",
-              style: GoogleFonts.outfit(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF0F2027),
-                height: 1.1,
-              )),
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const SystemHealthPage()));
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.8),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.white, width: 2),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("System\nHealth",
+                style: GoogleFonts.outfit(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF0F2027),
+                  height: 1.1,
+                )),
           const Spacer(),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -450,8 +504,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           )
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildStatusOverlay({required IconData icon, required String title, required String subtitle, required Color color}) {
     final content = Container(

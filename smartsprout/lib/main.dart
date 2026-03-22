@@ -15,7 +15,12 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
-  
+
+  // ── Lite Mode: Cap image cache at 50 MB to protect Pi 3B's 1 GB RAM ──
+  if (Platform.isLinux) {
+    PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024;
+  }
+
   if (!Platform.isLinux) {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,

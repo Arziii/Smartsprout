@@ -161,6 +161,16 @@ class DataService {
     final soilOffsets = getField('soil_offsets') as List?;
     final alertsRaw = getField('alerts') as List?;
 
+    // Parse timestamp fields for heartbeat
+    dynamic lastHb;
+    if (fields.containsKey('last_heartbeat')) {
+      final hbVal = fields['last_heartbeat'];
+      if (hbVal.containsKey('timestampValue')) {
+        final ts = DateTime.tryParse(hbVal['timestampValue']);
+        if (ts != null) lastHb = ts;
+      }
+    }
+
     Map<String, dynamic> mapped = {
       'system_status': getField('system_status') ?? 'offline',
       'tank_level': getField('tank_level') ?? 0.0,
@@ -171,6 +181,7 @@ class DataService {
       'soil_moisture_raw': soilRaw,
       'soil_offsets': soilOffsets,
       'alerts': alertsRaw,
+      'last_heartbeat': lastHb,
     };
     return SensorData.fromJson(mapped);
   }
@@ -274,6 +285,63 @@ class DataService {
         );
       } catch (e) {
         debugPrint('[FIREBASE_ERROR] updateCalibration: $e');
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // Zones Collection for Plant Images
+  // ═══════════════════════════════════════════════════════
+  Stream<String?> zoneImageStream(String zoneId) {
+    if (Platform.isLinux) {
+      return Stream.periodic(const Duration(seconds: 10)).asyncMap((_) async {
+        try {
+          final url = '$_baseUrl/zones/$zoneId?key=$_apiKey';
+          final response = await _authenticatedGet(url);
+          if (response.statusCode == 200) {
+            final data = json.decode(response.body);
+            if (data['fields'] != null && data['fields']['plant_image_name'] != null) {
+              return data['fields']['plant_image_name']['stringValue'];
+            }
+          }
+        } catch (_) {}
+        return null;
+      });
+    } else {
+      return _firestore.collection('devices').doc(deviceId).collection('zones').doc(zoneId).snapshots().map((doc) {
+        return doc.data()?['plant_image_name'] as String?;
+      });
+    }
+  }
+
+  Future<void> updateZoneImage(String zoneId, String imageName) async {
+    if (Platform.isLinux) {
+      try {
+        final url = '$_baseUrl/zones/$zoneId?updateMask.fieldPaths=plant_image_name&key=$_apiKey';
+        final token = await _getAuthToken();
+        final headers = <String, String>{'Content-Type': 'application/json'};
+        if (token != null) headers['Authorization'] = 'Bearer $token';
+        await http.patch(
+          Uri.parse(url),
+          headers: headers,
+          body: json.encode({
+            'name': 'projects/$_projectId/databases/(default)/documents/devices/$deviceId/zones/$zoneId',
+            'fields': {
+              'plant_image_name': {'stringValue': imageName}
+            }
+          }),
+        );
+      } catch (e) {
+        debugPrint('[REST_ERROR] updateZoneImage: $e');
+      }
+    } else {
+      try {
+        await _firestore.collection('devices').doc(deviceId).collection('zones').doc(zoneId).set(
+          {'plant_image_name': imageName},
+          SetOptions(merge: true),
+        );
+      } catch (e) {
+        debugPrint('[FIREBASE_ERROR] updateZoneImage: $e');
       }
     }
   }

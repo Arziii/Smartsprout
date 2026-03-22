@@ -120,6 +120,64 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  /// Renames the device: copies Firestore data to new doc, sends SYNC_CONFIG to Pi, updates local state.
+  /// Requires current PIN for safety.
+  Future<String?> renameDevice(String currentPin, String newDeviceId) async {
+    if (Platform.isLinux) return 'Not available on Kiosk';
+
+    final oldDeviceId = state.deviceId;
+    if (oldDeviceId == null) return 'Not logged in';
+
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      // 1. Verify current PIN
+      final oldDoc = await _firestore.collection('devices').doc(oldDeviceId).get();
+      if (!oldDoc.exists) {
+        state = state.copyWith(isLoading: false, error: 'Device not found');
+        return 'Device not found';
+      }
+      final storedPin = oldDoc.data()?['hashed_pin'] as String?;
+      if (storedPin != currentPin) {
+        state = state.copyWith(isLoading: false, error: 'Incorrect PIN');
+        return 'Incorrect PIN';
+      }
+
+      // 2. Check that new ID doesn't already exist
+      final newDoc = await _firestore.collection('devices').doc(newDeviceId).get();
+      if (newDoc.exists) {
+        state = state.copyWith(isLoading: false, error: 'Device ID already taken');
+        return 'Device ID already taken';
+      }
+
+      // 3. Copy essential data to new document
+      final oldData = oldDoc.data()!;
+      await _firestore.collection('devices').doc(newDeviceId).set(oldData);
+
+      // 4. Send SYNC_CONFIG command to the OLD doc so the Pi picks it up
+      await _firestore
+          .collection('devices')
+          .doc(oldDeviceId)
+          .collection('commands')
+          .add({
+        'command': 'SYNC_CONFIG',
+        'new_device_id': newDeviceId,
+        'processed': false,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      // 5. Update local SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('device_id', newDeviceId);
+
+      // 6. Update auth state
+      state = AuthState(isLoading: false, deviceId: newDeviceId);
+      return null; // success
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: 'Rename failed: $e');
+      return e.toString();
+    }
+  }
+
   Future<void> logout() async {
     if (Platform.isLinux) return;
 

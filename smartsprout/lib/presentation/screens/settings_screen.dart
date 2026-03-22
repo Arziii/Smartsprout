@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -105,6 +106,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   )),
                 const SizedBox(height: 25),
                 _buildAnimatedItem(3, _buildSectionHeader('Account')),
+                if (!Platform.isLinux)
+                  _buildAnimatedItem(4, _buildSettingsCard(
+                    title: 'Rename Device',
+                    subtitle: 'Change your device ID (requires PIN)',
+                    icon: Icons.drive_file_rename_outline_rounded,
+                    color: const Color(0xFF7E57C2),
+                    onTap: () => _showRenameDeviceDialog(),
+                  )),
                 _buildAnimatedItem(4, _buildSettingsCard(
                   title: 'Change Device PIN',
                   subtitle: 'Update your hardware access PIN',
@@ -316,6 +325,78 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             await ref.read(authProvider.notifier).changePin(pinController.text.trim());
           }
         },
+      ),
+    );
+  }
+
+  void _showRenameDeviceDialog() {
+    final pinController = TextEditingController();
+    final idController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Rename Device', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+            Text('Enter your current PIN for security', style: GoogleFonts.outfit(fontSize: 13, color: Colors.grey)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: pinController,
+              obscureText: true,
+              decoration: InputDecoration(
+                hintText: 'Current PIN',
+                prefixIcon: const Icon(Icons.lock_outline_rounded),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: idController,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(
+                hintText: 'New Device ID (e.g. SPROUT_GARDEN)',
+                prefixIcon: const Icon(Icons.drive_file_rename_outline_rounded),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              final pin = pinController.text.trim();
+              final newId = idController.text.trim().toUpperCase();
+              if (pin.isEmpty || newId.isEmpty) return;
+              Navigator.pop(ctx);
+              final error = await ref.read(authProvider.notifier).renameDevice(pin, newId);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      error == null ? 'Device renamed to $newId!' : error,
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+                    ),
+                    backgroundColor: error == null ? const Color(0xFF2BCC71) : Colors.redAccent,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0F2027),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text('Rename', style: GoogleFonts.outfit(color: Colors.white)),
+          ),
+        ],
       ),
     );
   }

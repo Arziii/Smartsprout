@@ -67,9 +67,13 @@ Copy your `Smartsprout` folder to `/home/pi/`. Then, move the backend to a conve
     source venv/bin/activate
     pip install -r requirements.txt
     ```
-3.  **Run the system**:
+3.  **Install the Reliability Watchdog (Systemd)**:
+    This ensures the backend auto-starts on boot and automatically recovers from crashes.
     ```bash
-    python3 main.py
+    sudo cp smartsprout.service /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable smartsprout
+    sudo systemctl start smartsprout
     ```
 
 ---

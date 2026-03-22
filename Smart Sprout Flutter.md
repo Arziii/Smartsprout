@@ -71,7 +71,7 @@ The UI/UX design prioritizes simplicity, intuitiveness, and responsiveness. Key 
 The Smart Sprout hardware system integrates:
 • Soil moisture sensors (volumetric water content)
 • DHT sensors (temperature and humidity)
-• Ultrasonic sensors (reservoir level monitoring)
+• Non-contact liquid level sensor (reservoir level monitoring)
 • Raspberry Pi controller with Physical Touchscreen Display (Flutter Kiosk Mode)
 
 
@@ -192,10 +192,19 @@ Document Structure:
 
 Subcollection: commands/{commandId}
 Document Structure (Queue):
-  • command: "force_water" | "stop_all" | "dry_calibrate" | "adjust_offset" | "set_offset" | "FORCE_SYNC"
+  • command: "force_water" | "stop_all" | "dry_calibrate" | "adjust_offset" | "set_offset"
+           | "FORCE_SYNC" | "set_mode" | "RESTART_APP" | "REBOOT_PI" | "SYNC_CONFIG"
   • timestamp: Timestamp
   • processed: boolean
   • [Additional Payload Fields]
+
+Subcollection: zones/{zoneId}
+Document Structure:
+  • plant_image_name: string (e.g., "aloe_vera.jpg")
+
+Local Configuration File: device_config.json
+  • device_id: string (e.g., "SPROUT_A1B2")
+  • password: string (e.g., "1234")
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -248,25 +257,34 @@ lib/
 5.2 KEY UI SCREENS
 
 
-| Screen          | Features                                | Connectivity |
-├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Hardware Login  │ Authenticate using Device ID and PIN    │ Cloud Only   │
-├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Dashboard       │ Live sensor cards, Tank visualization,  │ Cloud Only   │
-│                 │ Sync Now button, Freshness timestamps    │              │
-├─────────────────┼─────────────────────────────────────────┼──────────────┤
+| Screen          | Features                                  | Connectivity |
+├─────────────────┼───────────────────────────────────────────┼──────────────┤
+│ Hardware Login  │ Authenticate using Device ID and PIN      │ Cloud Only   │
+├─────────────────┼───────────────────────────────────────────┼──────────────┤
+│ Dashboard       │ Live sensor cards, Tank visualization,    │ Cloud Only   │
+│                 │ Sync Now button, Plant-image ghost BG,    │              │
+│                 │ System Health navigable card              │              │
+├─────────────────┼───────────────────────────────────────────┼──────────────┤
+│ Plant Selection │ Grid of 20 crop images, Default/Reset     │ Cloud Only   │
+│                 │ option, writes plant_image_name to        │              │
+│                 │ Firestore zones subcollection             │              │
+├─────────────────┼───────────────────────────────────────────┼──────────────┤
+│ System Health   │ Detailed breakdown: Controller status,    │ Cloud Only   │
+│                 │ Reservoir level, Sensor integrity, Zone   │              │
+│                 │ moisture summary                          │              │
+├─────────────────┼───────────────────────────────────────────┼──────────────┤
 │ Control         │ Single-toggle Pump zones, Master Lockdown │ Cloud Only   │
-│                 │ Switch, Auto-Mode (Sensor/Timer)        │              │
-├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Calibration     │ Direct numeric input for Bed high/low   │ Cloud Only   │
-│                 │ thresholds with Optimistic UI updates   │              │
-├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Analytics       │ 7-day historical charts, efficiency     │ Cloud Only   │
-│                 │ metrics, system health diagnostics      │              │
-├─────────────────┼─────────────────────────────────────────┼──────────────┤
-│ Settings        │ App config, PIN change, System Control  │ Cloud Only   │
-│                 │ Dialog (Restart/Reboot), Logout         │              │
-└─────────────────┴─────────────────────────────────────────┴──────────────┘
+│                 │ Switch, Auto-Mode (Sensor/Timer)          │              │
+├─────────────────┼───────────────────────────────────────────┼──────────────┤
+│ Calibration     │ Direct numeric input for Bed high/low     │ Cloud Only   │
+│                 │ thresholds with Optimistic UI updates     │              │
+├─────────────────┼───────────────────────────────────────────┼──────────────┤
+│ Analytics       │ 7-day historical charts, efficiency       │ Cloud Only   │
+│                 │ metrics                                   │              │
+├─────────────────┼───────────────────────────────────────────┼──────────────┤
+│ Settings        │ App config, PIN change, Rename Device     │ Cloud Only   │
+│                 │ (Mobile), System Control Dialog, Logout   │              │
+└─────────────────┴───────────────────────────────────────────┴──────────────┘
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -350,6 +368,48 @@ PHASE 4.12: SYSTEM MAINTENANCE & PLATFORM PATCHING [COMPLETED]
 ☑ Linux Build Pipeline: Created `pi_build.sh` for automated Firebase stubbing on Raspberry Pi Desktop.
 ☑ 64-bit Stability: Patched `pubspec.yaml` to allow compilation on ARM64 Linux kiosk environments.
 
+PHASE 4.13: IMMERSIVE PLANT SELECTION & ZONE CARDS [COMPLETED]
+☑ Plant Selection Grid: 20-crop image picker stored in assets/images/plants/ with Firestore sync.
+☑ Ghost Background Image: Selected plant overlays ZoneCard at 20-25% opacity for immersive UI.
+☑ Platform-Specific Blending: ColorFiltered on Linux (GPU-safe), Opacity on mobile.
+☑ Full-Card Navigation: Entire ZoneCard tappable to open PlantSelectionScreen (Scaffold-based).
+☑ Default/Reset Option: First tile resets plant_image_name to empty string in Firestore.
+
+PHASE 4.14: SYSTEM HEALTH SUMMARY PAGE [COMPLETED]
+☑ System Health Page: New scrollable diagnostic screen with 5 status cards.
+☑ Cards: Overall Status banner, Controller Connection, Reservoir Status, Sensor Integrity, Zone Breakdown.
+☑ Dashboard Navigation: System Overview card wrapped in GestureDetector → pushes to SystemHealthPage.
+
+PHASE 4.15: DYNAMIC DEVICE ID SYSTEM [COMPLETED]
+☑ Local Config (Pi): Created device_config.json with get_device_id() and update_device_id() helpers.
+☑ SYNC_CONFIG Command: Pi handler updates local config and re-subscribes Firebase listeners.
+☑ Rename Device (Mobile): PIN-gated renameDevice() copies Firestore data to new doc path.
+☑ Hardware Factory Reset (GPIO 24): Physical button on Pi held 5s triggers reset via reset_button.py daemon.
+☑ Anti-Ghosting: Mobile updates SharedPreferences and AuthState to new ID immediately.
+☑ Software reset removed from Linux kiosk UI — reset is hardware-only for crash resilience.
+
+PHASE 4.16: RELIABILITY WATCHDOG [COMPLETED]
+☑ Systemd Service: `smartsprout.service` auto-starts `main.py` on boot, restarts on crash (3s delay).
+☑ Cloud Heartbeat: Pi writes `last_heartbeat` to Firestore every 60 seconds via daemon thread.
+☑ Flutter Disconnected Warning: Orange pill badge on dashboard if heartbeat > 2 min stale.
+
+PHASE 4.17: DIFFERENTIAL SYNC (ECO-MODE 2.0) [COMPLETED]
+☑ Threshold Logic: Immediate cloud push if Temp Δ>1.5°C, Soil Δ>3%, or Tank Δ>5%.
+☑ `_last_sent_telemetry` tracks baseline; `_should_differential_push()` checks deltas.
+☑ Preserves 30-min Eco-Mode timer for normal conditions while catching critical changes.
+
+PHASE 4.18: HARDWARE SAFETY & LED FEEDBACK [COMPLETED]
+☑ Reset LED (GPIO 18): Rapid blink during 5s hold, solid ON on trigger, OFF on cancel.
+☑ Pump Watchdog: `pump_watchdog.py` daemon auto-kills any relay ON > 120s at GPIO level.
+☑ Works without internet — pure hardware-level flood prevention.
+
+PHASE 4.19: MULTI-TIER PLATFORM OPTIMIZATION [COMPLETED]
+☑ Platform Helpers: Created `platform_utils.dart` providing `isLiteMode`, `isPremiumMode`, `isDesktopMode`.
+☑ Linux GPU Relief: Safely scrubbed heavy `BackdropFilter` (glassmorphism) and vector shadows (`BoxShadow`) from Kiosk UI.
+☑ Memory Safety: Embedded 50MB `imageCache` limit exclusively for Linux to prevent Pi 3B 1GB RAM exhaustion.
+☑ Desktop UX: Implemented `MouseRegion` hover glows and always-visible `Scrollbar` wrappers for Windows.
+☑ Cross-Platform Firebase: Fallback to `firebase_stub.dart` enables zero-code-change Windows Desktop compilation.
+
 
 ═══════════════════════════════════════════════════════════════════
 
@@ -363,20 +423,25 @@ PHASE 4.12: SYSTEM MAINTENANCE & PLATFORM PATCHING [COMPLETED]
 ┌────────────────────┬─────────────────────┬─────────────────────────┐
 │ Component          │ Technology          │ Purpose                 │
 ├────────────────────┼─────────────────────┼─────────────────────────┤
-│ Core Loop          │ Python              │ Local offline manager   │
+│ Core Loop          │ Python (main.py)    │ Local offline manager   │
 ├────────────────────┼─────────────────────┼─────────────────────────┤
 │ Local UI           │ Flutter Desktop APP │ Direct touchscreen      │
 │                    │ (Kiosk Mode)        │ control & calibration   │
 ├────────────────────┼─────────────────────┼─────────────────────────┤
 │ Sensor Interface   │ Python RPi.GPIO +   │ Hardware sensor reading │
-│                    │ Adafruit_DHT        │                         │
-├────────────────────┼─────────────────────┼─────────────────────────┤
-│ ML Engine          │ Python scikit-learn │ Irrigation decision     │
-│                    │ or TFLite           │ logic                   │
+│                    │ Adafruit_DHT +      │ ADS1115 I2C ADC for     │
+│                    │ smbus2              │ soil moisture            │
 ├────────────────────┼─────────────────────┼─────────────────────────┤
 │ Cloud Sync         │ firebase-admin      │ Direct Firestore        │
 │                    │ Python SDK          │ integration and command │
 │                    │                     │ execution listener      │
+├────────────────────┼─────────────────────┼─────────────────────────┤
+│ Device Config      │ device_config.json  │ Dynamic Device ID and   │
+│                    │                     │ password storage. Read  │
+│                    │                     │ by config.py at boot.   │
+├────────────────────┼─────────────────────┼─────────────────────────┤
+│ Calibration Data   │ calibration_offsets │ Per-zone dry/wet raw    │
+│                    │ .json               │ values & manual offsets │
 └────────────────────┴─────────────────────┴─────────────────────────┘
 
 
@@ -398,6 +463,39 @@ Mobile App                           Cloud Firestore                          Ra
      │                                     │                                       │
 
 
+7.2b DEVICE RENAME FLOW (SYNC_CONFIG)
+
+
+Mobile App                           Cloud Firestore                          Raspberry Pi
+───────────                          ───────────────                          ───────────
+     │                                     │                                       │
+     │───── Verify PIN vs devices/OLD_ID──►│                                       │
+     │───── Copy data → devices/NEW_ID ───►│                                       │
+     │───── SYNC_CONFIG cmd to OLD_ID ────►│                                       │
+     │                                     │───── Pi picks up SYNC_CONFIG ────────►│
+     │                                     │                                       │──► Update device_config.json
+     │                                     │                                       │──► Reload config.DEVICE_ID
+     │                                     │◄════ Re-subscribe to NEW_ID ══════════│
+     │──► Update SharedPreferences         │                                       │
+     │──► Update AuthState to NEW_ID       │                                       │
+     │                                     │                                       │
+
+
+7.2c FACTORY RESET FLOW (Linux Kiosk Only)
+
+
+Linux Kiosk UI / Hardware Button            Raspberry Pi
+──────────────────────────────              ──────────────
+     │                                       │
+     │── User holds GPIO 24 button (5s) ───►│
+     │   OR presses touchscreen UI button    │
+     │                                       │──► Write default device_config.json
+     │                                       │    (SPROUT_A1B2 / 1234)
+     │                                       │──► Delete calibration_offsets.json
+     │                                       │──► sudo reboot
+     │                                       │
+
+
 7.3 HARDWARE PIN ASSIGNMENTS
 
 
@@ -409,7 +507,7 @@ backend. These can be securely overridden locally via the `.env` configuration f
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
 │ DHT22 (Temp/Hum)      │ Digital GPIO              │ GPIO 4                      │
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Ultrasonic Reservoir  │ Digital GPIO              │ Trigger: GPIO 5, Echo: GPIO6│
+│ Non-Contact Tank Level│ Digital GPIO              │ Yellow (OUT): GPIO 5        │
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
 │ ADS1115 ADC (I2C)     │ I2C Bus 1 (Address 0x48)  │ SDA: GPIO 2, SCL: GPIO 3    │
 │  ↳ Soil Moisture Bed 1│ Analog                    │ ADC Channel A0              │
@@ -423,6 +521,12 @@ backend. These can be securely overridden locally via the `.env` configuration f
 │ Relay Header (Valve 2)│ Digital GPIO (Active-Low) │ GPIO 22 (IN3)               │
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
 │ Relay Header (Valve 3)│ Digital GPIO (Active-Low) │ GPIO 23 (IN4)               │
+├───────────────────────┼───────────────────────────┼─────────────────────────────┤
+│ Factory Reset Button  │ Digital GPIO (Pull-Up)    │ GPIO 24 (Active-LOW to GND) │
+│                       │                           │ Hold 5 seconds to trigger   │
+├───────────────────────┼───────────────────────────┼─────────────────────────────┤
+│ Reset Feedback LED    │ Digital GPIO (Output)     │ GPIO 18 (220Ω → LED → GND)  │
+│                       │                           │ Blink/Solid/Off feedback    │
 └───────────────────────┴───────────────────────────┴─────────────────────────────┘
 
 

@@ -1,7 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/utils/platform_utils.dart';
+import '../presentation/providers/sensor_provider.dart';
+import '../widgets/plant_selection_grid.dart';
+import '../data/services/data_service.dart';
 
-class ZoneCard extends StatefulWidget {
+class ZoneCard extends ConsumerStatefulWidget {
+  final String zoneId;
   final String zoneName;
   final int rawMoisture;         // Actual sensor reading from the Pi/database
   final double calibratedValue;  // User-set threshold from Calibration screen
@@ -10,6 +16,7 @@ class ZoneCard extends StatefulWidget {
 
   const ZoneCard({
     super.key,
+    required this.zoneId,
     required this.zoneName,
     this.rawMoisture = 0,
     this.calibratedValue = 0.0,
@@ -18,11 +25,12 @@ class ZoneCard extends StatefulWidget {
   });
 
   @override
-  State<ZoneCard> createState() => _ZoneCardState();
+  ConsumerState<ZoneCard> createState() => _ZoneCardState();
 }
 
-class _ZoneCardState extends State<ZoneCard> {
+class _ZoneCardState extends ConsumerState<ZoneCard> {
   bool _isPressed = false;
+  bool _isHovered = false;
 
   bool get isMoistureFault => widget.rawMoisture <= -1;
   bool get isTempFault => widget.temp <= -1;
@@ -41,19 +49,39 @@ class _ZoneCardState extends State<ZoneCard> {
   Widget build(BuildContext context) {
     final statusColor = getMoodColor();
     final hasThreshold = widget.calibratedValue != 0.0;
+    final plantImageAsync = ref.watch(plantImageProvider(widget.zoneId));
+    final plantImageName = plantImageAsync.value;
 
-    return GestureDetector(
+    return MouseRegion(
+      onEnter: Platform.isWindows ? (_) => setState(() => _isHovered = true) : null,
+      onExit: Platform.isWindows ? (_) => setState(() => _isHovered = false) : null,
+      child: GestureDetector(
       onTapDown: (_) => setState(() => _isPressed = true),
       onTapUp: (_) => setState(() => _isPressed = false),
       onTapCancel: () => setState(() => _isPressed = false),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PlantSelectionGrid(
+              onPlantSelected: (filename) async {
+                final dataService = ref.read(dataServiceProvider);
+                if (dataService != null) {
+                  await dataService.updateZoneImage(widget.zoneId, filename);
+                }
+              },
+            ),
+          ),
+        );
+      },
       child: AnimatedScale(
         scale: _isPressed ? 0.96 : 1.0,
         duration: const Duration(milliseconds: 100),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.9),
+            color: Colors.white.withOpacity(isLiteMode ? 1.0 : 0.9),
             borderRadius: BorderRadius.circular(28),
-            boxShadow: Platform.isLinux
+            boxShadow: isLiteMode
                 ? null
                 : [
                     BoxShadow(
@@ -67,6 +95,13 @@ class _ZoneCardState extends State<ZoneCard> {
                         blurRadius: 15,
                         spreadRadius: -5,
                       ),
+                    // Windows hover glow
+                    if (_isHovered && Platform.isWindows)
+                      BoxShadow(
+                        color: const Color(0xFF2BCC71).withOpacity(0.25),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                      ),
                   ],
             border: Border.all(
               color: Colors.white.withOpacity(0.5),
@@ -76,6 +111,29 @@ class _ZoneCardState extends State<ZoneCard> {
           clipBehavior: Clip.hardEdge,
           child: Stack(
             children: [
+              // ── Ghost Background Image ──
+              if (plantImageName != null && plantImageName.isNotEmpty)
+                Positioned.fill(
+                  child: Platform.isLinux
+                      ? ColorFiltered(
+                          colorFilter: ColorFilter.mode(
+                            Colors.black.withOpacity(0.25),
+                            BlendMode.dstIn,
+                          ),
+                          child: Image.asset(
+                            'assets/images/plants/$plantImageName',
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      : Opacity(
+                          opacity: 0.25,
+                          child: Image.asset(
+                            'assets/images/plants/$plantImageName',
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                ),
+
               // ── Subtle background accent ──
               Positioned(
                 top: -20,
@@ -180,39 +238,41 @@ class _ZoneCardState extends State<ZoneCard> {
                 ),
               ),
 
-              // ── BOTTOM-RIGHT: Plant icon ──
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        statusColor.withOpacity(0.1),
-                        statusColor.withOpacity(0.3),
-                      ],
+              // ── BOTTOM-RIGHT: Plant icon fallback ──
+              if (plantImageName == null || plantImageName.isEmpty)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          statusColor.withOpacity(0.1),
+                          statusColor.withOpacity(0.3),
+                        ],
+                      ),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(35),
+                      ),
                     ),
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(35),
-                    ),
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.local_florist_rounded,
-                      size: 30,
-                      color: statusColor,
+                    child: Center(
+                      child: Icon(
+                        Icons.local_florist_rounded,
+                        size: 30,
+                        color: statusColor,
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
       ),
+    ),
     );
   }
 }

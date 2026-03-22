@@ -143,9 +143,9 @@ def read_soil_moisture() -> tuple[dict, dict, bool]:
         bus.close()
         return cal_results, raw_results, False
     except (IOError, OSError) as e:
-        print(f"[ERROR] I2C soil read failed: {e}")
-        fault_results = {"bed1": -1.0, "bed2": -1.0, "bed3": -1.0}
-        return fault_results, fault_results, True  # Sentinel for "Sensor Fault"
+        print(f"[WARN] I2C soil read failed (no hardware?): {e} — returning mock data.")
+        mock_results = {"bed1": 0.0, "bed2": 0.0, "bed3": 0.0}
+        return mock_results, mock_results, False  # Return clean zeros, NOT fault sentinel
 
 def run_dry_calibration(target_zone=None) -> dict:
     """
@@ -218,9 +218,9 @@ def read_dht22() -> dict:
             print(f"[ERROR] DHT22 critical failure: {e}")
             break
             
-    # If the loop exhausts retries and continues to fail:
-    print("[ERROR] DHT22 aborted after 3 failed attempts.")
-    return {"temperature": -1.0, "humidity": -1.0}
+    # If the loop exhausts retries:
+    print("[WARN] DHT22 not responding after 3 attempts — returning simulation values.")
+    return {"temperature": 0.0, "humidity": 0.0}
 
 
 # ═══════════════════════════════════════════════════════

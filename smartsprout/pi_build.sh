@@ -2,6 +2,12 @@
 # ═══════════════════════════════════════════════════════
 # SmartSprout Pi Linux Build Script
 # Run from: ~/Smartsprout/smartsprout
+#
+# NOTE: If building for Windows Desktop without native
+# Firebase SDK, reuse the same firebase_stub.dart approach:
+#   1. Comment out firebase_core/firebase_auth/cloud_firestore in pubspec.yaml
+#   2. Replace all Firebase imports with stubs/firebase_stub.dart
+#   3. Build with: flutter build windows --release
 # ═══════════════════════════════════════════════════════
 set -e
 

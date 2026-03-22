@@ -9,6 +9,15 @@ import '../../data/services/data_service.dart';
 const _kCalibrationKey = 'smartsprout_calibration_offsets';
 
 // ═══════════════════════════════════════════════════════
+// Plant Image Provider for Zones
+// ═══════════════════════════════════════════════════════
+final plantImageProvider = StreamProvider.autoDispose.family<String?, String>((ref, zoneId) {
+  final firebase = ref.watch(dataServiceProvider);
+  if (firebase == null) return Stream.value(null);
+  return firebase.zoneImageStream(zoneId);
+});
+
+// ═══════════════════════════════════════════════════════
 // Live Sensor Data Provider (Secure Firebase Sync)
 // ═══════════════════════════════════════════════════════
 final sensorDataProvider = NotifierProvider<SensorDataNotifier, SensorData>(() {

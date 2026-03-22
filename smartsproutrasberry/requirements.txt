@@ -1,8 +1,14 @@
 # Smart Sprout Raspberry Pi Backend Dependencies
 # Install: pip install -r requirements.txt
 
-paho-mqtt==1.6.1
+# Sensor Drivers
+adafruit-circuitpython-bme280==2.6.18
+adafruit-circuitpython-ads1x15==2.2.23
+gpiozero==2.0.1
+
+# Existing dependencies from your image
 smbus2==0.4.3
+paho-mqtt==1.6.1
 Adafruit-DHT==1.4.0
 RPi.GPIO==0.7.1
 python-dotenv==1.0.1

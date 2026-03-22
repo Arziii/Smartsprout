@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class SensorData {
   final List<double> soilMoisture;    // 3 zones (calibrated = raw + offset)
   final List<double> soilMoistureRaw; // 3 zones (raw sensor, before offset)
@@ -10,6 +12,7 @@ class SensorData {
   final String systemStatus; // 'ok', 'sensor_fault', 'tank_low', 'offline'
   final List<String> alerts;
   final int timestamp;
+  final DateTime? lastHeartbeat;
 
   const SensorData({
     this.soilMoisture = const [0.0, 0.0, 0.0],
@@ -23,6 +26,7 @@ class SensorData {
     this.systemStatus = 'offline',
     this.alerts = const [],
     this.timestamp = 0,
+    this.lastHeartbeat,
   });
 
   /// Create SensorData from the Firebase JSON telemetry payload.
@@ -70,6 +74,21 @@ class SensorData {
       alerts = alertsRaw.map<String>((e) => e.toString()).toList();
     }
 
+    // Parse last_heartbeat from Firestore
+    DateTime? heartbeat;
+    final hbRaw = json['last_heartbeat'];
+    if (hbRaw is Timestamp) {
+      heartbeat = hbRaw.toDate();
+    } else if (hbRaw is DateTime) {
+      heartbeat = hbRaw;
+    } else if (hbRaw is Map && hbRaw['_seconds'] != null) {
+      heartbeat = DateTime.fromMillisecondsSinceEpoch(
+        (hbRaw['_seconds'] as int) * 1000,
+      );
+    } else if (hbRaw is int) {
+      heartbeat = DateTime.fromMillisecondsSinceEpoch(hbRaw * 1000);
+    }
+
     return SensorData(
       soilMoisture: soil,
       soilMoistureRaw: rawSoil,
@@ -82,6 +101,7 @@ class SensorData {
       systemStatus: json['system_status'] as String? ?? 'offline',
       alerts: alerts,
       timestamp: json['timestamp'] as int? ?? 0,
+      lastHeartbeat: heartbeat,
     );
   }
 
@@ -89,6 +109,10 @@ class SensorData {
   bool get isTankLow => systemStatus == 'tank_low' || alerts.contains('tank_empty') || tankLevel < 20.0;
   bool get isOffline => systemStatus == 'offline';
   bool get isHealthy => !hasSensorFault && !isTankLow && !isOffline;
+  bool get isControllerDisconnected {
+    if (lastHeartbeat == null) return true;
+    return DateTime.now().difference(lastHeartbeat!).inMinutes > 2;
+  }
 
   SensorData copyWith({
     List<double>? soilMoisture,
@@ -102,6 +126,7 @@ class SensorData {
     String? systemStatus,
     List<String>? alerts,
     int? timestamp,
+    DateTime? lastHeartbeat,
   }) {
     return SensorData(
       soilMoisture: soilMoisture ?? this.soilMoisture,
@@ -115,6 +140,7 @@ class SensorData {
       systemStatus: systemStatus ?? this.systemStatus,
       alerts: alerts ?? this.alerts,
       timestamp: timestamp ?? this.timestamp,
+      lastHeartbeat: lastHeartbeat ?? this.lastHeartbeat,
     );
   }
 }

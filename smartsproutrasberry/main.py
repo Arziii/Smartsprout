@@ -6,10 +6,8 @@ publishes telemetry via local MQTT, and listens for
 incoming "Force Water" manual override commands.
 ──────────────────────────────────────────────────────────
 """
-import json
 import time
 import signal
-import sys
 import threading
 import config
 import firebase_manager
@@ -28,6 +26,7 @@ _auto_timer_hour = 8
 _auto_timer_minute = 0
 _last_auto_water = {1: 0, 2: 0, 3: 0} # Cooldown tracking per zone
 _last_daily_water_date = ""
+_last_sent_telemetry = {}  # Tracks last cloud-pushed values for differential sync
 _force_sync = False
 
 
@@ -128,6 +127,20 @@ def handle_firebase_command(payload: dict):
         import os
         print("[MAINTENANCE] Hardware reboot requested. Rebooting now...")
         os.system("sudo reboot")
+    elif command == "SYNC_CONFIG":
+        new_id = payload.get("new_device_id", "")
+        if new_id:
+            print(f"[CONFIG] SYNC_CONFIG received. Changing device ID to: {new_id}")
+            config.update_device_id(new_id)
+            # Reload the module-level DEVICE_ID so firebase_manager uses the new path
+            config.DEVICE_ID = new_id
+            # Re-initialize Firebase listeners on the new document path
+            firebase_manager.cleanup()
+            firebase_manager.listen_for_commands(handle_firebase_command)
+            _force_sync = True
+            print(f"[CONFIG] Device ID changed successfully. Now listening as: {new_id}")
+        else:
+            print("[CONFIG] SYNC_CONFIG received but no new_device_id provided.")
 
 # ═══════════════════════════════════════════════════════
 # Telemetry Collection
@@ -192,6 +205,47 @@ def collect_telemetry(interval: float) -> dict:
 
 
 # ═══════════════════════════════════════════════════════
+# Differential Sync — Threshold-based immediate push
+# ═══════════════════════════════════════════════════════
+def _should_differential_push(current: dict) -> bool:
+    """
+    Returns True if critical sensor values have changed beyond thresholds
+    compared to the last cloud-pushed telemetry. This triggers an immediate
+    sync even if the Eco-Mode timer hasn't expired.
+    """
+    global _last_sent_telemetry
+    if not _last_sent_telemetry:
+        return False  # First reading — let the normal sync handle it
+
+    # Temperature delta > 1.5°C
+    last_temp = _last_sent_telemetry.get("temperature", 0)
+    curr_temp = current.get("temperature", 0)
+    if abs(curr_temp - last_temp) > 1.5:
+        print(f"[DIFF_SYNC] Temperature change detected: {last_temp}→{curr_temp}°C")
+        return True
+
+    # Tank level delta > 5%
+    last_tank = _last_sent_telemetry.get("tank_level", 0)
+    curr_tank = current.get("tank_level", 0)
+    if abs(curr_tank - last_tank) > 5:
+        print(f"[DIFF_SYNC] Tank level change detected: {last_tank}→{curr_tank}%")
+        return True
+
+    # Soil moisture delta > 3% (any bed)
+    last_soil = _last_sent_telemetry.get("soil_moisture", {})
+    curr_soil = current.get("soil_moisture", {})
+    for bed in curr_soil:
+        last_val = last_soil.get(bed, 0)
+        curr_val = curr_soil.get(bed, 0)
+        if isinstance(curr_val, (int, float)) and isinstance(last_val, (int, float)):
+            if abs(curr_val - last_val) > 3:
+                print(f"[DIFF_SYNC] Soil {bed} change detected: {last_val}→{curr_val}%")
+                return True
+
+    return False
+
+
+# ═══════════════════════════════════════════════════════
 # Main Loop
 # ═══════════════════════════════════════════════════════
 def main():
@@ -205,6 +259,22 @@ def main():
     sensor_manager = SensorManager()
     sensor_manager.setup_relays()
     print("[INIT] Hardware initialized.")
+
+    # ── Start Hardware Reset Button Monitor ──
+    import reset_button
+    reset_button.start_reset_button_monitor()
+
+    # ── Start Pump Safety Watchdog ──
+    import pump_watchdog
+    pump_watchdog.start_pump_watchdog()
+
+    # ── Start Heartbeat Thread ──
+    def _heartbeat_loop():
+        while _running:
+            firebase_manager.send_heartbeat()
+            time.sleep(60)
+    threading.Thread(target=_heartbeat_loop, daemon=True).start()
+    print("[INIT] Heartbeat thread started (60s interval)")
 
     # MQTT logic removed for Zero-Trust Architecture
 
@@ -225,8 +295,11 @@ def main():
             current_time = time.time()
             telemetry = collect_telemetry(interval)
 
+            # ── Differential Sync: push immediately if critical values changed ──
+            diff_push = _should_differential_push(telemetry)
+
             # Sync to cloud every 30-60 mins as designated by CLOUD_SYNC_INTERVAL (or immediately if commanded)
-            if _force_sync or (current_time - last_cloud_sync) >= cloud_sync_interval:
+            if _force_sync or diff_push or (current_time - last_cloud_sync) >= cloud_sync_interval:
                 try:
                     # Publish telemetry to Firebase
                     firebase_manager.push_telemetry(telemetry)
@@ -241,6 +314,7 @@ def main():
                     
                     last_cloud_sync = current_time
                     _force_sync = False
+                    _last_sent_telemetry = telemetry.copy()  # Update baseline for differential sync
                     print(f"[FIREBASE] Telemetry payload synced to cloud (next sync in {cloud_sync_interval}s).")
                 except Exception as e:
                     print(f"[FIREBASE] Offline or error pushing to cloud: {e}")

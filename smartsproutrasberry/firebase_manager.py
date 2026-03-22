@@ -6,6 +6,7 @@ Firebase Cloud Firestore (telemetry pushing & command listening).
 """
 import firebase_admin
 from firebase_admin import credentials, firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 import time
 import threading
 import sys
@@ -32,6 +33,19 @@ def init_firebase():
     except Exception as e:
         print(f"[FIREBASE_ERROR] Failed to initialize Firebase: {e}")
         return False
+
+def send_heartbeat():
+    """Writes a last_heartbeat timestamp to the device document."""
+    if not _db:
+        return
+    try:
+        doc_ref = _db.collection('devices').document(config.DEVICE_ID)
+        doc_ref.set({
+            'last_heartbeat': firestore.SERVER_TIMESTAMP,
+            'status': 'online',
+        }, merge=True)
+    except Exception as e:
+        print(f"[HEARTBEAT] Error sending heartbeat: {e}")
 
 def push_telemetry(telemetry_data):
     """Pushes the latest telemetry array as historical entries and updates current status."""
@@ -86,7 +100,9 @@ def listen_for_commands(callback):
 
     try:
         doc_ref = _db.collection('devices').document(config.DEVICE_ID)
-        commands_ref = doc_ref.collection('commands').where('processed', '==', False)
+        commands_ref = doc_ref.collection('commands').where(
+            filter=FieldFilter('processed', '==', False)
+        )
         
         def on_snapshot(col_snapshot, changes, read_time):
             for change in changes:
@@ -136,7 +152,9 @@ def perform_storage_cleanup(force=False):
         doc_ref = _db.collection('devices').document(config.DEVICE_ID)
         
         # 1. Cleanup Telemetry (using the integer timestamp)
-        telemetry_ref = doc_ref.collection('telemetry').where('timestamp', '<', cutoff_timestamp)
+        telemetry_ref = doc_ref.collection('telemetry').where(
+            filter=FieldFilter('timestamp', '<', cutoff_timestamp)
+        )
         docs = telemetry_ref.limit(500).stream()
         deleted_count = 0
         for doc in docs:
@@ -144,7 +162,11 @@ def perform_storage_cleanup(force=False):
             deleted_count += 1
             
         # 2. Cleanup Processed Commands (using Firestore timestamp)
-        commands_ref = doc_ref.collection('commands').where('processed', '==', True).where('processedAt', '<', cutoff_date)
+        commands_ref = doc_ref.collection('commands').where(
+            filter=FieldFilter('processed', '==', True)
+        ).where(
+            filter=FieldFilter('processedAt', '<', cutoff_date)
+        )
         docs = commands_ref.limit(500).stream()
         cmd_deleted_count = 0
         for doc in docs:
