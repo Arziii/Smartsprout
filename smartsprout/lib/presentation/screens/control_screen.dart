@@ -28,6 +28,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   // Dead-Man's Switch: heartbeat timer for manual watering safety
   Timer? _manualHeartbeatTimer;
 
+  // Manage UI auto-reset timers for Burst (5s) and Soak (20s)
+  final Map<int, Timer?> _zoneUiTimers = {1: null, 2: null, 3: null};
+
   // Track if auto mode is active
   bool _autoModeActive = false;
 
@@ -46,6 +49,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   @override
   void dispose() {
     _manualHeartbeatTimer?.cancel();
+    for (var t in _zoneUiTimers.values) {
+      t?.cancel();
+    }
     _entranceController.dispose();
     super.dispose();
   }
@@ -68,7 +74,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   }
 
   /// Toggle watering for a specific zone
-  void _toggleWatering(int zone) {
+  void _toggleWatering(int zone, {int duration = 600}) {
     final isActive = _wateringActive[zone] ?? false;
     final notifier = ref.read(sensorDataProvider.notifier);
 
@@ -77,24 +83,42 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       HapticFeedback.heavyImpact();
       notifier.emergencyStop();
       _stopManualHeartbeat();
+      _zoneUiTimers[zone]?.cancel();
+      _zoneUiTimers[zone] = null;
       setState(() {
         _wateringActive[1] = false;
         _wateringActive[2] = false;
         _wateringActive[3] = false;
       });
     } else {
-      // START watering this zone (continuous until user stops)
+      // START watering this zone
       HapticFeedback.lightImpact();
-      // Send force_water with a long duration (user will manually stop)
-      notifier.forceWater(zone, durationSeconds: 600); // 10 min max safety
-      _startManualHeartbeat();
+      notifier.forceWater(zone, durationSeconds: duration);
+      
+      if (duration >= 60) {
+        _startManualHeartbeat(); // Only continuous Flow gets the heartbeat monitor
+      }
+      
       setState(() {
+        _zoneUiTimers[1]?.cancel();
+        _zoneUiTimers[2]?.cancel();
+        _zoneUiTimers[3]?.cancel();
+
         // Only one zone can water at a time for safety
         _wateringActive[1] = false;
         _wateringActive[2] = false;
         _wateringActive[3] = false;
         _wateringActive[zone] = true;
       });
+
+      // Auto-reset UI state if this is a short burst/soak duration
+      if (duration < 60) {
+        _zoneUiTimers[zone] = Timer(Duration(seconds: duration), () {
+          if (mounted && _wateringActive[zone] == true) {
+            setState(() => _wateringActive[zone] = false);
+          }
+        });
+      }
     }
   }
 
@@ -105,11 +129,13 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     final isConnected = Platform.isLinux || !sensorData.isOffline;
     final pumpLocked = sensorData.pumpLocked;
     final tankLevel = sensorData.tankLevel;
-    // Block watering if: tank fault (-1), empty (0%), or below 10%
-    final isTankLow = tankLevel < 10;
+    
+    // TEMPORARY BYPASS FOR UI TESTING WITHOUT SENSORS:
+    final isTankLow = false; // normally: tankLevel < 10;
+    final isPumpLockedSafe = false; // normally: pumpLocked;
 
     // Auto-lock watering if tank is low, pump locked, or MASTER LOCKDOWN active
-    if (isTankLow || pumpLocked || _masterLockdown) {
+    if (isTankLow || isPumpLockedSafe || _masterLockdown) {
       for (var z in [1, 2, 3]) {
         _wateringActive[z] = false;
       }
@@ -244,7 +270,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                           const SizedBox(height: 16),
 
                           // Safety warnings
-                          if (pumpLocked || isTankLow)
+                          if (isPumpLockedSafe || isTankLow)
                             _buildWarningBanner(
                               icon: Icons.lock_rounded,
                               text: tankLevel < 0
@@ -258,7 +284,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                             label: "Zone 1 (Left)",
                             moisture: rawSoil.isNotEmpty ? rawSoil[0] : 0,
                             isActive: _wateringActive[1] ?? false,
-                            disabled: pumpLocked || !isConnected || isTankLow,
+                            disabled: isPumpLockedSafe || !isConnected || isTankLow,
                           ),
                           const SizedBox(height: 12),
                           _buildZoneToggle(
@@ -266,7 +292,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                             label: "Zone 2 (Center)",
                             moisture: rawSoil.length > 1 ? rawSoil[1] : 0,
                             isActive: _wateringActive[2] ?? false,
-                            disabled: pumpLocked || !isConnected || isTankLow,
+                            disabled: isPumpLockedSafe || !isConnected || isTankLow,
                           ),
                           const SizedBox(height: 12),
                           _buildZoneToggle(
@@ -274,7 +300,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                             label: "Zone 3 (Right)",
                             moisture: rawSoil.length > 2 ? rawSoil[2] : 0,
                             isActive: _wateringActive[3] ?? false,
-                            disabled: pumpLocked || !isConnected || isTankLow,
+                            disabled: isPumpLockedSafe || !isConnected || isTankLow,
                           ),
                         ],
                       ),
@@ -392,7 +418,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                           ],
 
                           // Safety warning for auto mode too
-                          if (pumpLocked || isTankLow) ...[                            const SizedBox(height: 16),
+                          if (isPumpLockedSafe || isTankLow) ...[                            const SizedBox(height: 16),
                             _buildWarningBanner(
                               icon: Icons.lock_rounded,
                               text: tankLevel < 0
@@ -406,7 +432,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                           // ── Auto Mode Toggle Switch ──
                           _buildAutoModeToggle(
                             isActive: _autoModeActive,
-                            disabled: !isConnected || pumpLocked || isTankLow,
+                            disabled: !isConnected || isPumpLockedSafe || isTankLow,
                             onToggle: () {
                               HapticFeedback.heavyImpact();
                               setState(() => _autoModeActive = !_autoModeActive);
@@ -621,137 +647,201 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: borderColor, width: isActive ? 2.0 : 1.0),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Zone icon with animated pulse when active
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: iconBgColor,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              isActive ? Icons.waves_rounded : Icons.water_drop_rounded,
-              color: iconColor,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
+          Row(
+            children: [
+              // Zone icon with animated pulse when active
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: iconBgColor,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isActive ? Icons.waves_rounded : Icons.water_drop_rounded,
+                  color: iconColor,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
 
-          // Zone info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                        color: isLocked
-                            ? Colors.grey.shade400
-                            : const Color(0xFF0F2027))),
-                const SizedBox(height: 2),
-                Row(
+              // Zone info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Moisture: $moistureStr",
+                    Text(label,
                         style: GoogleFonts.outfit(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
                             color: isLocked
-                                ? Colors.grey.shade300
-                                : const Color(0xFF4A6164),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500)),
-                    if (isActive) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF29B6F6).withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text('WATERING',
+                                ? Colors.grey.shade400
+                                : const Color(0xFF0F2027))),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text("Moisture: $moistureStr",
                             style: GoogleFonts.outfit(
-                                color: const Color(0xFF0277BD),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.5)),
-                      ),
-                    ],
-                    if (isSaturated) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text('SATURATED',
-                            style: GoogleFonts.outfit(
-                                color: Colors.orange.shade700,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.5)),
-                      ),
-                    ],
+                                color: isLocked
+                                    ? Colors.grey.shade300
+                                    : const Color(0xFF4A6164),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500)),
+                        if (isActive) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF29B6F6).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text('WATERING',
+                                style: GoogleFonts.outfit(
+                                    color: const Color(0xFF0277BD),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.5)),
+                          ),
+                        ],
+                        if (isSaturated) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text('SATURATED',
+                                style: GoogleFonts.outfit(
+                                    color: Colors.orange.shade700,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.5)),
+                          ),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+
+              // Stop / Locked Button (Top Right)
+              if (isActive || isLocked)
+                GestureDetector(
+                  onTap: isLocked ? null : () => _toggleWatering(zone),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: toggleBgColor,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: isActive
+                          ? [
+                              BoxShadow(
+                                color: Colors.redAccent.withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              )
+                            ]
+                          : null,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isActive ? Icons.stop_rounded : Icons.lock_rounded,
+                          color: toggleIconColor,
+                          size: 18,
+                        ),
+                        if (!isLocked) ...[
+                          const SizedBox(width: 4),
+                          Text(toggleLabel,
+                              style: GoogleFonts.outfit(
+                                  color: toggleIconColor,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13)),
+                        ]
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           ),
 
-          // Toggle button
-          GestureDetector(
-            onTap: isLocked ? null : () => _toggleWatering(zone),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: toggleBgColor,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: isActive
-                    ? [
-                        BoxShadow(
-                          color: Colors.redAccent.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        )
-                      ]
-                    : (isLocked
-                        ? null
-                        : [
-                            BoxShadow(
-                              color:
-                                  const Color(0xFF2BCC71).withOpacity(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 3),
-                            )
-                          ]),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    isActive
-                        ? Icons.stop_rounded
-                        : (isLocked
-                            ? Icons.lock_rounded
-                            : Icons.play_arrow_rounded),
-                    color: toggleIconColor,
-                    size: 18,
+          // 3-Button Manual Controls (when Idle)
+          if (!isActive && !isLocked) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildManualOption(
+                    label: "Burst",
+                    duration: 5,
+                    zone: zone,
+                    color: const Color(0xFF29B6F6),
                   ),
-                  const SizedBox(width: 4),
-                  Text(toggleLabel,
-                      style: GoogleFonts.outfit(
-                          color: toggleIconColor,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13)),
-                ],
-              ),
-            ),
-          ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildManualOption(
+                    label: "Soak",
+                    duration: 20,
+                    zone: zone,
+                    color: const Color(0xFF42A5F5),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildManualOption(
+                    label: "Flow",
+                    duration: 600,
+                    zone: zone,
+                    color: const Color(0xFF2BCC71),
+                    isFilled: true,
+                  ),
+                ),
+              ],
+            )
+          ]
         ],
+      ),
+    );
+  }
+
+  Widget _buildManualOption({
+    required String label,
+    required int duration,
+    required int zone,
+    required Color color,
+    bool isFilled = false,
+  }) {
+    return GestureDetector(
+      onTap: () => _toggleWatering(zone, duration: duration),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: isFilled ? color : color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: isFilled ? null : Border.all(color: color.withOpacity(0.3)),
+          boxShadow: isFilled
+              ? [BoxShadow(color: color.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))]
+              : null,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: GoogleFonts.outfit(
+            color: isFilled ? Colors.white : color,
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+          ),
+        ),
       ),
     );
   }
