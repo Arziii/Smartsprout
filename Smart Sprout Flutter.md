@@ -356,10 +356,10 @@ PHASE 4.10: EMERGENCY FORCE SYNC ("ECO-MODE BYPASS") [COMPLETED]
 
 
 PHASE 4.11: ADVANCED CONTROL & SAFETY REDESIGN [COMPLETED]
-☑ Single-Button Toggle: Replaced dual "Water/Stop" buttons with a smart toggle button per zone.
-☑ Master Lockdown Switch: Implemented a global safety "Kill Switch" that disables all watering.
-☑ Persistent Lockdown UI: Once activated, a global banner and button lock require a manual "Release".
-☑ Visual feedback for active watering (Water pulse icon + active glow borders).
+☑ Single-Button Toggle: Replaced separate "Water/Stop" buttons with smart toggles (Continuous vs Pulse & Soak).
+☑ Master Lockdown Switch: Implemented a global safety switch that prevents all watering until manually released.
+☑ Non-Intrusive Notifications: Replaced obstructive banners with a space-efficient status row on the Dashboard.
+☑ Visual Feedback: Active watering cards now pulse with a thematic glow and functional icons.
 
 
 PHASE 4.12: SYSTEM MAINTENANCE & PLATFORM PATCHING [COMPLETED]

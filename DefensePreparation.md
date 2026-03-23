@@ -27,9 +27,9 @@ Smart Sprout is an intelligent, automated, and precision-driven IoT irrigation a
 - **IoT Enthusiasts and Researchers**: Interested in precision agriculture.
 
 ### Platforms Supported
-- **Mobile (Android/iOS)**: Premium experience with blurred shadows and smooth hero transitions.
-- **Windows Desktop**: Adaptive layout accommodating mouse and keyboard interactions.
-- **Raspberry Pi (Linux Kiosk)**: Optimized lite performance handling the local touchscreen interface, serving as an offline control station.
+- **Mobile (Android/iOS)**: Premium experience with adaptive shadows, smooth hero transitions, and space-efficient notification system.
+- **Windows Desktop**: Adaptive layout with hover effects and specialized scrollbars for mouse/keyboard interaction.
+- **Raspberry Pi (Linux Kiosk)**: High-performance lite UI with GPU-safe rendering (no heavy glassmorphism), serving as the primary offline control hub.
 
 ### System Architecture Overview
 The system relies on a **Zero-Trust Architecture** that bridges a Raspberry Pi local environment and a cloud environment:
@@ -67,6 +67,8 @@ graph TD
 
     subgraph Cloud Layer [Firebase]
         F[(Cloud Firestore)]
+        LS[Master Lockdown State]
+        F --- LS
     end
 
     subgraph Client Layer [Mobile / Desktop]
@@ -123,24 +125,24 @@ sequenceDiagram
     participant Pi as Python Backend
     participant Pump as Relay/Pump
 
-    User->>App: Tap "Water Zone 1"
-    App->>DB: Send force_water command & duration (600s)
-    App->>DB: Start writing manual_heartbeat every 2s
-    DB-->>Pi: Receive force_water command
-    Pi->>Pump: Activate Relay (Zone 1)
+    User->>App: Tap "Continuous" or "Pulse & Soak"
+    App->>DB: Send force_water command & duration
+    App->>DB: Start manual_heartbeat loop (2s)
+    DB-->>Pi: Receive force_water (Mode: Pulse/Continuous)
+    Pi->>Pump: Activate Relay
     loop Deadman Switch
-        Pi->>DB: Read manual_heartbeat via polling
+        Pi->>DB: Poll manual_heartbeat
         alt Heartbeat < 5s old
-            Pi-->>Pump: Keep running
-        else Heartbeat > 5s old (Connection Lost)
+            Pi-->>Pump: Execute mode (e.g., 5s on / 20s off)
+        else Heartbeat > 5s old
             Pi->>Pump: IMMEDIATE KILL PUMP
-            Pi->>DB: Push CONNECTION_LOST_SHUTDOWN alert
+            Pi->>DB: log CONNECTION_LOST_SHUTDOWN
         end
     end
-    User->>App: Tap "Stop Watering"
-    App->>DB: Emit stop_all command & Stop Heartbeat
+    User->>App: Tap "Stop" or "Master Lockdown"
+    App->>DB: Set pump_locked=true & stop_all
     DB-->>Pi: Receive stop_all
-    Pi->>Pump: Deactivate Relay
+    Pi->>Pump: Hard Stop
 ```
 
 #### 4. Use Case Diagram
@@ -170,11 +172,11 @@ usecaseDiagram
    - **Interactions**: Tapping a Zone Card reveals detailed historical stats or manual triggers.
    - **Data**: Reads temperature, humidity, and calculated soil moisture relative to calibration.
 2. **Control Screen**:
-   - Contains manual pump toggle buttons and an emergency stop master button.
-   - **Interactions**: Individual buttons toggle relays. The emergency stop writes a `stop_all` command instantly.
+   - Contains smart-toggle pump buttons and the **Master Lockdown Switch**.
+   - **Interactions**: Toggles initiate either Continuous or Pulse & Soak manual runs. The Lockdown Switch instantly sets `pump_locked` to true, requiring a manual "Release" to unlock.
 3. **Calibration & Settings**:
-   - Sliders to configure `SOIL_DRY` and `SOIL_WET` capacities.
-   - Dual-input fields/Range Sliders mapping the *target_moisture* and *max_pump_runtime*.
+   - Sliders to configure `SOIL_DRY` and `SOIL_WET` capacities with direct numeric input support.
+   - Dual-input fields mapping the *target_moisture* and *max_pump_runtime*.
    - **Interactions**: Optimistic UI immediately reflects values before the network sync executes.
 4. **System Health / Alerts**:
    - Visual display of CPU temps, memory utilization, and historical error logs.
@@ -253,13 +255,14 @@ usecaseDiagram
 *Answer:* **Zero-Trust Architecture & Scalability.** Local MQTT servers introduce local network attack vectors and require users to manage complex router setups. Utilizing Firestore guarantees that data is encrypted in transit and the system can be scaled and controlled securely from anywhere in the world without exposing network vulnerabilities.
 
 **Q2: How do you prevent the pumps from flooding the user's house?**
-*Answer:* We implemented three distinct layers of safety fail-safes. 
-1. **Pulse & Soak System**: Software-managed gradual watering allowing soil settling.
-2. **Dead-Man's Switch**: Network validation; killing the pump if the app disconnects.
-3. **Hardware Watchdog**: An isolated script directly monitoring the GPIO limits output durations to a strict 30-second ceiling regardless of software failures.
+*Answer:* We implemented a multi-layered safety strategy:
+1. **Master Lockdown Switch**: A global software kill-switch that locks the system's state.
+2. **Pulse & Soak System**: Reduces hydraulic pressure and prevents soil saturation runoff.
+3. **Dead-Man's Switch**: Kills the pump if the mobile app disconnects for >5 seconds during manual operation.
+4. **Hardware Watchdog**: An isolated script directly monitoring GPIO limits duration to 120s regardless of software logic.
 
-**Q3: What are the main limitations of this current system?**
-*Answer:* Current reliance on internet connection to communicate between the mobile device and the controller. Although the Pi can run routine automation entirely offline, the mobile app cannot override manual commands locally if the internet connection is severed.
+**Q3: What happens if the internet goes down?**
+*Answer:* The system follows a **Local-First** philosophy. The Raspberry Pi maintains its scheduled auto-watering routines entirely offline. While the mobile app loses remote control, the physical touchscreen kiosk on the Pi remains fully functional for manual triggers and calibration.
 
 **Q4: How did you handle the UI performance bottleneck on the low-powered Raspberry Pi?**
 *Answer:* Platform-specific optimizations. We utilized Flutter's `Platform.isLinux` conditions to disable heavy GPU calculations like BackdropFilters (glassmorphism), disabled deep slide animations utilizing `NoTransitionPage`, and restricted the image cache size significantly. 

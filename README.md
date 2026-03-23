@@ -43,13 +43,17 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
 
 ## ✨ Core Features
 
-*   **Zero-Trust Security**: Remote access is strictly credential-based (Device ID + PIN) via Cloud Firestore. No local ports are exposed to the network.
+*   **Zero-Trust Security**: Remote access is strictly credential-based (Device ID + PIN) via Cloud Firestore. No local ports are exposed. Environment variables (`.env`) are used to manage secrets securely.
 *   **Dual Operation Modes**: 
     *   **Secure IoT**: Monitor and control your garden globally via the iOS, Android, and Windows Desktop apps.
     *   **Air-Gapped Local**: Full operation and calibration via the Raspberry Pi's physical touchscreen, independent of internet connectivity.
-*   **Hardware-Level Safety**:
-    *   **Pump Watchdog**: A dedicated GPIO-level Python daemon forces the water pump OFF if it runs longer than 120 seconds, preventing floods even if the OS crashes.
-    *   **Crash Resilience**: `systemd` watchdogs automatically restart the controller upon failure.
+*   **Advanced Irrigation Control**:
+    *   **Pulse & Soak**: Intelligent auto-watering that pulses water for 5s followed by a 20s soak period to ensure optimal absorption and prevent runoff.
+    *   **Manual Modes**: Dedicated controls for "Continuous Flow" (fixed duration) and "Pulse & Soak" manual triggers.
+*   **Safety & Lockdown**:
+    *   **Master Lockdown Switch**: A global safety switch that instantly kills all active watering and prevents new cycles until manually released.
+    *   **Pump Watchdog**: A dedicated GPIO-level Python daemon forces the water pump OFF if it runs longer than 120 seconds, preventing floods.
+*   **Non-Intrusive Notifications**: Real-time system alerts (e.g., Low Water, Connection Stale) are delivered via a space-efficient notification row on the dashboard, replacing obstructive banners.
 *   **Differential Data Sync**: Eco-Mode 2.0 pushes telemetry instantly only during critical environmental changes (e.g., Temp Δ > 1.5°C), saving bandwidth while maintaining real-time responsiveness.
 *   **Physical Factory Reset**: A dedicated hardware button (GPIO 24) with LED feedback (GPIO 18) allows secure, physical persistence resets.
 
@@ -87,9 +91,13 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 3. Configure Firebase Credentials
+# 3. Configure Security & Credentials
 # Place your `firebase_credentials.json` in the `smartsproutrasberry/` directory.
-cp .env.example .env # Update with your specific Device ID and PIN
+cp .env.example .env 
+# Update .env with your specific:
+# DEVICE_ID="SPROUT_XXXX"
+# DEVICE_PIN="1234"
+# FIREBASE_CREDENTIALS_PATH="firebase_credentials.json"
 
 # 4. Install the Reliability Watchdog (Systemd)
 sudo cp smartsprout.service /etc/systemd/system/

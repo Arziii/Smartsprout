@@ -79,7 +79,14 @@ Copy your `Smartsprout` folder to `/home/pi/`. Then, move the backend to a conve
     source venv/bin/activate
     pip install -r requirements.txt
     ```
-3.  **Install the Reliability Watchdog (Systemd)**:
+3.  **Configure Security (.env)**:
+    Create a `.env` file from the example to store your unique device credentials:
+    ```bash
+    cp .env.example .env
+    nano .env
+    # Ensure DEVICE_ID and DEVICE_PIN are set correctly.
+    ```
+4.  **Install the Reliability Watchdog (Systemd)**:
     This ensures the backend auto-starts on boot and automatically recovers from crashes.
     ```bash
     sudo cp smartsprout.service /etc/systemd/system/

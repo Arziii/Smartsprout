@@ -17,8 +17,8 @@ This document serves as the permanent reference for configuring the Raspberry Pi
 
 *   **Soil Moisture:** Capacitive v1.2 (Analog 1.2V-2.5V).
     *   *Note:* The Raspberry Pi doesn't have built-in analog pins. These sensors require the **ADS1115 I2C ADC** to convert analog signals to digital values.
-*   **Temp/Humidity:** BME280.
-    *   *Note:* Communicates over the I2C bus (Address `0x76` or `0x77`).
+*   **Temp/Humidity:** DHT22.
+    *   *Note:* Communicates over a single digital GPIO pin (Default: GPIO 4).
 *   **Water Level:** XKC-Y26-V.
     *   *Note:* A non-contact digital liquid level sensor that outputs a simple High/Low digital signal.
 
