@@ -1,10 +1,13 @@
-// FILE: lib/screens/dashboard_page.dart
+import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../presentation/providers/sensor_provider.dart';
 import '../widgets/zone_card.dart';
+import '../widgets/water_wave.dart';
+import 'system_health_page.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -14,13 +17,15 @@ class DashboardPage extends ConsumerStatefulWidget {
 }
 
 class _DashboardPageState extends ConsumerState<DashboardPage>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _pulseController;
+  late AnimationController _entranceController;
 
-  /// Controls whether the "Connection Lost" overlay is visible.
-  /// It shows when the device goes offline, then auto-hides after 3 s.
   bool _showConnectionOverlay = false;
   bool _wasOffline = false;
+  
+  bool _showTankLowOverlay = false;
+  bool _wasTankLow = false;
 
   @override
   void initState() {
@@ -28,48 +33,65 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
-      lowerBound: 0.5,
+      lowerBound: 0.6,
       upperBound: 1.0,
     )..repeat(reverse: true);
+
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..forward();
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
+    _entranceController.dispose();
     super.dispose();
   }
 
-
+  @override
   Widget build(BuildContext context) {
     final sensorData = ref.watch(sensorDataProvider);
 
-    // Extract live data (with safe fallbacks)
-    final soil = sensorData.soilMoisture;
-    final tankLevel = sensorData.tankLevel.clamp(0.0, 100.0).toInt();
-    final flowRate = sensorData.flowRate;
+    final rawSoil = sensorData.soilMoistureRaw;
+    final offsets = sensorData.soilOffsets;
+    final targets = sensorData.targetMoisture;
+    final tankLevel = sensorData.tankLevel.clamp(0.0, 100.0).toDouble();
     final temperature = sensorData.temperature;
-    final isOffline = sensorData.isOffline;
+    // On Linux (Pi), never show as offline — the Pi IS the system.
+    final isOffline = Platform.isLinux ? false : sensorData.isOffline;
     final hasFault = sensorData.hasSensorFault;
     final isTankLow = sensorData.isTankLow;
+    final isHeartbeatStale = !Platform.isLinux && sensorData.isControllerDisconnected;
 
-    // Show overlay when transitioning to offline, auto-hide after 3 s
     if (isOffline && !_wasOffline) {
       _showConnectionOverlay = true;
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) setState(() => _showConnectionOverlay = false);
       });
     }
-    // If back online, reset state
     if (!isOffline && _wasOffline) {
       _showConnectionOverlay = false;
     }
     _wasOffline = isOffline;
 
+    if (isTankLow && !_wasTankLow) {
+      _showTankLowOverlay = true;
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _showTankLowOverlay = false);
+      });
+    }
+    if (!isTankLow && _wasTankLow) {
+      _showTankLowOverlay = false;
+    }
+    _wasTankLow = isTankLow;
+
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       body: Stack(
         children: [
-          // ── Gradient Background ──
+          // ── Gradient & Blob Background ──
           Positioned.fill(
             child: Container(
               decoration: const BoxDecoration(
@@ -77,118 +99,77 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Color(0xFFD1E3DF),
-                    Color(0xFF8BAEAA),
+                    Color(0xFFE0ECE9),
+                    Color(0xFFB4CDCA),
                   ],
                 ),
               ),
             ),
           ),
+          
+          // Background Blobs for depth
+          _buildBlob(top: -100, right: -50, size: 300, color: const Color(0xFF2BCC71).withOpacity(0.15)),
+          _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withOpacity(0.1)),
+          
           // ── Main dashboard content ──
+          // Windows: wrap in Scrollbar for mouse/keyboard UX
           SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              children: [
-                _buildTopHeader(isOffline),
-                _buildVitals(tankLevel, flowRate),
-                const SizedBox(height: 25),
-                Text("All Feature",
-                    style: GoogleFonts.inter(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0F2027),
-                      letterSpacing: 0.5,
-                    )),
-                const SizedBox(height: 15),
-                // Zone Cards Grid
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 15,
-                  mainAxisSpacing: 15,
-                  childAspectRatio: 0.85,
-                  children: [
-                    ZoneCard(
-                      zoneName: "Zone 1 (Left)",
-                      moisture: soil.isNotEmpty ? soil[0].toInt() : 0,
-                      temp: temperature.toInt(),
-                      pulseAnim: _pulseController,
-                    ),
-                    ZoneCard(
-                      zoneName: "Zone 2 (Center)",
-                      moisture: soil.length > 1 ? soil[1].toInt() : 0,
-                      temp: temperature.toInt(),
-                      pulseAnim: _pulseController,
-                    ),
-                    ZoneCard(
-                      zoneName: "Zone 3 (Right)",
-                      moisture: soil.length > 2 ? soil[2].toInt() : 0,
-                      temp: temperature.toInt(),
-                      pulseAnim: _pulseController,
-                    ),
-                    _buildSystemOverviewCard(sensorData),
-                  ],
-                ),
-                const SizedBox(height: 80),
-              ],
-            ),
+            child: Platform.isWindows
+                ? Scrollbar(
+                    thumbVisibility: true,
+                    child: _buildMainList(tankLevel, temperature, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, sensorData),
+                  )
+                : _buildMainList(tankLevel, temperature, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, sensorData),
           ),
 
-          // ── "Connection Lost" Overlay (auto-hides after 3 s) ──
+          // ── Status Overlays ──
           if (_showConnectionOverlay)
             _buildStatusOverlay(
-              icon: Icons.wifi_off,
+              icon: Icons.wifi_off_rounded,
               title: "Connection Lost",
-              subtitle:
-                  "Cannot reach the Smart Sprout controller.\nEnsure you are on the same Wi-Fi network.",
+              subtitle: "Smart Sprout controller unreachable.\nCheck your Wi-Fi settings.",
               color: const Color(0xFF4A6164),
             ),
 
-          // ── "Tank Empty" Overlay ──
-          if (isTankLow && !isOffline)
+          if (_showTankLowOverlay && !isOffline)
             _buildStatusOverlay(
-              icon: Icons.water_drop_outlined,
-              title: "Tank Level Critical",
-              subtitle:
-                  "Water reservoir is below 10%.\nPump is locked for safety.",
+              icon: Icons.water_drop_rounded,
+              title: "Low Water Level",
+              subtitle: "Water reservoir is below 10%.\nPump protection active.",
               color: Colors.redAccent,
             ),
 
-          // ── "Sensor Fault" Banner ──
-          if (hasFault && !isOffline)
+          // ── Heartbeat Disconnected Warning ──
+          if (isHeartbeatStale && !isOffline)
             Positioned(
-              top: MediaQuery.of(context).padding.top + 10,
-              left: 20,
-              right: 20,
-              child: Material(
-                borderRadius: BorderRadius.circular(16),
-                elevation: 8,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.shade100,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.amber.shade400),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.warning_amber_rounded,
-                          color: Colors.amber.shade800, size: 28),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          "Sensor fault detected — some readings may be inaccurate.",
-                          style: TextStyle(
-                            color: Colors.amber.shade900,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade800.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.orange.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.link_off_rounded, color: Colors.white, size: 16),
+                    const SizedBox(width: 6),
+                    Text('Controller Disconnected',
+                      style: GoogleFonts.outfit(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -197,272 +178,377 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
   }
 
-  Widget _buildStatusOverlay({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-  }) {
-    return Positioned.fill(
+  // ── Extracted ListView for Scrollbar wrapping on Windows ──
+  Widget _buildMainList(double tankLevel, double temperature, List<double> rawSoil, List<double> offsets, List<double> targets, bool isOffline, bool isTankLow, bool hasFault, dynamic sensorData) {
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      children: [
+        _buildAnimatedWidget(0, _buildTopHeader(isOffline, isTankLow, hasFault)),
+        const SizedBox(height: 10),
+        _buildAnimatedWidget(1, _buildVitals(tankLevel, temperature)),
+        const SizedBox(height: 30),
+        _buildAnimatedWidget(2, Text("System Overview",
+            style: GoogleFonts.outfit(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF0F2027),
+              letterSpacing: -0.5,
+            ))),
+        const SizedBox(height: 15),
+        _buildAnimatedWidget(3, GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          crossAxisSpacing: 18,
+          mainAxisSpacing: 18,
+          childAspectRatio: 0.9,
+          children: [
+            ZoneCard(
+              zoneId: '1',
+              zoneName: "Zone 1 (Left)",
+              rawMoisture: rawSoil.isNotEmpty ? rawSoil[0].toInt() : 0,
+              calibratedValue: offsets.isNotEmpty ? offsets[0] : 0.0,
+              targetMoisture: targets.isNotEmpty ? targets[0] : 65.0,
+              temp: temperature.toInt(),
+              pulseAnim: _pulseController,
+            ),
+            ZoneCard(
+              zoneId: '2',
+              zoneName: "Zone 2 (Center)",
+              rawMoisture: rawSoil.length > 1 ? rawSoil[1].toInt() : 0,
+              calibratedValue: offsets.length > 1 ? offsets[1] : 0.0,
+              targetMoisture: targets.length > 1 ? targets[1] : 65.0,
+              temp: temperature.toInt(),
+              pulseAnim: _pulseController,
+            ),
+            ZoneCard(
+              zoneId: '3',
+              zoneName: "Zone 3 (Right)",
+              rawMoisture: rawSoil.length > 2 ? rawSoil[2].toInt() : 0,
+              calibratedValue: offsets.length > 2 ? offsets[2] : 0.0,
+              targetMoisture: targets.length > 2 ? targets[2] : 65.0,
+              temp: temperature.toInt(),
+              pulseAnim: _pulseController,
+            ),
+            _buildSystemOverviewCard(context, sensorData),
+          ],
+        )),
+        const SizedBox(height: 100),
+      ],
+    );
+  }
+
+  Widget _buildBlob({double? top, double? left, double? right, double? bottom, required double size, required Color color}) {
+    return Positioned(
+      top: top,
+      left: left,
+      right: right,
+      bottom: bottom,
       child: Container(
-        color: Colors.black.withValues(alpha: 0.4),
-        child: Center(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 40),
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.15),
-                  blurRadius: 30,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 64, color: color),
-                const SizedBox(height: 20),
-                Text(title,
-                    style: GoogleFonts.inter(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: color,
-                    )),
-                const SizedBox(height: 12),
-                Text(subtitle,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: const Color(0xFF4A6164),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    )),
-              ],
-            ),
-          ),
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
         ),
+        child: Platform.isLinux 
+            ? null 
+            : BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+                child: Container(color: Colors.transparent),
+              ),
       ),
     );
   }
 
-  Widget _buildTopHeader(bool isOffline) {
+  Widget _buildAnimatedWidget(int index, Widget child) {
+    return AnimatedBuilder(
+      animation: _entranceController,
+      builder: (context, _) {
+        final start = 0.1 * index;
+        final end = start + 0.5;
+        final curve = CurvedAnimation(
+          parent: _entranceController,
+          curve: Interval(start.clamp(0.0, 1.0), end.clamp(0.0, 1.0), curve: Curves.easeOutCubic),
+        );
+        return Opacity(
+          opacity: curve.value,
+          child: Transform.translate(
+            offset: Offset(0, 30 * (1 - curve.value)),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTopHeader(bool isOffline, bool isTankLow, bool hasFault) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Good Morning,",
+                  style: GoogleFonts.outfit(
+                      color: const Color(0xFF4A6164),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500)),
+              Text("Smart Sprout",
+                  style: GoogleFonts.outfit(
+                      fontSize: 34,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1.0,
+                      color: const Color(0xFF0F2027))),
+            ],
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (hasFault) ...[
+                _buildGlassIconButton(icon: Icons.warning_amber_rounded, color: Colors.amber),
+                const SizedBox(width: 8),
+              ],
+              if (isTankLow) ...[
+                _buildGlassIconButton(icon: Icons.water_drop_rounded, color: Colors.redAccent),
+                const SizedBox(width: 8),
+              ],
+              isOffline
+                  ? _buildGlassIconButton(icon: Icons.wifi_off_rounded, color: Colors.redAccent)
+                  : _buildGlassIconButton(icon: Icons.wifi_rounded, color: const Color(0xFF2BCC71)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGlassIconButton({required IconData icon, required Color color}) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.5),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+      ),
+      child: Icon(icon, color: color, size: 24),
+    );
+  }
+
+  Widget _buildVitals(double tankLevel, double systemTemp) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Good Morning,",
-                style: TextStyle(
-                    color: const Color(0xFF4A6164),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            Text("Smart Sprout",
-                style: GoogleFonts.inter(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                    color: const Color(0xFF0F2027))),
-          ],
+        Expanded(
+          child: _buildVitalCard(
+            label: "TANK LEVEL",
+            value: "${tankLevel.toInt()}%",
+            icon: Icons.waves_rounded,
+            color: tankLevel < 20 ? Colors.redAccent : const Color(0xFF29B6F6),
+            isTank: true,
+            level: tankLevel,
+          ),
         ),
-        Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            color: isOffline ? Colors.red.shade50 : Colors.white,
-            shape: BoxShape.circle,
+        const SizedBox(width: 15),
+        Expanded(
+          child: _buildVitalCard(
+            label: "TEMPERATURE",
+            value: systemTemp.toStringAsFixed(1),
+            unit: "°C",
+            icon: Icons.thermostat_rounded,
+            color: const Color(0xFFFF7043),
           ),
-          child: Icon(
-            isOffline ? Icons.wifi_off : Icons.mode_night,
-            color: isOffline ? Colors.redAccent : const Color(0xFF2C3E50),
-            size: 28,
-          ),
-        )
-      ],
-    );
-  }
-
-  Widget _buildVitals(int tankLevel, double flowRate) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: _buildVitalItem(
-                label: "TANK LEVEL",
-                value: "$tankLevel%",
-                icon: Icons.waves,
-                iconColor: tankLevel < 15 ? Colors.redAccent : Colors.blue,
-                isTank: true,
-                tankLevel: tankLevel.toDouble(),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildVitalItem(
-                label: "WATER FLOW",
-                value: flowRate.toStringAsFixed(1),
-                unit: "L/m",
-                icon: Icons.water,
-                iconColor: Colors.cyan,
-              ),
-            ),
-          ],
         ),
       ],
     );
   }
 
-  Widget _buildVitalItem({
+  Widget _buildVitalCard({
     required String label,
     required String value,
     String? unit,
     required IconData icon,
-    required Color iconColor,
+    required Color color,
     bool isTank = false,
-    double tankLevel = 0,
+    double level = 0,
   }) {
-    return AspectRatio(
-      aspectRatio: 0.9,
-      child: Container(
-        decoration: BoxDecoration(
-            color: const Color(0xFFF3F7F6),
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
-              )
-            ]),
-        clipBehavior: Clip.hardEdge,
-        child: Stack(
-          children: [
-            if (isTank)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 40 + (tankLevel / 100) * 10,
-                child: Container(
+    return Container(
+      height: 160,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.8),
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: Platform.isLinux ? null : [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          )
+        ],
+      ),
+      clipBehavior: Clip.hardEdge,
+      child: Stack(
+        children: [
+          if (isTank)
+            Positioned.fill(
+              child: WaterWave(value: level, color: color.withOpacity(0.15)),
+            ),
+          
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.blue.withValues(alpha: 0.2),
-                        Colors.transparent,
-                      ],
-                    ),
-                    border: Border(
-                        bottom: BorderSide(
-                            color: Colors.blue.withValues(alpha: 0.3),
-                            width: 1.5)),
+                    color: color.withOpacity(0.1),
+                    shape: BoxShape.circle,
                   ),
+                  child: Icon(icon, color: color, size: 20),
                 ),
-              ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, color: iconColor, size: 24),
-                  const Spacer(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(value,
-                          style: GoogleFonts.inter(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              color: const Color(0xFF0F2027))),
-                      if (unit != null)
-                        Text(" $unit",
-                            style: GoogleFonts.inter(
+                const Spacer(),
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1.0),
+                  duration: const Duration(seconds: 1),
+                  builder: (context, val, child) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        RichText(
+                          text: TextSpan(
+                            children: [
+                              TextSpan(
+                                text: value,
+                                style: GoogleFonts.outfit(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF0F2027),
+                                ),
+                              ),
+                              if (unit != null)
+                                TextSpan(
+                                  text: " $unit",
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF4A6164),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(label,
+                            style: GoogleFonts.outfit(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
-                                color: const Color(0xFF0F2027))),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(label,
-                      style: const TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
-                          color: Color(0xFF4A6164))),
-                ],
-              ),
+                                letterSpacing: 1.0,
+                                color: const Color(0xFF4A6164).withOpacity(0.8))),
+                      ],
+                    );
+                  },
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildSystemOverviewCard(sensorData) {
+  Widget _buildSystemOverviewCard(BuildContext context, sensorData) {
     final isHealthy = sensorData.isHealthy;
-    final statusText = isHealthy
-        ? "All systems nominal"
-        : sensorData.isOffline
-            ? "Controller offline"
-            : sensorData.isTankLow
-                ? "Tank critically low"
-                : "Sensor fault detected";
+    final statusColor = isHealthy ? const Color(0xFF2BCC71) : Colors.redAccent;
 
-    final statusColor = isHealthy
-        ? const Color(0xFF2BCC71)
-        : sensorData.isOffline
-            ? Colors.grey
-            : Colors.redAccent;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF9F9F9),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text("System\nHealth",
-              style: GoogleFonts.inter(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF1E1E1E),
-                height: 1.2,
-              )),
-          const SizedBox(height: 8),
-          Text(statusText,
-              style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500)),
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const SystemHealthPage()));
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.8),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.white, width: 2),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("System\nHealth",
+                style: GoogleFonts.outfit(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF0F2027),
+                  height: 1.1,
+                )),
           const Spacer(),
-          Align(
-            alignment: Alignment.bottomRight,
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(color: statusColor.withOpacity(0.4), blurRadius: 8, spreadRadius: 2)
+                  ]
+                ),
+              ),
+              Icon(
+                isHealthy ? Icons.verified_rounded : Icons.report_problem_rounded,
                 color: statusColor,
-                shape: BoxShape.circle,
+                size: 24,
               ),
-              child: Icon(
-                isHealthy ? Icons.check : Icons.warning_amber_rounded,
-                color: Colors.white,
-                size: 28,
-              ),
-            ),
+            ],
           )
         ],
       ),
+    ),
+  );
+}
+
+  Widget _buildStatusOverlay({required IconData icon, required String title, required String subtitle, required Color color}) {
+    final content = Container(
+      color: Colors.black.withOpacity(0.3),
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 40),
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(32),
+            boxShadow: Platform.isLinux ? null : [BoxShadow(color: Colors.black26, blurRadius: 30, offset: const Offset(0, 10))],
+          ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+                    child: Icon(icon, size: 48, color: color),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(title, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.w800, color: const Color(0xFF0F2027))),
+                  const SizedBox(height: 12),
+                  Text(subtitle, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 14, height: 1.5)),
+                ],
+          ),
+        ),
+      ),
+    );
+
+    return Positioned.fill(
+      child: Platform.isLinux 
+          ? content 
+          : BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+              child: content,
+            ),
     );
   }
 }

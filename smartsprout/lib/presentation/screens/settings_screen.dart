@@ -1,7 +1,14 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/sensor_provider.dart';
+import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../providers/auth_provider.dart';
+import '../../data/services/data_service.dart';
+import '../../widgets/system_settings_dialog.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -10,196 +17,119 @@ class SettingsScreen extends ConsumerStatefulWidget {
   ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  // ── Wi-Fi State ──
-  String _wifiSsid = 'Checking...';
-  bool _wifiConnected = false;
-  bool _wifiScanning = false;
-  List<Map<String, dynamic>> _wifiNetworks = [];
-
-  // ── System State ──
-  bool _isCalibrating = false;
-  String _firmwareVersion = 'Checking...';
-  String _firmwarePlatform = '';
-  String _firmwareUptime = '';
-
-  StreamSubscription<Map<String, dynamic>>? _settingsSub;
+class _SettingsScreenState extends ConsumerState<SettingsScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _entranceController;
+  bool _isSyncing = false;
 
   @override
   void initState() {
     super.initState();
-    // Listen for settings responses from the Pi
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final mqtt = ref.read(mqttServiceProvider);
-      _settingsSub = mqtt.settingsStream.listen(_handleSettingsResponse);
-
-      // Request initial status
-      mqtt.requestWifiStatus();
-      mqtt.requestFirmwareInfo();
-    });
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..forward();
   }
 
   @override
   void dispose() {
-    _settingsSub?.cancel();
+    _entranceController.dispose();
     super.dispose();
-  }
-
-  void _handleSettingsResponse(Map<String, dynamic> data) {
-    final response = data['response'] as String? ?? '';
-
-    switch (response) {
-      case 'wifi_status':
-        setState(() {
-          _wifiSsid = data['ssid'] as String? ?? 'Not connected';
-          _wifiConnected = data['connected'] as bool? ?? false;
-        });
-        break;
-
-      case 'wifi_scan':
-        final networks = data['networks'] as List? ?? [];
-        setState(() {
-          _wifiScanning = false;
-          _wifiNetworks = networks
-              .map<Map<String, dynamic>>((n) => Map<String, dynamic>.from(n))
-              .toList();
-        });
-        if (_wifiNetworks.isNotEmpty) {
-          _showWifiPickerDialog();
-        }
-        break;
-
-      case 'wifi_connect':
-        final success = data['success'] as bool? ?? false;
-        final message = data['message'] as String? ?? '';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(success ? '✅ $message' : '❌ $message'),
-          backgroundColor: success ? Colors.green : Colors.redAccent,
-        ));
-        if (success) {
-          ref.read(mqttServiceProvider).requestWifiStatus();
-        }
-        break;
-
-      case 'calibrate':
-        setState(() => _isCalibrating = false);
-        final status = data['status'] as String? ?? 'unknown';
-        if (status == 'complete') {
-          _showCalibrationResults(data);
-        }
-        break;
-
-      case 'firmware_info':
-        setState(() {
-          _firmwareVersion = data['version'] as String? ?? 'Unknown';
-          _firmwarePlatform = data['platform'] as String? ?? '';
-          _firmwareUptime = data['uptime'] as String? ?? '';
-        });
-        break;
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final sensorData = ref.watch(sensorDataProvider);
-    final isConnected = !sensorData.isOffline;
-
     return Scaffold(
       extendBodyBehindAppBar: true,
+      backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text('Settings', 
+          style: GoogleFonts.outfit(
+            fontWeight: FontWeight.w800, 
+            color: const Color(0xFF0F2027),
+            letterSpacing: -0.5,
+          )),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true,
+        leading: context.canPop() ? IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF0F2027), size: 20),
+          onPressed: () => context.pop(),
+        ) : null,
       ),
       body: Stack(
         children: [
-          // Garden background
+          // ── Background (Matches Dashboard) ──
           Positioned.fill(
-            child: Image.asset(
-              'assets/images/dashboard_bg.png',
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) =>
-                  Container(color: const Color(0xFFF0F4EE)),
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                ),
+              ),
             ),
           ),
-          // 60% white frosted overlay
-          Positioned.fill(
-            child: Container(color: Colors.white.withValues(alpha: 0.60)),
-          ),
-          // Content
+          _buildBlob(top: -50, right: -100, size: 300, color: const Color(0xFF2BCC71).withOpacity(0.15)),
+          _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withOpacity(0.1)),
+
+          // ── Content ──
           SafeArea(
             child: ListView(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               children: [
-                // ── Connectivity Section ──
-                _buildSectionHeader('Connectivity', context),
-                _buildListTile(
-                  'Wi-Fi Configuration',
-                  subtitle: _wifiConnected
-                      ? 'Connected: $_wifiSsid'
-                      : 'Not connected',
-                  icon: _wifiConnected ? Icons.wifi : Icons.wifi_off,
-                  trailing: _wifiScanning
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : null,
-                  onTap: isConnected
-                      ? () {
-                          setState(() => _wifiScanning = true);
-                          ref.read(mqttServiceProvider).requestWifiScan();
-                        }
-                      : null,
-                ),
-                _buildListTile(
-                  'Bluetooth Devices',
-                  subtitle: isConnected
-                      ? 'Paired: SmartSprout-01'
-                      : 'Controller offline',
-                  icon: Icons.bluetooth_connected,
-                  onTap: () => _showBluetoothDialog(),
-                ),
-                const SizedBox(height: 8),
-
-                // ── System Section ──
-                _buildSectionHeader('System', context),
-                _buildListTile(
-                  'Calibration',
-                  subtitle: _isCalibrating
-                      ? 'Running calibration...'
-                      : 'Calibrate soil and tank sensors',
-                  icon: Icons.tune,
-                  trailing: _isCalibrating
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : null,
-                  onTap: isConnected && !_isCalibrating
-                      ? () {
-                          setState(() => _isCalibrating = true);
-                          ref.read(mqttServiceProvider).requestCalibration();
-                        }
-                      : null,
-                ),
-                _buildListTile(
-                  'Firmware Update',
-                  subtitle: 'Version $_firmwareVersion'
-                      '${_firmwarePlatform.isNotEmpty ? ' • $_firmwarePlatform' : ''}'
-                      '${_firmwareUptime.isNotEmpty ? '\n$_firmwareUptime' : ''}',
-                  icon: Icons.system_update,
-                  onTap: () {
-                    ref.read(mqttServiceProvider).requestFirmwareInfo();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Checking for firmware updates...')),
-                    );
-                  },
-                ),
-                const SizedBox(height: 80),
+                const SizedBox(height: 25),
+                _buildAnimatedItem(0, _buildSectionHeader('System')),
+                _buildAnimatedItem(1, _buildSettingsCard(
+                  title: 'Calibration',
+                  subtitle: 'Adjust sensor offsets and reset references',
+                  icon: Icons.tune_rounded,
+                  color: const Color(0xFFFFA726),
+                  onTap: () => context.push('/calibration'),
+                )),
+                _buildAnimatedItem(2, _buildSettingsCard(
+                  title: 'Hardware Controls',
+                  subtitle: 'Restart dashboard or reboot Kiosk',
+                  icon: Icons.settings_system_daydream_rounded,
+                  color: const Color(0xFF2BCC71),
+                  onTap: () => showDialog(context: context, builder: (_) => const SystemSettingsDialog()),
+                )),
+                if (!Platform.isLinux)
+                  _buildAnimatedItem(3, _buildSettingsCard(
+                    title: 'Force Sync',
+                    subtitle: 'Request live data from Raspberry Pi now',
+                    icon: Icons.sync_rounded,
+                    color: const Color(0xFF29B6F6),
+                    isLoading: _isSyncing,
+                    onTap: _isSyncing ? null : () => _handleForceSync(),
+                  )),
+                const SizedBox(height: 25),
+                _buildAnimatedItem(3, _buildSectionHeader('Account')),
+                if (!Platform.isLinux)
+                  _buildAnimatedItem(4, _buildSettingsCard(
+                    title: 'Rename Device',
+                    subtitle: 'Change your device ID (requires PIN)',
+                    icon: Icons.drive_file_rename_outline_rounded,
+                    color: const Color(0xFF7E57C2),
+                    onTap: () => _showRenameDeviceDialog(),
+                  )),
+                _buildAnimatedItem(4, _buildSettingsCard(
+                  title: 'Change Device PIN',
+                  subtitle: 'Update your hardware access PIN',
+                  icon: Icons.lock_outline_rounded,
+                  color: const Color(0xFF78909C),
+                  onTap: () => _showChangePinDialog(),
+                )),
+                _buildAnimatedItem(5, _buildSettingsCard(
+                  title: 'Disconnect Device',
+                  subtitle: 'Log out of current hardware',
+                  icon: Icons.logout_rounded,
+                  color: Colors.redAccent,
+                  isDestructive: true,
+                  onTap: () => _logout(),
+                )),
+                const SizedBox(height: 50),
               ],
             ),
           ),
@@ -208,198 +138,323 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  // ── Dialogs ──
-
-  void _showWifiPickerDialog() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 12),
+      child: Text(
+        title.toUpperCase(),
+        style: GoogleFonts.outfit(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: const Color(0xFF4A6164),
+          letterSpacing: 1.5,
+        ),
       ),
-      builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Available Networks',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold, color: Colors.teal)),
-              const SizedBox(height: 12),
-              ..._wifiNetworks.map((net) {
-                final ssid = net['ssid'] as String? ?? 'Unknown';
-                final signal = net['signal'] as int? ?? 0;
-                final security = net['security'] as String? ?? 'Open';
-                return ListTile(
-                  leading: Icon(
-                    signal > 70
-                        ? Icons.wifi
-                        : signal > 40
-                            ? Icons.wifi_2_bar
-                            : Icons.wifi_1_bar,
-                    color: Colors.teal,
-                  ),
-                  title: Text(ssid,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text('$signal% • $security'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _showWifiPasswordDialog(ssid);
-                  },
-                );
-              }),
-            ],
+    );
+  }
+
+  Widget _buildSettingsCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    VoidCallback? onTap,
+    bool isLoading = false,
+    bool isDestructive = false,
+  }) {
+    final listTile = ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      onTap: onTap,
+      leading: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: color, size: 24),
+      ),
+      title: Text(title,
+        style: GoogleFonts.outfit(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: isDestructive ? Colors.redAccent : const Color(0xFF0F2027),
+        )),
+      subtitle: Text(subtitle,
+        style: GoogleFonts.outfit(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: const Color(0xFF4A6164).withOpacity(0.7),
+        )),
+      trailing: isLoading
+          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+          : Icon(Icons.chevron_right_rounded, color: const Color(0xFF4A6164).withOpacity(0.3)),
+    );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(Platform.isLinux ? 0.95 : 0.7),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: Platform.isLinux ? null : [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Platform.isLinux 
+            ? listTile 
+            : BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: listTile,
+              ),
+      ),
+    );
+  }
+
+
+  Widget _buildBlob({double? top, double? left, double? right, double? bottom, required double size, required Color color}) {
+    return Positioned(
+      top: top,
+      left: left,
+      right: right,
+      bottom: bottom,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        child: Platform.isLinux ? null : BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+          child: Container(color: Colors.transparent),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedItem(int index, Widget child) {
+    return AnimatedBuilder(
+      animation: _entranceController,
+      builder: (context, _) {
+        final start = index * 0.05;
+        final curve = CurvedAnimation(
+          parent: _entranceController,
+          curve: Interval(start.clamp(0.0, 1.0), (start + 0.6).clamp(0.0, 1.0), curve: Curves.easeOutQuart),
+        );
+        return Opacity(
+          opacity: curve.value,
+          child: Transform.translate(
+            offset: Offset(0, 20 * (1 - curve.value)),
+            child: child,
           ),
         );
       },
     );
   }
 
-  void _showWifiPasswordDialog(String ssid) {
-    final passwordController = TextEditingController();
+  Future<void> _handleForceSync() async {
+    final dataService = ref.read(dataServiceProvider);
+    if (dataService == null) return;
+
+    setState(() => _isSyncing = true);
+
+    try {
+      await dataService.forceSync();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Requesting live data from Raspberry Pi...',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: const Color(0xFF0F2027),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (_) {
+      // Silently fail
+    }
+
+    await Future.delayed(const Duration(seconds: 5));
+    if (mounted) setState(() => _isSyncing = false);
+  }
+
+  // ── Actions & Dialogs (Kept functional logic, restyled UI) ──
+
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => _buildAwesomeDialog(
+        ctx,
+        title: 'Disconnect Device',
+        content: 'Are you sure you want to log out of this device?',
+        confirmText: 'Disconnect',
+        isDestructive: true,
+      ),
+    );
+
+    if (confirm == true) {
+      await ref.read(authProvider.notifier).logout();
+      if (mounted) context.go('/login');
+    }
+  }
+
+
+  void _showChangePinDialog() {
+    final pinController = TextEditingController();
+    final confirmController = TextEditingController();
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Connect to $ssid'),
-        content: TextField(
-          controller: passwordController,
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: 'Password',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              ref
-                  .read(mqttServiceProvider)
-                  .connectWifi(ssid, passwordController.text);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
-            child: const Text('Connect', style: TextStyle(color: Colors.white)),
-          ),
-        ],
+      builder: (ctx) => _buildAwesomeInputDialog(
+        ctx,
+        title: 'Change PIN',
+        subtitle: 'Update your system security PIN',
+        controller: pinController,
+        controller2: confirmController,
+        hint: 'New PIN',
+        hint2: 'Confirm PIN',
+        isPin: true,
+        onConfirm: () async {
+          if (pinController.text == confirmController.text) {
+            await ref.read(authProvider.notifier).changePin(pinController.text.trim());
+          }
+        },
       ),
     );
   }
 
-  void _showBluetoothDialog() {
+  void _showRenameDeviceDialog() {
+    final pinController = TextEditingController();
+    final idController = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Bluetooth Devices'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading:
-                  Icon(Icons.bluetooth_connected, color: Colors.teal.shade600),
-              title: const Text('SmartSprout-01'),
-              subtitle: const Text('Connected'),
-              trailing: Icon(Icons.check_circle, color: Colors.green.shade600),
-            ),
-            const Divider(),
-            const Text(
-              'To pair a new device, use the Pairing screen from the home menu.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-        ],
-      ),
-    );
-  }
-
-  void _showCalibrationResults(Map<String, dynamic> data) {
-    final soilRaw = data['soil_raw'] as List? ?? [];
-    final tankDist = data['tank_distance_cm'] ?? 'N/A';
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Calibration Complete'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Raw ADC Readings (averaged):',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            for (int i = 0; i < soilRaw.length; i++)
-              Text('  Zone ${i + 1}: ${soilRaw[i]}'),
+            Text('Rename Device', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+            Text('Enter your current PIN for security', style: GoogleFonts.outfit(fontSize: 13, color: Colors.grey)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: pinController,
+              obscureText: true,
+              decoration: InputDecoration(
+                hintText: 'Current PIN',
+                prefixIcon: const Icon(Icons.lock_outline_rounded),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
             const SizedBox(height: 12),
-            Text('Tank Level: $tankDist%'),
-            const SizedBox(height: 12),
-            const Text(
-              'Use these values to adjust SOIL_SENSOR_DRY and SOIL_SENSOR_WET in your .env file.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+            TextField(
+              controller: idController,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(
+                hintText: 'New Device ID (e.g. SPROUT_GARDEN)',
+                prefixIcon: const Icon(Icons.drive_file_rename_outline_rounded),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
             ),
           ],
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Done')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              final pin = pinController.text.trim();
+              final newId = idController.text.trim().toUpperCase();
+              if (pin.isEmpty || newId.isEmpty) return;
+              Navigator.pop(ctx);
+              final error = await ref.read(authProvider.notifier).renameDevice(pin, newId);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      error == null ? 'Device renamed to $newId!' : error,
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+                    ),
+                    backgroundColor: error == null ? const Color(0xFF2BCC71) : Colors.redAccent,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0F2027),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text('Rename', style: GoogleFonts.outfit(color: Colors.white)),
+          ),
         ],
       ),
     );
   }
 
-  // ── UI Builders (unchanged aesthetics) ──
+  // ── Custom Glass Dialog Components ──
 
-  Widget _buildSectionHeader(String title, BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0, left: 8.0, top: 16.0),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
-            ),
-      ),
+  Widget _buildAwesomeDialog(BuildContext dialogCtx, {required String title, required String content, required String confirmText, bool isDestructive = false}) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      title: Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+      content: Text(content, style: GoogleFonts.outfit(color: const Color(0xFF4A6164))),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogCtx), child: Text('Cancel', style: GoogleFonts.outfit(color: Colors.grey))),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(dialogCtx, true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: isDestructive ? Colors.redAccent : const Color(0xFF0F2027),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: Text(confirmText, style: GoogleFonts.outfit(color: Colors.white)),
+        ),
+      ],
     );
   }
 
-  Widget _buildListTile(String title,
-      {String? subtitle,
-      required IconData icon,
-      Widget? trailing,
-      VoidCallback? onTap}) {
-    return Card(
-      elevation: 2,
-      color: Colors.white.withValues(alpha: 0.90),
-      shape: RoundedRectangleBorder(
-          side: BorderSide(color: Colors.grey.shade200),
-          borderRadius: BorderRadius.circular(14)),
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.teal.shade50,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: Colors.teal.shade600, size: 22),
-        ),
-        title: Text(title,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-        subtitle: subtitle != null
-            ? Text(subtitle,
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 12))
-            : null,
-        trailing: trailing ??
-            Icon(Icons.chevron_right, color: Colors.grey.shade400, size: 20),
-        onTap: onTap,
+  Widget _buildAwesomeInputDialog(BuildContext dialogCtx, {
+    required String title,
+    required String subtitle,
+    required TextEditingController controller,
+    TextEditingController? controller2,
+    required String hint,
+    String? hint2,
+    bool isPin = false,
+    required VoidCallback onConfirm,
+  }) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+          Text(subtitle, style: GoogleFonts.outfit(fontSize: 13, color: Colors.grey)),
+        ],
       ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(controller: controller, obscureText: true, decoration: InputDecoration(hintText: hint)),
+          if (controller2 != null) ...[
+            const SizedBox(height: 10),
+            TextField(controller: controller2, obscureText: true, decoration: InputDecoration(hintText: hint2)),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
+        ElevatedButton(onPressed: () { onConfirm(); Navigator.pop(dialogCtx); }, child: const Text('Confirm')),
+      ],
     );
   }
 }

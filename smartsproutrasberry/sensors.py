@@ -5,6 +5,8 @@ All reads are wrapped in try/except to prevent crashes from I2C IOErrors or volt
 """
 import time
 import threading
+import json
+import os
 import config
 
 # ──────────────────────────────────────────────────────
@@ -27,16 +29,49 @@ except ImportError:
     print("[WARN] smbus2 not available — soil sensors will return mock data.")
 
 try:
-    import Adafruit_DHT
+    import board
+    import adafruit_dht
     _DHT_AVAILABLE = True
-except ImportError:
+    
+    # Initialize the DHT device early so it's ready for polling.
+    # We map config.DHT22_PIN (e.g., 4) to board.D4 
+    _pin_attr = f"D{config.DHT22_PIN}"
+    _pin = getattr(board, _pin_attr, getattr(board, "D4")) 
+    _dht_device = adafruit_dht.DHT22(_pin)
+    
+except (ImportError, NotImplementedError, AttributeError) as e:
     _DHT_AVAILABLE = False
-    print("[WARN] Adafruit_DHT not available — DHT22 will return mock data.")
+    _dht_device = None
+    print(f"[WARN] adafruit_dht init failed ({e}) — DHT22 will return mock data.")
 
 
 # ═══════════════════════════════════════════════════════
 # ADS1115 — 3-Channel Soil Moisture via I2C ADC
 # ═══════════════════════════════════════════════════════
+CALIBRATION_FILE = os.path.join(os.path.dirname(__file__), 'calibration_offsets.json')
+_calibration_data = None
+
+def load_calibration():
+    global _calibration_data
+    if _calibration_data is None:
+        try:
+            with open(CALIBRATION_FILE, 'r') as f:
+                _calibration_data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            print("[WARN] Could not load calibration_offsets.json. Creating default.")
+            _calibration_data = {
+                "zone_1": {"dry_raw": config.SOIL_DRY, "wet_raw": config.SOIL_WET, "manual_offset_pct": 0},
+                "zone_2": {"dry_raw": config.SOIL_DRY, "wet_raw": config.SOIL_WET, "manual_offset_pct": 0},
+                "zone_3": {"dry_raw": config.SOIL_DRY, "wet_raw": config.SOIL_WET, "manual_offset_pct": 0}
+            }
+            save_calibration()
+    return _calibration_data
+
+def save_calibration():
+    if _calibration_data is not None:
+        with open(CALIBRATION_FILE, 'w') as f:
+            json.dump(_calibration_data, f, indent=4)
+
 # ADS1115 Register addresses
 _ADS_CONVERSION_REG = 0x00
 _ADS_CONFIG_REG = 0x01
@@ -61,28 +96,93 @@ def _read_ads1115_channel(bus: "SMBus", channel: int) -> int:
     return raw
 
 
-def read_soil_moisture() -> list[float]:
+def read_soil_moisture() -> tuple[dict, dict, bool]:
     """
-    Returns a list of 3 soil moisture percentages [zone1, zone2, zone3].
-    Maps raw ADC values to 0-100% using calibrated wet/dry thresholds.
+    Returns a 3-tuple: (calibrated_dict, raw_dict, is_fault_boolean)
+    calibrated_dict: {bed1: float, ...} with manual offsets applied (0-100%)
+    raw_dict:        {bed1: float, ...} raw sensor percentage BEFORE offsets (0-100%)
     """
+    cal_data = load_calibration()
+    
     if not _SMBUS_AVAILABLE:
-        return [45.0, 60.0, 25.0]  # Mock fallback
+        # No hardware: raw is 0%, calibrated is 0% + offset
+        raw_results = {"bed1": 0.0, "bed2": 0.0, "bed3": 0.0}
+        cal_results = {
+            "bed1": max(0.0, min(100.0, 0.0 + cal_data["zone_1"].get("manual_offset_pct", 0))),
+            "bed2": max(0.0, min(100.0, 0.0 + cal_data["zone_2"].get("manual_offset_pct", 0))),
+            "bed3": max(0.0, min(100.0, 0.0 + cal_data["zone_3"].get("manual_offset_pct", 0)))
+        }
+        return cal_results, raw_results, False
 
     try:
         bus = SMBus(config.ADS1115_I2C_BUS)
-        results = []
+        cal_results = {}
+        raw_results = {}
         for ch in range(3):
+            zone_key = f"zone_{ch+1}"
+            dry_raw = cal_data[zone_key].get("dry_raw", config.SOIL_DRY)
+            wet_raw = cal_data[zone_key].get("wet_raw", config.SOIL_WET)
+            offset = cal_data[zone_key].get("manual_offset_pct", 0)
+
             raw = _read_ads1115_channel(bus, ch)
-            # Invert: capacitive sensors read HIGH when dry
-            pct = (config.SOIL_DRY - raw) / (config.SOIL_DRY - config.SOIL_WET) * 100.0
-            pct = max(0.0, min(100.0, pct))
-            results.append(round(pct, 1))
+            
+            # Avoid division by zero
+            if dry_raw == wet_raw:
+               pct = 0.0
+            else:
+               # Invert: capacitive sensors read HIGH when dry
+               pct = (dry_raw - raw) / (dry_raw - wet_raw) * 100.0
+            
+            # Raw sensor percentage (before offset), clamped
+            raw_pct = max(0.0, min(100.0, pct))
+            raw_results[f"bed{ch+1}"] = round(raw_pct, 1)
+
+            # Calibrated = raw + offset, clamped
+            cal_pct = max(0.0, min(100.0, pct + offset))
+            cal_results[f"bed{ch+1}"] = round(cal_pct, 1)
         bus.close()
+        return cal_results, raw_results, False
+    except (IOError, OSError) as e:
+        print(f"[WARN] I2C soil read failed (no hardware?): {e} — returning mock data.")
+        mock_results = {"bed1": 0.0, "bed2": 0.0, "bed3": 0.0}
+        return mock_results, mock_results, False  # Return clean zeros, NOT fault sentinel
+
+def run_dry_calibration(target_zone=None) -> dict:
+    """
+    Samples current sensor values and sets them as the new 'dry' reference (0%).
+    target_zone: 1, 2, 3 or None (all zones)
+    """
+    cal_data = load_calibration()
+    results = {"status": "success", "updates": {}}
+    
+    if not _SMBUS_AVAILABLE:
+        print("[WARN] Dry calibration called but SMBus not available.")
+        return {"status": "error", "message": "Simulation mode, hardware not available."}
+        
+    try:
+        bus = SMBus(config.ADS1115_I2C_BUS)
+        zones_to_test = [target_zone - 1] if target_zone in (1, 2, 3) else [0, 1, 2]
+        
+        for ch in zones_to_test:
+            readings = []
+            for _ in range(10):
+                readings.append(_read_ads1115_channel(bus, ch))
+                time.sleep(0.02)
+            avg_raw = int(sum(readings) / len(readings))
+            
+            zone_key = f"zone_{ch+1}"
+            cal_data[zone_key]["dry_raw"] = avg_raw
+            cal_data[zone_key]["manual_offset_pct"] = 0 # Reset manual offset on recalibration
+            results["updates"][zone_key] = avg_raw
+            
+        bus.close()
+        save_calibration()
         return results
     except (IOError, OSError) as e:
-        print(f"[ERROR] I2C soil read failed: {e}")
-        return [-1.0, -1.0, -1.0]  # Sentinel for "Sensor Fault"
+        print(f"[ERROR] Dry calibration failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
 
 
 # ═══════════════════════════════════════════════════════
@@ -93,23 +193,34 @@ def read_dht22() -> dict:
     Returns {"temperature": float, "humidity": float}.
     Values are -1.0 on sensor fault.
     """
-    if not _DHT_AVAILABLE:
-        return {"temperature": 31.5, "humidity": 68.0}  # Mock
+    global _dht_device
+    if not _DHT_AVAILABLE or not _dht_device:
+        return {"temperature": 0.0, "humidity": 0.0}
 
-    try:
-        humidity, temperature = Adafruit_DHT.read_retry(
-            Adafruit_DHT.DHT22, config.DHT22_PIN, retries=3, delay_seconds=0.5
-        )
-        if humidity is not None and temperature is not None:
-            return {
-                "temperature": round(temperature, 1),
-                "humidity": round(humidity, 1),
-            }
-        else:
-            return {"temperature": -1.0, "humidity": -1.0}
-    except Exception as e:
-        print(f"[ERROR] DHT22 read failed: {e}")
-        return {"temperature": -1.0, "humidity": -1.0}
+    # Try up to 3 times to get a valid reading, catching Checksum errors.
+    for attempt in range(3):
+        try:
+            temperature = _dht_device.temperature
+            humidity = _dht_device.humidity
+            
+            if temperature is not None and humidity is not None:
+                return {
+                    "temperature": round(temperature, 1),
+                    "humidity": round(humidity, 1),
+                }
+        except RuntimeError as e:
+            # DHT22 sensors frequently throw Checksum errors (RuntimeError in adafruit_dht)
+            # Wait 2 seconds and try again instead of crashing.
+            print(f"[WARN] DHT22 transient error (attempt {attempt+1}): {e} - Retrying in 2 seconds...")
+            time.sleep(2.0)
+            continue
+        except Exception as e:
+            print(f"[ERROR] DHT22 critical failure: {e}")
+            break
+            
+    # If the loop exhausts retries:
+    print("[WARN] DHT22 not responding after 3 attempts — returning simulation values.")
+    return {"temperature": 0.0, "humidity": 0.0}
 
 
 # ═══════════════════════════════════════════════════════
@@ -130,7 +241,7 @@ def read_tank_level() -> float:
     Returns -1.0 on sensor fault.
     """
     if not _GPIO_AVAILABLE:
-        return 75.0  # Mock
+        return 0.0  # Force 0.0 when no hardware is attached so safety locks engage
 
     try:
         _setup_ultrasonic()
@@ -313,50 +424,6 @@ def get_firmware_info() -> dict:
     }
 
 
-# ═══════════════════════════════════════════════════════
-# YF-S201 — Water Flow Sensor (Hardware Interrupt)
-# ═══════════════════════════════════════════════════════
-_flow_pulse_count = 0
-_flow_lock = threading.Lock()
-
-
-def _flow_callback(channel):
-    global _flow_pulse_count
-    with _flow_lock:
-        _flow_pulse_count += 1
-
-
-def setup_flow_sensor():
-    """Must be called once at startup to register the GPIO interrupt."""
-    if not _GPIO_AVAILABLE:
-        return
-    GPIO.setup(config.FLOW_SENSOR, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    GPIO.add_event_detect(
-        config.FLOW_SENSOR, GPIO.FALLING, callback=_flow_callback
-    )
-
-
-def read_flow_rate(interval_seconds: float) -> float:
-    """
-    Returns flow rate in L/min by reading and resetting the pulse counter.
-    Must be called on a known interval to calculate rate.
-    Returns 0.0 if GPIO is unavailable.
-    """
-    global _flow_pulse_count
-    if not _GPIO_AVAILABLE:
-        return 1.2  # Mock
-
-    with _flow_lock:
-        pulses = _flow_pulse_count
-        _flow_pulse_count = 0
-
-    # frequency = pulses / interval_seconds
-    # flow_rate (L/min) = frequency / calibration_factor
-    if interval_seconds <= 0:
-        return 0.0
-    frequency = pulses / interval_seconds
-    flow_lpm = frequency / config.FLOW_CALIBRATION
-    return round(flow_lpm, 2)
 
 
 # ═══════════════════════════════════════════════════════
@@ -366,9 +433,12 @@ def setup_relays():
     """Initialize all relay pins to OFF (HIGH for active-low relay)."""
     if not _GPIO_AVAILABLE:
         return
-    for pin in config.ALL_RELAY_PINS:
-        GPIO.setup(pin, GPIO.OUT)
-        GPIO.output(pin, GPIO.HIGH)  # OFF (active-low)
+    try:
+        for pin in config.ALL_RELAY_PINS:
+            GPIO.setup(pin, GPIO.OUT)
+            GPIO.output(pin, GPIO.HIGH)  # OFF (active-low)
+    except Exception as e:
+        print(f"[WARN] Failed to initialize relays (are they connected?): {e}")
 
 
 def set_relay(pin: int, state: bool):
@@ -405,3 +475,77 @@ def cleanup():
     if _GPIO_AVAILABLE:
         deactivate_all()
         GPIO.cleanup()
+
+
+# ═══════════════════════════════════════════════════════
+# Class Wrapper for Object-Oriented Encapsulation
+# ═══════════════════════════════════════════════════════
+
+class SensorManager:
+    """
+    SensorManager object wrapper prioritizing encapsulation for main.py.
+    Provides initialization logic for ADS1115 (A0, A1, A2) and DHT22 (GPIO 4)
+    per architectural requirements, and proxies commands to the module-level functions.
+    """
+    def __init__(self):
+        print("[INIT] Initializing SensorManager...")
+        # Check and initialize ADS1115 via I2C SMBus
+        if _SMBUS_AVAILABLE:
+            try:
+                # Early instantiation to ensure it's ready for polling
+                self.i2c_bus = SMBus(config.ADS1115_I2C_BUS)
+                print("[INIT] ADS1115 ADC initialized on I2C bus.")
+            except Exception as e:
+                print(f"[ERROR] Failed to initialize ADS1115: {e}")
+                self.i2c_bus = None
+        else:
+            self.i2c_bus = None
+
+        # Confirm DHT22 GPIO binding
+        if _DHT_AVAILABLE:
+            print(f"[INIT] DHT22 initialized on GPIO {config.DHT22_PIN}.")
+        else:
+            print("[WARN] DHT22 hardware not found.")
+            
+        print("[INIT] SensorManager ready for polling.")
+
+    def setup_relays(self):
+        """Map relays to GPIO 17, 27, 22, 23 (Pump on 17, Zones on 27,22,23)."""
+        setup_relays()
+
+    def activate_zone(self, zone):
+        activate_zone(zone)
+
+    def deactivate_all(self):
+        deactivate_all()
+
+    def load_calibration(self):
+        return load_calibration()
+
+    def save_calibration(self):
+        save_calibration()
+
+    def run_calibration(self):
+        return run_calibration()
+
+    def run_dry_calibration(self, target_zone=None):
+        return run_dry_calibration(target_zone=target_zone)
+
+    def read_soil_moisture(self):
+        # Reads A0, A1, A2 from ADS1115 and returns dict {"bed1": val...}
+        return read_soil_moisture()
+
+    def read_dht22(self):
+        # Reads GPIO 4 (or configured pin)
+        return read_dht22()
+
+    def read_tank_level(self):
+        return read_tank_level()
+        
+    def cleanup(self):
+        if hasattr(self, 'i2c_bus') and self.i2c_bus:
+            try:
+                self.i2c_bus.close()
+            except Exception:
+                pass
+        cleanup()

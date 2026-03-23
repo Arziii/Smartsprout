@@ -1,54 +1,100 @@
+import 'dart:io';
 import 'dart:ui';
+import '../core/utils/platform_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../presentation/providers/auth_provider.dart';
+import '../presentation/screens/hardware_login_screen.dart';
 import '../screens/dashboard_page.dart';
 import '../presentation/screens/control_screen.dart';
 import '../presentation/screens/analytics_screen.dart';
 import '../presentation/screens/settings_screen.dart';
 import '../presentation/screens/pairing_screen.dart';
+import '../presentation/screens/calibration_screen.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'root');
 final GlobalKey<NavigatorState> _shellNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'shell');
 
-final GoRouter appRouter = GoRouter(
-  navigatorKey: _rootNavigatorKey,
-  initialLocation: '/pairing',
-  routes: [
-    ShellRoute(
-      navigatorKey: _shellNavigatorKey,
-      builder: (context, state, child) {
-        final location = GoRouterState.of(context).matchedLocation;
-        final showNavBar = location != '/pairing';
-        return ScaffoldWithNavBar(child: child, showNavBar: showNavBar);
-      },
-      routes: [
-        GoRoute(
-          path: '/pairing',
-          builder: (context, state) => const PairingScreen(),
-        ),
-        GoRoute(
-          path: '/dashboard',
-          builder: (context, state) => const DashboardPage(),
-        ),
-        GoRoute(
-          path: '/control',
-          builder: (context, state) => const ControlScreen(),
-        ),
-        GoRoute(
-          path: '/analytics',
-          builder: (context, state) => const AnalyticsScreen(),
-        ),
-        GoRoute(
-          path: '/settings',
-          builder: (context, state) => const SettingsScreen(),
-        ),
-      ],
-    ),
-  ],
-);
+final routerProvider = Provider<GoRouter>((ref) {
+  return GoRouter(
+    navigatorKey: _rootNavigatorKey,
+    // Start on the dashboard immediately for Linux, login for mobile
+    initialLocation: Platform.isLinux ? '/dashboard' : '/login',
+    redirect: (context, state) {
+      // Hard guard at the top to ensure Raspberry Pi ignores auth states
+      if (Platform.isLinux) return null;
+
+      final authState = ref.read(authProvider);
+      final isLoggedIn = authState.deviceId != null;
+      final isLoggingIn = state.matchedLocation == '/login';
+
+      // If still loading initial state from local storage, don't redirect yet
+      if (authState.isLoading && !isLoggedIn) {
+        return null;
+      }
+
+      if (!isLoggedIn) {
+        return isLoggingIn ? null : '/login';
+      }
+
+      if (isLoggedIn && isLoggingIn) {
+        return '/dashboard'; // default after login
+      }
+
+      return null;
+    },
+    routes: [
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const HardwareLoginScreen(),
+      ),
+      ShellRoute(
+        navigatorKey: _shellNavigatorKey,
+        builder: (context, state, child) {
+          final location = GoRouterState.of(context).matchedLocation;
+          final showNavBar = location != '/pairing' && location != '/login';
+          return ScaffoldWithNavBar(child: child, showNavBar: showNavBar);
+        },
+        routes: [
+          GoRoute(
+            path: '/pairing',
+            pageBuilder: (context, state) => _buildPage(state, const PairingScreen()),
+          ),
+          GoRoute(
+            path: '/dashboard',
+            pageBuilder: (context, state) => _buildPage(state, const DashboardPage()),
+          ),
+          GoRoute(
+            path: '/control',
+            pageBuilder: (context, state) => _buildPage(state, const ControlScreen()),
+          ),
+          GoRoute(
+            path: '/analytics',
+            pageBuilder: (context, state) => _buildPage(state, const AnalyticsScreen()),
+          ),
+          GoRoute(
+            path: '/settings',
+            pageBuilder: (context, state) => _buildPage(state, const SettingsScreen()),
+          ),
+          GoRoute(
+            path: '/calibration',
+            pageBuilder: (context, state) => _buildPage(state, const CalibrationScreen()),
+          ),
+        ],
+      ),
+    ],
+  );
+});
+
+Page<dynamic> _buildPage(GoRouterState state, Widget child) {
+  return Platform.isLinux
+      ? NoTransitionPage(key: state.pageKey, child: child)
+      : MaterialPage(key: state.pageKey, child: child);
+}
 
 // ─────────────────────────────────────────────
 // ScaffoldWithNavBar — premium frosted-glass nav
@@ -113,48 +159,54 @@ class _FrostedNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
 
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          decoration: BoxDecoration(
-            // 60% white frosted glass matching the dashboard overlay
-            color: Colors.white.withValues(alpha: 0.60),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border(
-              top: BorderSide(
-                color: Colors.white.withValues(alpha: 0.50),
-                width: 1.0,
-              ),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.10),
-                blurRadius: 24,
-                offset: const Offset(0, -4),
-              ),
-            ],
+    final navContent = Container(
+      decoration: BoxDecoration(
+        // Lite: fully opaque  |  Premium: 60% frosted glass
+        color: Colors.white.withOpacity(isLiteMode ? 1.0 : 0.60),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(
+          top: BorderSide(
+            color: Colors.white.withOpacity(0.50),
+            width: 1.0,
           ),
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: 68,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List.generate(items.length, (i) {
-                  return _NavButton(
-                    data: items[i],
-                    isSelected: i == selectedIndex,
-                    activeColor: primary,
-                    onTap: () => onTap(items[i].path),
-                  );
-                }),
-              ),
-            ),
+        ),
+        boxShadow: isLiteMode
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.10),
+                  blurRadius: 24,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 68,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: List.generate(items.length, (i) {
+              return _NavButton(
+                data: items[i],
+                isSelected: i == selectedIndex,
+                activeColor: primary,
+                onTap: () => onTap(items[i].path),
+              );
+            }),
           ),
         ),
       ),
+    );
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: isPremiumMode
+          ? BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: navContent,
+            )
+          : navContent,
     );
   }
 }
@@ -183,7 +235,6 @@ class _NavButtonState extends State<_NavButton>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
-  late Animation<double> _pillWidth;
 
   @override
   void initState() {
@@ -194,9 +245,6 @@ class _NavButtonState extends State<_NavButton>
     );
     _scale = Tween<double>(begin: 1.0, end: 0.88).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
-    _pillWidth = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
     );
   }
 
@@ -259,8 +307,8 @@ class _NavButtonState extends State<_NavButton>
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                                 colors: [
-                                  widget.activeColor.withValues(alpha: 0.90),
-                                  widget.activeColor.withValues(alpha: 0.65),
+                                  widget.activeColor.withOpacity(0.90),
+                                  widget.activeColor.withOpacity(0.65),
                                 ],
                               )
                             : null,
@@ -268,8 +316,7 @@ class _NavButtonState extends State<_NavButton>
                         boxShadow: widget.isSelected
                             ? [
                                 BoxShadow(
-                                  color: widget.activeColor
-                                      .withValues(alpha: 0.35),
+                                  color: widget.activeColor.withOpacity(0.35),
                                   blurRadius: 12,
                                   spreadRadius: 1,
                                   offset: const Offset(0, 3),

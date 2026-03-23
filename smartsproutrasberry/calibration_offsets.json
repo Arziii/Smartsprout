@@ -1,0 +1,17 @@
+{
+    "zone_1": {
+        "dry_raw": 26000,
+        "wet_raw": 13000,
+        "manual_offset_pct": 1
+    },
+    "zone_2": {
+        "dry_raw": 26000,
+        "wet_raw": 13000,
+        "manual_offset_pct": 0
+    },
+    "zone_3": {
+        "dry_raw": 26000,
+        "wet_raw": 13000,
+        "manual_offset_pct": 0
+    }
+}

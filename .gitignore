@@ -1,0 +1,73 @@
+# ======================================================================
+# Smart Sprout — Production .gitignore
+# ======================================================================
+
+# ── 1. Python & Raspberry Pi ──
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.Python
+env/
+venv/
+.venv/
+
+# Environment configurations & Secrets
+.env
+.env.*
+!**/.env.example
+smartsproutrasberry/firebase-adminsdk.json
+
+# Local runtime data
+smartsproutrasberry/device_config.json
+smartsproutrasberry/calibration_offsets.json
+
+# ── 2. Flutter & Dart ──
+# Core
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+lib/generated_plugin_registrant.dart
+
+# App packaging
+*.ipa
+*.apk
+*.aab
+*.app
+*.tar.gz
+*.dmg
+
+# Firebase credentials
+google-services.json
+GoogleService-Info.plist
+firebase_options.dart
+
+# Exceptions to above rules
+!default.pbxproj
+!Pods/
+
+# ── 3. IDEs & OS Files ──
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── 4. Debug & Log Files ──
+*.log
+smartsprout/*.log
+smartsprout/*.txt
+!smartsprout/CMakeLists.txt
+flutter_*.log
+crash_*.log
+
+# ── 5. Test Tools ──
+.testsprite/
+testsprite_tests/

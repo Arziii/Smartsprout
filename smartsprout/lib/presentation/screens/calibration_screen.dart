@@ -1,0 +1,841 @@
+import 'dart:io';
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../providers/sensor_provider.dart';
+import '../../data/services/data_service.dart';
+
+class CalibrationScreen extends ConsumerStatefulWidget {
+  const CalibrationScreen({super.key});
+
+  @override
+  ConsumerState<CalibrationScreen> createState() => _CalibrationScreenState();
+}
+
+class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _entranceController;
+
+  // Local optimistic offset values
+  final Map<int, double?> _localOffsets = {1: null, 2: null, 3: null};
+
+  // Local optimistic precision saturation values
+  final Map<int, double> _localTargets = {1: 65.0, 2: 65.0, 3: 65.0};
+  final Map<int, int> _localTimeouts = {1: 30, 2: 30, 3: 30};
+  bool _targetsLoaded = false;
+
+  // Text controllers for each zone
+  late final TextEditingController _ctrl1;
+  late final TextEditingController _ctrl2;
+  late final TextEditingController _ctrl3;
+
+  @override
+  void initState() {
+    super.initState();
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..forward();
+
+    _ctrl1 = TextEditingController();
+    _ctrl2 = TextEditingController();
+    _ctrl3 = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _ctrl1.dispose();
+    _ctrl2.dispose();
+    _ctrl3.dispose();
+    _entranceController.dispose();
+    super.dispose();
+  }
+
+  TextEditingController _controllerForZone(int zone) {
+    switch (zone) {
+      case 1: return _ctrl1;
+      case 2: return _ctrl2;
+      case 3: return _ctrl3;
+      default: return _ctrl1;
+    }
+  }
+
+  void _submitOffset(int zone, String text) {
+    final value = double.tryParse(text);
+    if (value == null) return;
+    final clamped = value.clamp(-50.0, 50.0);
+
+    // 1. Optimistic local update
+    setState(() {
+      _localOffsets[zone] = clamped;
+    });
+
+    // 2. Optimistically update the Dashboard state immediately
+    ref.read(sensorDataProvider.notifier).updateCalibration(zone, clamped);
+
+    final dataService = ref.read(dataServiceProvider);
+
+    // 3. Write calibration directly to Firestore (immediate database update)
+    dataService?.updateCalibrationInFirestore(zone, clamped);
+
+    // 4. Send offset command to the Pi via Firebase (so Pi also knows)
+    dataService?.sendCommand({
+      'command': 'set_offset',
+      'zone': zone,
+      'value': clamped,
+    });
+
+    // 5. Force-sync so the Pi pushes fresh sensor data
+    dataService?.forceSync();
+
+    // 6. Show feedback
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Threshold set to ${clamped.toStringAsFixed(0)}% for Zone $zone',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: const Color(0xFF0F2027),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+
+    // Clear focus
+    FocusScope.of(context).unfocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sensorData = ref.watch(sensorDataProvider);
+    final isConnected = Platform.isLinux || !sensorData.isOffline;
+    final moistureData = sensorData.soilMoisture;
+
+    // Initialize local targets from Firestore data on first build
+    if (!_targetsLoaded) {
+      for (int z = 1; z <= 3; z++) {
+        _localTargets[z] = sensorData.targetMoisture[z - 1];
+        _localTimeouts[z] = sensorData.maxPumpRuntime[z - 1];
+      }
+      _targetsLoaded = true;
+    }
+
+    // Live sensor moisture per zone
+    double liveMoisture(int zoneIndex) {
+      return moistureData.length > zoneIndex ? moistureData[zoneIndex] : 0.0;
+    }
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      backgroundColor: const Color(0xFFFAFAFA),
+      appBar: AppBar(
+        title: Text('Calibration',
+            style: GoogleFonts.outfit(
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF0F2027),
+              letterSpacing: -0.5,
+            )),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              color: Color(0xFF0F2027), size: 20),
+          onPressed: () => context.canPop() ? context.pop() : context.pushReplacement('/settings'),
+        ),
+      ),
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Stack(
+          children: [
+            // Background Gradient
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                  ),
+                ),
+              ),
+            ),
+            
+            // Organic Blob shapes
+            Positioned(
+              top: -50,
+              right: -100,
+              child: Container(
+                width: 300,
+                height: 300,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF2BCC71).withOpacity(0.15),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 100,
+              left: -100,
+              child: Container(
+                width: 400,
+                height: 400,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.blue.withOpacity(0.1),
+                ),
+              ),
+            ),
+
+            SafeArea(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                children: [
+                  _buildInfoBanner(),
+                  const SizedBox(height: 25),
+                  _buildSectionHeader('Beds Offset'),
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Column(
+                          children: [
+                            for (int i = 0; i < 3; i++) ...[
+                              _buildAnimatedItem(
+                                i,
+                                _buildCalibrationCard(
+                                  zone: i + 1,
+                                  label: i == 0 ? 'LEFT BED' : i == 1 ? 'CENTER BED' : 'RIGHT BED',
+                                  liveMoisture: liveMoisture(i),
+                                  offsetValue: _localOffsets[i + 1],
+                                  isConnected: isConnected,
+                                ),
+                              ),
+                              const SizedBox(height: 15),
+                            ],
+                          ],
+                        ),
+                        if (!isConnected)
+                          Positioned.fill(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(24),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                                child: Container(
+                                  color: Colors.white.withOpacity(0.6),
+                                  alignment: Alignment.center,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const CircularProgressIndicator(color: Color(0xFF2BCC71)),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'Searching for Raspberry Pi...',
+                                        style: GoogleFonts.outfit(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 16,
+                                          color: const Color(0xFF0F2027),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  const SizedBox(height: 30),
+                  _buildSectionHeader('Reference Reset'),
+                  _buildAnimatedItem(
+                    4,
+                    _buildDryCalibrationButton(isConnected),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoBanner() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F2027).withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFA726).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.info_outline_rounded, color: Color(0xFFE65100), size: 24),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Text(
+              'Type the desired offset and tap SET. Live moisture is shown below — the offset badge appears in the top-right.',
+              style: GoogleFonts.outfit(
+                color: const Color(0xFF37474F),
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 12),
+      child: Text(
+        title.toUpperCase(),
+        style: GoogleFonts.outfit(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: const Color(0xFF4A6164),
+          letterSpacing: 1.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCalibrationCard({
+    required int zone,
+    required String label,
+    required double liveMoisture,
+    required double? offsetValue,
+    required bool isConnected,
+  }) {
+    final ctrl = _controllerForZone(zone);
+
+    // Color based on moisture level
+    Color moistureColor;
+    if (liveMoisture < 25) {
+      moistureColor = Colors.redAccent;
+    } else if (liveMoisture < 50) {
+      moistureColor = const Color(0xFFFFA726);
+    } else {
+      moistureColor = const Color(0xFF2BCC71);
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F2027).withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header Row: Label + Offset Badge ──
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  color: const Color(0xFF0F2027),
+                ),
+              ),
+              // Offset badge in upper-right
+              if (offsetValue != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF29B6F6).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF29B6F6).withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.tune_rounded, size: 12, color: const Color(0xFF0277BD)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${offsetValue >= 0 ? "+" : ""}${offsetValue.toStringAsFixed(1)}%',
+                        style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          color: const Color(0xFF0277BD),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'No offset',
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // ── Live Moisture Display ──
+          Row(
+            children: [
+              Icon(Icons.water_drop_rounded, color: moistureColor, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                isConnected ? '${liveMoisture.toStringAsFixed(1)}%' : '--%',
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 28,
+                  color: const Color(0xFF0F2027),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'MOISTURE',
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 10,
+                  letterSpacing: 1.0,
+                  color: const Color(0xFF4A6164).withOpacity(0.6),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+
+          // ── Offset Input Row ──
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: const Color(0xFF2BCC71).withOpacity(0.3),
+                    ),
+                  ),
+                  child: TextField(
+                    controller: ctrl,
+                    enabled: isConnected,
+                    keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*')),
+                    ],
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: const Color(0xFF0F2027),
+                    ),
+                    decoration: InputDecoration(
+                      hintText: '0.0',
+                      hintStyle: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 18,
+                        color: Colors.grey.shade400,
+                      ),
+                      suffixText: '%',
+                      suffixStyle: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                        color: const Color(0xFF4A6164),
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    ),
+                    onSubmitted: (text) => _submitOffset(zone, text),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // SET button
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: isConnected
+                      ? () => _submitOffset(zone, ctrl.text)
+                      : null,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Ink(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: isConnected
+                            ? [const Color(0xFF2BCC71), const Color(0xFF20A056)]
+                            : [Colors.grey.shade300, Colors.grey.shade400],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: isConnected
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFF2BCC71).withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Text(
+                      'SET',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: Colors.white,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // ── Precision Saturation Controls ──
+          _buildPrecisionControls(zone, isConnected),
+        ],
+      ),
+    );
+  }
+
+  /// Builds the precision saturation controls for a zone.
+  Widget _buildPrecisionControls(int zone, bool isConnected) {
+    final target = _localTargets[zone] ?? 65.0;
+    final timeout = _localTimeouts[zone] ?? 30;
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      child: Container(
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0F9F4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFF2BCC71).withOpacity(0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.track_changes_rounded, size: 16, color: const Color(0xFF2BCC71)),
+                const SizedBox(width: 6),
+                Text(
+                  'PRECISION SATURATION',
+                  style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                    letterSpacing: 1.2,
+                    color: const Color(0xFF4A6164),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // Target Saturation Slider
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Target Saturation',
+                    style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: const Color(0xFF37474F))),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2BCC71).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('${target.round()}%',
+                      style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          color: const Color(0xFF2BCC71))),
+                ),
+              ],
+            ),
+            Slider(
+              value: target,
+              min: 10,
+              max: 100,
+              divisions: 18,
+              activeColor: const Color(0xFF2BCC71),
+              inactiveColor: const Color(0xFF2BCC71).withOpacity(0.15),
+              onChanged: isConnected
+                  ? (val) {
+                      setState(() => _localTargets[zone] = val);
+                    }
+                  : null,
+              onChangeEnd: isConnected
+                  ? (val) => _submitZoneTargets(zone)
+                  : null,
+            ),
+
+            const SizedBox(height: 8),
+
+            // Safety Timeout Slider
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Safety Timeout',
+                    style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: const Color(0xFF37474F))),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFA726).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('${timeout}s',
+                      style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          color: const Color(0xFFE65100))),
+                ),
+              ],
+            ),
+            Slider(
+              value: timeout.toDouble(),
+              min: 5,
+              max: 120,
+              divisions: 23,
+              activeColor: const Color(0xFFFFA726),
+              inactiveColor: const Color(0xFFFFA726).withOpacity(0.15),
+              onChanged: isConnected
+                  ? (val) {
+                      setState(() => _localTimeouts[zone] = val.round());
+                    }
+                  : null,
+              onChangeEnd: isConnected
+                  ? (val) => _submitZoneTargets(zone)
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _submitZoneTargets(int zone) {
+    final target = _localTargets[zone] ?? 65.0;
+    final timeout = _localTimeouts[zone] ?? 30;
+
+    // Write to Firestore
+    final dataService = ref.read(dataServiceProvider);
+    dataService?.updateZoneTargets(zone, target, timeout);
+
+    // Show feedback
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Zone $zone: Target ${target.round()}%, Timeout ${timeout}s',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: const Color(0xFF0F2027),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Widget _buildDryCalibrationButton(bool isConnected) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: isConnected
+            ? () {
+                _showConfirmDryCalibrationDialog();
+              }
+            : null,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          decoration: BoxDecoration(
+             gradient: LinearGradient(
+              colors: isConnected 
+                  ? [const Color(0xFF2BCC71), const Color(0xFF20A056)]
+                  : [Colors.grey.withOpacity(0.4), Colors.grey.withOpacity(0.5)],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: isConnected ? null : Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
+            boxShadow: isConnected ? [
+              BoxShadow(
+                color: const Color(0xFF2BCC71).withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              )
+            ] : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: isConnected 
+              ? [
+                  const Icon(Icons.water_drop_outlined, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text(
+                    'RUN DRY CALIBRATION (ALL ZONES)',
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      color: Colors.white,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                ]
+              : [
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.5,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'WAITING FOR CONNECTION...',
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      color: Colors.white,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showConfirmDryCalibrationDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+        child: AlertDialog(
+          backgroundColor: Colors.white.withOpacity(0.9),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Text(
+            'Confirm Dry Calibration',
+            style: GoogleFonts.outfit(
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF0F2027),
+            ),
+          ),
+          content: Text(
+            'Please ensure all soil sensors are completely dry and exposed to air before running this calibration. This will reset the 0% reference for all zones.',
+            style: GoogleFonts.outfit(color: const Color(0xFF37474F)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: Text(
+                'CANCEL',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final dataService = ref.read(dataServiceProvider);
+                dataService?.sendCommand({'command': 'dry_calibrate'});
+                // Auto force-sync after dry calibration
+                dataService?.forceSync();
+                Navigator.pop(dialogCtx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Dry calibration command sent — syncing live data...'),
+                    backgroundColor: const Color(0xFF0F2027),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2BCC71),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Text('CONFIRM', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedItem(int index, Widget child) {
+    final animation = Tween<Offset>(
+      begin: const Offset(0, 0.5),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _entranceController,
+      curve: Interval(
+        (index * 0.1).clamp(0.0, 1.0),
+        1.0,
+        curve: Curves.easeOutCubic,
+      ),
+    ));
+
+    final opacity = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(
+      parent: _entranceController,
+      curve: Interval(
+        (index * 0.1).clamp(0.0, 1.0),
+        1.0,
+        curve: Curves.easeOut,
+      ),
+    ));
+
+    return SlideTransition(
+      position: animation,
+      child: FadeTransition(
+        opacity: opacity,
+        child: child,
+      ),
+    );
+  }
+}

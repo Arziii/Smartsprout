@@ -1,0 +1,19 @@
+[Unit]
+Description=Smart Sprout — Raspberry Pi Controller
+Documentation=https://github.com/smartsprout
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smartsprout
+WorkingDirectory=/home/smartsprout/Smartsprout
+ExecStart=/usr/bin/python3 /home/smartsprout/Smartsprout/main.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
