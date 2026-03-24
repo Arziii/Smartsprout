@@ -30,19 +30,17 @@ except ImportError:
 
 try:
     import board
-    import adafruit_dht
-    _DHT_AVAILABLE = True
+    import adafruit_bme280
+    _BME_AVAILABLE = True
     
-    # Initialize the DHT device early so it's ready for polling.
-    # We map config.DHT22_PIN (e.g., 4) to board.D4 
-    _pin_attr = f"D{config.DHT22_PIN}"
-    _pin = getattr(board, _pin_attr, getattr(board, "D4")) 
-    _dht_device = adafruit_dht.DHT22(_pin)
+    # Initialize I2C and the BME280 sensor
+    _i2c = board.I2C()
+    _bme_device = adafruit_bme280.Adafruit_BME280_I2C(_i2c, address=config.BME280_I2C_ADDRESS)
     
-except (ImportError, NotImplementedError, AttributeError) as e:
-    _DHT_AVAILABLE = False
-    _dht_device = None
-    print(f"[WARN] adafruit_dht init failed ({e}) — DHT22 will return mock data.")
+except (ImportError, ValueError, RuntimeError, AttributeError) as e:
+    _BME_AVAILABLE = False
+    _bme_device = None
+    print(f"[WARN] BME280 init failed ({e}) — Temp/Hum/Pres will return mock data.")
 
 
 # ═══════════════════════════════════════════════════════
@@ -186,98 +184,55 @@ def run_dry_calibration(target_zone=None) -> dict:
 
 
 # ═══════════════════════════════════════════════════════
-# DHT22 — Temperature & Humidity
+# BME280 — Temperature, Humidity & Pressure
 # ═══════════════════════════════════════════════════════
-def read_dht22() -> dict:
+def read_environment() -> dict:
     """
-    Returns {"temperature": float, "humidity": float}.
-    Values are -1.0 on sensor fault.
+    Returns {"temperature": float, "humidity": float, "pressure": float}.
+    Values are 0.0 on sensor fault or simulation.
     """
-    global _dht_device
-    if not _DHT_AVAILABLE or not _dht_device:
-        return {"temperature": 0.0, "humidity": 0.0}
+    if not _BME_AVAILABLE or not _bme_device:
+        return {"temperature": 0.0, "humidity": 0.0, "pressure": 0.0}
 
-    # Try up to 3 times to get a valid reading, catching Checksum errors.
-    for attempt in range(3):
-        try:
-            temperature = _dht_device.temperature
-            humidity = _dht_device.humidity
-            
-            if temperature is not None and humidity is not None:
-                return {
-                    "temperature": round(temperature, 1),
-                    "humidity": round(humidity, 1),
-                }
-        except RuntimeError as e:
-            # DHT22 sensors frequently throw Checksum errors (RuntimeError in adafruit_dht)
-            # Wait 2 seconds and try again instead of crashing.
-            print(f"[WARN] DHT22 transient error (attempt {attempt+1}): {e} - Retrying in 2 seconds...")
-            time.sleep(2.0)
-            continue
-        except Exception as e:
-            print(f"[ERROR] DHT22 critical failure: {e}")
-            break
-            
-    # If the loop exhausts retries:
-    print("[WARN] DHT22 not responding after 3 attempts — returning simulation values.")
-    return {"temperature": 0.0, "humidity": 0.0}
+    try:
+        return {
+            "temperature": round(_bme_device.temperature, 1),
+            "humidity": round(_bme_device.humidity, 1),
+            "pressure": round(_bme_device.pressure, 1),
+        }
+    except Exception as e:
+        print(f"[ERROR] BME280 read failure: {e}")
+        return {"temperature": 0.0, "humidity": 0.0, "pressure": 0.0}
 
 
 # ═══════════════════════════════════════════════════════
-# HC-SR04 — Ultrasonic Tank Level
+# XKC-Y26-V — Non-contact Tank Level (Digital)
 # ═══════════════════════════════════════════════════════
-def _setup_ultrasonic():
+def _setup_tank_sensor():
     if not _GPIO_AVAILABLE:
         return
-    GPIO.setup(config.ULTRASONIC_TRIGGER, GPIO.OUT)
-    GPIO.setup(config.ULTRASONIC_ECHO, GPIO.IN)
-    GPIO.output(config.ULTRASONIC_TRIGGER, False)
+    GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN)
 
 
 def read_tank_level() -> float:
     """
     Returns tank fill percentage (0-100%).
-    Uses the ultrasonic distance to calculate volume.
-    Returns -1.0 on sensor fault.
+    Since XKC is a digital sensor, it returns 100% if water is detected 
+    at the sensor's mounting level, and 0% if not.
     """
     if not _GPIO_AVAILABLE:
-        return 0.0  # Force 0.0 when no hardware is attached so safety locks engage
+        return 0.0
 
     try:
-        _setup_ultrasonic()
-        time.sleep(0.05)
-
-        # Send 10µs trigger pulse
-        GPIO.output(config.ULTRASONIC_TRIGGER, True)
-        time.sleep(0.00001)
-        GPIO.output(config.ULTRASONIC_TRIGGER, False)
-
-        # Wait for echo (with timeout)
-        timeout = time.time() + 0.04  # 40ms max
-        pulse_start = time.time()
-        while GPIO.input(config.ULTRASONIC_ECHO) == 0:
-            pulse_start = time.time()
-            if pulse_start > timeout:
-                return -1.0
-
-        pulse_end = time.time()
-        timeout = time.time() + 0.04
-        while GPIO.input(config.ULTRASONIC_ECHO) == 1:
-            pulse_end = time.time()
-            if pulse_end > timeout:
-                return -1.0
-
-        # Speed of sound = 34300 cm/s, round trip
-        distance_cm = (pulse_end - pulse_start) * 34300.0 / 2.0
-
-        # Map distance to percentage
-        usable_range = config.TANK_EMPTY_DISTANCE - config.TANK_FULL_DISTANCE
-        pct = (config.TANK_EMPTY_DISTANCE - distance_cm) / usable_range * 100.0
-        pct = max(0.0, min(100.0, pct))
-        return round(pct, 1)
+        _setup_tank_sensor()
+        # XKC-Y26-V typically outputs HIGH when water is detected.
+        # Ensure your specific model's logic matches (adjust if needed).
+        if GPIO.input(config.XKC_LEVEL_PIN):
+            return 100.0
+        return 0.0
 
     except Exception as e:
-        print(f"[ERROR] Ultrasonic read failed: {e}")
+        print(f"[ERROR] Tank level read failed: {e}")
         return -1.0
 
 
@@ -364,10 +319,9 @@ def get_wifi_status() -> dict:
 def run_calibration() -> dict:
     """
     Performs a sensor calibration by taking 10 rapid readings
-    and returning the averaged raw ADC values plus the tank's
-    empty ultrasonic distance.
+    and returning the averaged raw ADC values.
     """
-    results = {"soil_raw": [], "tank_distance_cm": -1.0}
+    results = {"soil_raw": [], "tank_status": "ok"}
 
     # Soil calibration (average of 10 reads per channel)
     if _SMBUS_AVAILABLE:
@@ -385,21 +339,9 @@ def run_calibration() -> dict:
         except (IOError, OSError) as e:
             print(f"[ERROR] Calibration soil read failed: {e}")
             results["soil_raw"] = [-1, -1, -1]
-        results["soil_raw"] = [19500, 17200, 22100]
 
-    # Tank distance calibration (average of 5 reads)
-    if _GPIO_AVAILABLE:
-        try:
-            distances = []
-            for _ in range(5):
-                d = read_tank_level()  # returns percentage, we need raw distance
-                distances.append(d)
-                time.sleep(0.2)
-            results["tank_distance_cm"] = round(sum(distances) / len(distances), 1)
-        except Exception as e:
-            print(f"[ERROR] Calibration tank read failed: {e}")
-    else:
-        results["tank_distance_cm"] = 75.0
+    # Simple digital check for tank sensor
+    results["tank_level"] = read_tank_level()
 
     results["status"] = "complete"
     return results
@@ -501,11 +443,11 @@ class SensorManager:
         else:
             self.i2c_bus = None
 
-        # Confirm DHT22 GPIO binding
-        if _DHT_AVAILABLE:
-            print(f"[INIT] DHT22 initialized on GPIO {config.DHT22_PIN}.")
+        # Confirm BME280 configuration
+        if _BME_AVAILABLE:
+            print(f"[INIT] BME280 initialized on I2C (Address {hex(config.BME280_I2C_ADDRESS)}).")
         else:
-            print("[WARN] DHT22 hardware not found.")
+            print("[WARN] BME280 hardware not found.")
             
         print("[INIT] SensorManager ready for polling.")
 
@@ -535,9 +477,9 @@ class SensorManager:
         # Reads A0, A1, A2 from ADS1115 and returns dict {"bed1": val...}
         return read_soil_moisture()
 
-    def read_dht22(self):
-        # Reads GPIO 4 (or configured pin)
-        return read_dht22()
+    def read_environment(self):
+        # Reads Temp/Hum/Pres from BME280
+        return read_environment()
 
     def read_tank_level(self):
         return read_tank_level()

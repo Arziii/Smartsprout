@@ -47,14 +47,13 @@ def factory_reset():
         os.remove(cal_file)
     print("[CONFIG] Factory reset complete.")
 
-# ── I2C (ADS1115 ADC) ──
+# ── I2C Bus Address ──
 ADS1115_I2C_BUS = int(os.getenv("ADS1115_I2C_BUS", "1"))
 ADS1115_I2C_ADDRESS = int(os.getenv("ADS1115_I2C_ADDRESS", "0x48"), 16)
+BME280_I2C_ADDRESS = int(os.getenv("BME280_I2C_ADDRESS", "0x76"), 16)
 
 # ── Digital Sensors ──
-DHT22_PIN = int(os.getenv("DHT22_GPIO_PIN", "4"))
-ULTRASONIC_TRIGGER = int(os.getenv("ULTRASONIC_TRIGGER_PIN", "5"))
-ULTRASONIC_ECHO = int(os.getenv("ULTRASONIC_ECHO_PIN", "6"))
+XKC_LEVEL_PIN = int(os.getenv("XKC_LEVEL_PIN", "5"))
 
 # ── Relay Module (Active LOW) ──
 RELAY_PUMP = int(os.getenv("RELAY_PUMP_PIN", "17"))
@@ -70,7 +69,7 @@ RESET_HOLD_SECONDS = int(os.getenv("RESET_HOLD_SECONDS", "5"))
 RESET_LED_PIN = int(os.getenv("RESET_LED_PIN", "18"))
 
 # ── Safety ──
-PUMP_TIMEOUT_SECONDS = int(os.getenv("PUMP_TIMEOUT_SECONDS", "30"))
+PUMP_TIMEOUT_SECONDS = int(os.getenv("PUMP_TIMEOUT_SECONDS", "120"))
 
 # ── Precision Saturation Defaults ──
 DEFAULT_TARGET_MOISTURE = float(os.getenv("DEFAULT_TARGET_MOISTURE", "65.0"))

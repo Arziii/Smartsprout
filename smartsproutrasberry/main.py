@@ -260,7 +260,7 @@ def collect_telemetry(interval: float) -> dict:
     global _pump_locked
 
     soil, soil_raw, soil_fault = sensor_manager.read_soil_moisture()
-    dht = sensor_manager.read_dht22()
+    env = sensor_manager.read_environment()
     tank = sensor_manager.read_tank_level()
 
     # ── Safety Logic ──
@@ -279,8 +279,8 @@ def collect_telemetry(interval: float) -> dict:
     if soil_fault or any(s < 0 for s in soil.values()):
         alerts.append("soil_sensor_fault")
         system_status = "sensor_fault"
-    if dht["temperature"] < 0 or dht["humidity"] < 0:
-        alerts.append("dht_sensor_fault")
+    if env["temperature"] <= 0 and env["humidity"] <= 0:
+        alerts.append("environment_sensor_fault")
         system_status = "sensor_fault"
     if tank < 0:
         alerts.append("tank_sensor_fault")
@@ -300,8 +300,9 @@ def collect_telemetry(interval: float) -> dict:
         "soil_moisture": soil,
         "soil_moisture_raw": soil_raw,
         "soil_offsets": soil_offsets,
-        "temperature": dht["temperature"],
-        "humidity": dht["humidity"],
+        "temperature": env["temperature"],
+        "humidity": env["humidity"],
+        "pressure": env["pressure"],
         "tank_level": tank,
         "pump_locked": _pump_locked,
         "system_status": system_status,

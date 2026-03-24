@@ -70,7 +70,7 @@ The UI/UX design prioritizes simplicity, intuitiveness, and responsiveness. Key 
 
 The Smart Sprout hardware system integrates:
 • Soil moisture sensors (volumetric water content)
-• DHT sensors (temperature and humidity)
+• BME280 sensors (temperature, humidity, and barometric pressure)
 • Non-contact liquid level sensor (reservoir level monitoring)
 • Raspberry Pi controller with Physical Touchscreen Display (Flutter Kiosk Mode)
 
@@ -188,6 +188,7 @@ Document Structure:
   • soil_moisture: [double, double, double]
   • temperature: double
   • humidity: double
+  • pressure: double
   • hashed_pin: string
 
 Subcollection: commands/{commandId}
@@ -429,8 +430,8 @@ PHASE 4.19: MULTI-TIER PLATFORM OPTIMIZATION [COMPLETED]
 │                    │ (Kiosk Mode)        │ control & calibration   │
 ├────────────────────┼─────────────────────┼─────────────────────────┤
 │ Sensor Interface   │ Python RPi.GPIO +   │ Hardware sensor reading │
-│                    │ Adafruit_DHT +      │ ADS1115 I2C ADC for     │
-│                    │ smbus2              │ soil moisture            │
+│                    │ adafruit-bme280 +   │ ADS1115 I2C ADC for     │
+│                    │ smbus2              │ soil moisture           │
 ├────────────────────┼─────────────────────┼─────────────────────────┤
 │ Cloud Sync         │ firebase-admin      │ Direct Firestore        │
 │                    │ Python SDK          │ integration and command │
@@ -505,7 +506,7 @@ backend. These can be securely overridden locally via the `.env` configuration f
 ┌───────────────────────┬───────────────────────────┬─────────────────────────────┐
 │ Component             │ Interface                 │ Physical Pin Allocation     │
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ DHT22 (Temp/Hum)      │ Digital GPIO              │ GPIO 4                      │
+│ BME280 (Temp/Hum/Pres)│ I2C Bus 1 (0x76/77)       │ SDA: GPIO 2, SCL: GPIO 3    │
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
 │ Non-Contact Tank Level│ Digital GPIO              │ Yellow (OUT): GPIO 5        │
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤

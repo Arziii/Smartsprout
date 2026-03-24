@@ -33,7 +33,7 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
                                       │    Hardware Layer        │
                                       │                          │
                                       │ ADS1115  ─► 3x Soil      │
-                                      │ DHT22    ─► Temp/Hum     │
+                                      │ BME280   ─► Temp/Hum/Pres│
                                       │ XKC-Y26-V─► Tank Level   │
                                       │ 4ch Relay─► Pump/Valves  │
                                       └──────────────────────────┘
@@ -61,8 +61,6 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
 
 ## 🔌 Hardware Pin Mapping
 
-| Component | GPIO (BCM) | Physical Pin | Direction | Notes |
-|:---|:---|:---|:---|:---|
 | **I2C SDA (ADS1115 & BME280)** | GPIO 2 | Pin 3 | I2C | Soil + Temp/Hum |
 | **I2C SCL (ADS1115 & BME280)** | GPIO 3 | Pin 5 | I2C | Soil + Temp/Hum |
 | **Water Level (XKC-Y26-V)** | GPIO 5 | Pin 29 | IN | Digital High/Low |
