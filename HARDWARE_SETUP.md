@@ -54,9 +54,13 @@ Wire the sensors to the Raspberry Pi GPIO pins exactly as described below.
 | | `SCL` | **BCM 3** (Pin 5) |
 | | `VCC` | **3.3V** (Pin 1 or 17) |
 | | `GND` | **GND** (Pin 6 or 9) |
-| **Water Level (XKC-Y26-V)** | `Brown` (VCC) | **5V** (Pin 2 or 4) |
+| **Analog Inputs (ADS1115)** | `A0` | **Soil Sensor Zone 1** (Analog Out) |
+| | `A1` | **Soil Sensor Zone 2** (Analog Out) |
+| | `A2` | **Soil Sensor Zone 3** (Analog Out) |
+| **Water Level (XKC-Y26-V)** | `Brown` (VCC) | **5V** (Pin 2/4) or **3.3V** (Pin 1/17) (See Note below!) |
 | | `Blue` (GND) | **GND** (Pin 6 or 9) |
-| | `Yellow` (OUT signal) | **BCM 5** (Pin 29) |
+| | `Yellow` (OUT signal) | **BCM 5** (Pin 29) (Needs Voltage Divider if powered by 5V!) |
+| | `Black` (Mode Select) | **GND** (Pin 6 or 9) to configure as Active-High logic |
 | Relay Module (Active-Low)| GPIO 17 (Pump IN1) | **BCM 17** (Pin 11) |
 |                          | GPIO 27 (Valve1 IN2) | **BCM 27** (Pin 13) |
 |                          | GPIO 22 (Valve2 IN3) | **BCM 22** (Pin 15) |
@@ -67,7 +71,7 @@ Wire the sensors to the Raspberry Pi GPIO pins exactly as described below.
 |                          | Blinks during hold, solid   | |
 |                          | on trigger, off on cancel   | |
 
-*(Note: For the XKC-Y26-V, ensure the Yellow OUT signal wire is compatible with 3.3V logic levels if you are powering the sensor from 5V. Some models require a 10k resistor pull-up to 3.3V to prevent damaging the Pi's GPIO.)*
+*(Note: The "V" variant of the sensor outputs a High signal equal to its input voltage. **If you power the Brown wire with 5V, the Yellow wire will output 5V, which WILL fry your Raspberry Pi's 3.3V GPIO!** Do not connect it directly if powered to 5V; use a voltage divider (e.g., 2kΩ and 1kΩ resistors) to step it down to 3.3V. Alternatively, try powering the Brown wire directly from the Pi's **3.3V** pin—many users report the sensor works perfectly at 3.3V, making the Yellow signal 100% safe for the Pi.)*
 
 ---
 
