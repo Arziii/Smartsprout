@@ -64,11 +64,13 @@ class SystemHealthPage extends ConsumerWidget {
               _buildDetailCard(
                 title: "Water Reservoir",
                 icon: Icons.water_drop_rounded,
-                statusText: sensorData.isTankLow ? "Low Water" : "Sufficient",
-                statusColor: sensorData.isTankLow ? Colors.redAccent : const Color(0xFF2BCC71),
-                description: sensorData.isTankLow 
-                    ? "Water level is deeply critical (${sensorData.tankLevel.toStringAsFixed(0)}%). Pump protection is active."
-                    : "Water level is at ${sensorData.tankLevel.toStringAsFixed(0)}%.",
+                statusText: isOffline ? "Unknown" : (sensorData.isTankLow ? "Low Water" : "Sufficient"),
+                statusColor: isOffline ? Colors.grey : (sensorData.isTankLow ? Colors.redAccent : const Color(0xFF2BCC71)),
+                description: isOffline 
+                    ? "Reservoir level unavailable while disconnected."
+                    : (sensorData.isTankLow 
+                        ? "Water level is deeply critical (${sensorData.tankLevel.toStringAsFixed(0)}%). Pump protection is active."
+                        : "Water level is at ${sensorData.tankLevel.toStringAsFixed(0)}%."),
               ),
               const SizedBox(height: 16),
 
@@ -76,9 +78,9 @@ class SystemHealthPage extends ConsumerWidget {
               _buildDetailCard(
                 title: "Sensor Integrity",
                 icon: Icons.memory_rounded,
-                statusText: sensorData.hasSensorFault ? "Fault Detected" : "All Systems Nominal",
-                statusColor: sensorData.hasSensorFault ? Colors.redAccent : const Color(0xFF2BCC71),
-                description: _getSensorDescription(sensorData),
+                statusText: isOffline ? "Status Unknown" : (sensorData.hasSensorFault ? "Fault Detected" : "All Systems Nominal"),
+                statusColor: isOffline ? Colors.grey : (sensorData.hasSensorFault ? Colors.redAccent : const Color(0xFF2BCC71)),
+                description: isOffline ? "Sensor data unavailable while disconnected." : _getSensorDescription(sensorData),
               ),
               const SizedBox(height: 16),
 
@@ -277,14 +279,14 @@ class SystemHealthPage extends ConsumerWidget {
         Row(
           children: [
             Text(
-              "Current: ${moisture.toStringAsFixed(0)}%",
+              sensorData.isOffline ? "Current: --%" : "Current: ${moisture.toStringAsFixed(0)}%",
               style: const TextStyle(
                 fontSize: 14,
                 color: Color(0xFF0F2027),
                 fontWeight: FontWeight.w600,
               ),
             ),
-            if (hasTarget) ...[
+            if (hasTarget && !sensorData.isOffline) ...[
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
