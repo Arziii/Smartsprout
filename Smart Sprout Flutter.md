@@ -109,6 +109,12 @@ The Smart Sprout hardware system integrates:
 ├─────────────────────────┼─────────────────────────────────────────┼──────────┤
 │ Data Synchronization    │ Consistent telemetry and commands via   │ P0       │
 │                         │ Cloud Firestore                         │          │
+├─────────────────────────┼─────────────────────────────────────────┼──────────┤
+│ Maintenance Mode        │ Automatic fault detection/reporting     │ P0       │
+│                         │ for disconnected I2C hardware.          │          │
+├─────────────────────────┼─────────────────────────────────────────┼──────────┤
+│ Account Switcher        │ Store up to 5 devices with nicknames    │ P1       │
+│                         │ for instant one-tap switching.          │          │
 └─────────────────────────┴─────────────────────────────────────────┴──────────┘
 
 
@@ -189,6 +195,7 @@ Document Structure:
   • temperature: double
   • humidity: double
   • pressure: double
+  • hardware_status: {bed1: "ok"|"fault", ...}
   • hashed_pin: string
 
 Subcollection: commands/{commandId}
@@ -262,9 +269,12 @@ lib/
 ├─────────────────┼───────────────────────────────────────────┼──────────────┤
 │ Hardware Login  │ Authenticate using Device ID and PIN      │ Cloud Only   │
 ├─────────────────┼───────────────────────────────────────────┼──────────────┤
-│ Dashboard       │ Live sensor cards, Tank visualization,    │ Cloud Only   │
+│ Dashboard       │ Live sensor cards, Maintenance Wrench UI, │ Cloud Only   │
 │                 │ Sync Now button, Plant-image ghost BG,    │              │
-│                 │ System Health navigable card              │              │
+│                 │ Grouped Environment Module                │              │
+├─────────────────┼───────────────────────────────────────────┼──────────────┤
+│ Account Switcher │ Manage 5 devices: Save/Edit Nicknames,    │ Local + Cloud│
+│                 │ One-tap Device Switching                  │              │
 ├─────────────────┼───────────────────────────────────────────┼──────────────┤
 │ Plant Selection │ Grid of 20 crop images, Default/Reset     │ Cloud Only   │
 │                 │ option, writes plant_image_name to        │              │
@@ -376,10 +386,16 @@ PHASE 4.13: IMMERSIVE PLANT SELECTION & ZONE CARDS [COMPLETED]
 ☑ Full-Card Navigation: Entire ZoneCard tappable to open PlantSelectionScreen (Scaffold-based).
 ☑ Default/Reset Option: First tile resets plant_image_name to empty string in Firestore.
 
-PHASE 4.14: SYSTEM HEALTH SUMMARY PAGE [COMPLETED]
-☑ System Health Page: New scrollable diagnostic screen with 5 status cards.
-☑ Cards: Overall Status banner, Controller Connection, Reservoir Status, Sensor Integrity, Zone Breakdown.
+PHASE 4.14: SYSTEM HEALTH SUMMARY & MAINTENANCE MODE [COMPLETED]
+☑ System Health Page: Diagnostic screen with Controller, Reservoir, and Sensor integrity cards.
+☑ Maintenance Wrench: Orange icon and "FAULT" label triggered by Pi [Errno 5] detection.
+☑ Hardware Hard-lock: Automatic disabling of auto-watering on a per-zone basis during fault.
 ☑ Dashboard Navigation: System Overview card wrapped in GestureDetector → pushes to SystemHealthPage.
+
+PHASE 4.15: QUICK ACCOUNT SWITCHER & NICKNAMES [COMPLETED]
+☑ Device Storage: Secure local caching of up to 5 unique Smart Sprout device profiles (ID, PIN).
+☑ Nickname Editor: Personalized naming for different garden units stored in SharedPreferences.
+☑ Auto-Login: Tokenized session persistence allowing switching without re-entering PINs.
 
 PHASE 4.15: DYNAMIC DEVICE ID SYSTEM [COMPLETED]
 ☑ Local Config (Pi): Created device_config.json with get_device_id() and update_device_id() helpers.
@@ -596,7 +612,7 @@ exploitation vectors.
 
 Key Features: The dashboard displays real-time sensor fusion data—soil 
 moisture (0-100%), ambient temperature/humidity, and reservoir volume 
-(calculated via ultrasonic distance). The system utilizes a device-centric authentication model, where users gain 
+(monitored via XKC-Y26-V digital sensor). The system utilizes a device-centric authentication model, where users gain 
 access by verifying device-specific credentials (Device ID and PIN) via 
 Firebase Authentication. Cloud Firestore provides the scalable database 
 backend, naturally supporting offline-first data caching and automatic 

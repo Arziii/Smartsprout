@@ -81,10 +81,10 @@ class SensorDataNotifier extends Notifier<SensorData> {
     );
   }
 
-  /// If no telemetry received for 15 seconds, mark as offline.
+  /// If no telemetry received for 90 seconds (compensating for Pi's 60s heartbeat), mark as offline.
   void _startTimeout() {
     _timeoutTimer?.cancel();
-    _timeoutTimer = Timer(const Duration(seconds: 15), () {
+    _timeoutTimer = Timer(const Duration(seconds: 90), () {
       if (!state.isOffline) {
         state = state.copyWith(systemStatus: 'offline');
       }

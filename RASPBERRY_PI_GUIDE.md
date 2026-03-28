@@ -45,8 +45,11 @@ For large folders, using the command line is significantly faster than VNC's fil
     ```
 3.  Run this command (replace `<IP>` with your Pi's actual IP address):
     ```powershell
-    # Copy the whole project (needed for Kiosk UI)
-    scp -r "D:\deisgn 2\Smartsprout" pi@<IP-ADDRESS>:/home/pi/
+    # Copy the backend (Python)
+    scp -r "D:\deisgn2\Smartsprout\smartsproutrasberry" smartsprout@192.168.1.7:/home/smartsprout/Smartsprout/
+    
+    # Copy the UI (Flutter lib)
+    scp -r "D:\deisgn2\Smartsprout\smartsprout\lib" smartsprout@192.168.1.7:/home/smartsprout/Smartsprout/smartsprout/
     ```
 4.  Enter your Pi's password when prompted.
 
@@ -77,7 +80,7 @@ Copy your `Smartsprout` folder to `/home/pi/`. Then, move the backend to a conve
     cd /home/pi/smartsproutrasberry
     python3 -m venv venv
     source venv/bin/activate
-    pip install -r requirements.txt
+    pip install -r requirements.txt adafruit-circuitpython-bme280 --break-system-packages
     ```
 3.  **Configure Security (.env)**:
     Create a `.env` file from the example to store your unique device credentials:

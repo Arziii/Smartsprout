@@ -1,18 +1,60 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class SavedDevice {
+  final String deviceId;
+  final String nickname;
+  final String pin;
+  final DateTime lastUsed;
+
+  SavedDevice({
+    required this.deviceId,
+    required this.nickname,
+    required this.pin,
+    required this.lastUsed,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'deviceId': deviceId,
+        'nickname': nickname,
+        'pin': pin,
+        'lastUsed': lastUsed.toIso8601String(),
+      };
+
+  factory SavedDevice.fromJson(Map<String, dynamic> json) {
+    return SavedDevice(
+      deviceId: json['deviceId'],
+      nickname: json['nickname'] ?? json['deviceId'],
+      pin: json['pin'],
+      lastUsed: DateTime.parse(json['lastUsed']),
+    );
+  }
+
+  SavedDevice copyWith({String? nickname, DateTime? lastUsed}) {
+    return SavedDevice(
+      deviceId: deviceId,
+      nickname: nickname ?? this.nickname,
+      pin: pin,
+      lastUsed: lastUsed ?? this.lastUsed,
+    );
+  }
+}
+
 class AuthState {
   final bool isLoading;
   final String? deviceId;
   final String? error;
+  final List<SavedDevice> savedDevices;
 
   AuthState({
     this.isLoading = false,
     this.deviceId,
     this.error,
+    this.savedDevices = const [],
   });
 
   AuthState copyWith({
@@ -20,11 +62,13 @@ class AuthState {
     String? deviceId,
     String? error,
     bool clearError = false,
+    List<SavedDevice>? savedDevices,
   }) {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
       deviceId: deviceId ?? this.deviceId,
       error: clearError ? null : (error ?? this.error),
+      savedDevices: savedDevices ?? this.savedDevices,
     );
   }
 }
@@ -54,11 +98,21 @@ class AuthNotifier extends Notifier<AuthState> {
     final prefs = await SharedPreferences.getInstance();
     final savedDeviceId = prefs.getString('device_id');
     
+    // Load saved devices list
+    final savedDevicesJson = prefs.getString('saved_devices');
+    List<SavedDevice> loadedDevices = [];
+    if (savedDevicesJson != null) {
+      final List decoded = jsonDecode(savedDevicesJson);
+      loadedDevices = decoded.map((e) => SavedDevice.fromJson(e)).toList();
+      // Sort by last used (newest first)
+      loadedDevices.sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
+    }
+    
     // Check if Firebase Auth has an anonymous session and we have a saved device
     if (savedDeviceId != null && _auth.currentUser != null) {
-      state = AuthState(isLoading: false, deviceId: savedDeviceId);
+      state = AuthState(isLoading: false, deviceId: savedDeviceId, savedDevices: loadedDevices);
     } else {
-      state = AuthState();
+      state = AuthState(savedDevices: loadedDevices);
     }
   }
 
@@ -87,7 +141,30 @@ class AuthNotifier extends Notifier<AuthState> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('device_id', deviceId);
 
-        state = AuthState(isLoading: false, deviceId: deviceId);
+        // Update saved devices list
+        List<SavedDevice> updatedDevices = List.from(state.savedDevices);
+        final existingIndex = updatedDevices.indexWhere((d) => d.deviceId == deviceId);
+        
+        if (existingIndex != -1) {
+          updatedDevices[existingIndex] = updatedDevices[existingIndex].copyWith(lastUsed: DateTime.now());
+        } else {
+          updatedDevices.add(SavedDevice(
+            deviceId: deviceId,
+            nickname: deviceId, // default nickname
+            pin: pin,
+            lastUsed: DateTime.now(),
+          ));
+        }
+        
+        // Ensure max 5 devices
+        updatedDevices.sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
+        if (updatedDevices.length > 5) {
+          updatedDevices = updatedDevices.take(5).toList();
+        }
+        
+        await prefs.setString('saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+
+        state = AuthState(isLoading: false, deviceId: deviceId, savedDevices: updatedDevices);
         return true;
       } else {
         await _auth.signOut();
@@ -98,6 +175,38 @@ class AuthNotifier extends Notifier<AuthState> {
       try { await _auth.signOut(); } catch (_) {}
       state = state.copyWith(isLoading: false, error: e.toString());
       return false;
+    }
+  }
+
+  Future<bool> quickSwitch(String deviceId) async {
+    final dev = state.savedDevices.firstWhere((d) => d.deviceId == deviceId, orElse: () => throw Exception('Device not found'));
+    return await login(dev.deviceId, dev.pin);
+  }
+
+  Future<void> updateDeviceNickname(String deviceId, String newNickname) async {
+    final prefs = await SharedPreferences.getInstance();
+    List<SavedDevice> updatedDevices = List.from(state.savedDevices);
+    final existingIndex = updatedDevices.indexWhere((d) => d.deviceId == deviceId);
+    
+    if (existingIndex != -1) {
+      updatedDevices[existingIndex] = updatedDevices[existingIndex].copyWith(nickname: newNickname);
+      await prefs.setString('saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+      state = state.copyWith(savedDevices: updatedDevices);
+    }
+  }
+
+  Future<void> removeSavedDevice(String deviceId) async {
+    final prefs = await SharedPreferences.getInstance();
+    List<SavedDevice> updatedDevices = List.from(state.savedDevices);
+    updatedDevices.removeWhere((d) => d.deviceId == deviceId);
+    await prefs.setString('saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+    
+    final currentDevice = state.deviceId;
+    state = state.copyWith(savedDevices: updatedDevices);
+    
+    // If the user removed the actively logged in device
+    if (currentDevice == deviceId) {
+       await logout();
     }
   }
 
@@ -184,7 +293,8 @@ class AuthNotifier extends Notifier<AuthState> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('device_id');
     await _auth.signOut();
-    state = AuthState(); 
+    // Keep saved devices when logging out
+    state = AuthState(savedDevices: state.savedDevices); 
   }
 }
 

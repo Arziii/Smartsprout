@@ -14,6 +14,7 @@ class ZoneCard extends ConsumerStatefulWidget {
   final double targetMoisture;   // Precision saturation target
   final int temp;
   final Animation<double> pulseAnim;
+  final bool isFault;
 
   const ZoneCard({
     super.key,
@@ -24,6 +25,7 @@ class ZoneCard extends ConsumerStatefulWidget {
     this.targetMoisture = 65.0,
     required this.temp,
     required this.pulseAnim,
+    this.isFault = false,
   });
 
   @override
@@ -34,11 +36,10 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
   bool _isPressed = false;
   bool _isHovered = false;
 
-  bool get isMoistureFault => widget.rawMoisture <= -1;
   bool get isTempFault => widget.temp <= -1;
 
   Color getMoodColor() {
-    if (isMoistureFault) return Colors.grey.shade400;
+    if (widget.isFault) return Colors.grey.shade400;
 
     final val = widget.rawMoisture;
     final target = widget.targetMoisture.round();
@@ -223,21 +224,41 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                   children: [
                     Icon(Icons.water_drop, size: 16, color: statusColor),
                     const SizedBox(width: 5),
-                    FadeTransition(
-                      opacity: widget.pulseAnim,
-                      child: Text(
-                        isMoistureFault ? '--%' : '${widget.rawMoisture}%',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 26,
-                          color: statusColor,
-                          letterSpacing: -1.0,
-                          height: 1.0,
+                    if (widget.isFault)
+                      Tooltip(
+                        message: "Maintenance Required",
+                        child: Row(
+                          children: [
+                            const Icon(Icons.build_rounded, color: Colors.orange, size: 28),
+                            const SizedBox(width: 4),
+                            Text(
+                              'FAULT',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 18,
+                                color: Colors.orange,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      FadeTransition(
+                        opacity: widget.pulseAnim,
+                        child: Text(
+                          '${widget.rawMoisture}%',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 26,
+                            color: statusColor,
+                            letterSpacing: -1.0,
+                            height: 1.0,
+                          ),
                         ),
                       ),
-                    ),
                     // Ghost target label
-                    if (!isMoistureFault && widget.targetMoisture > 0)
+                    if (!widget.isFault && widget.targetMoisture > 0)
                       Padding(
                         padding: const EdgeInsets.only(left: 6, bottom: 2),
                         child: Text(

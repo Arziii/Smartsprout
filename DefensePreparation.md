@@ -227,7 +227,7 @@ usecaseDiagram
 4. **DHT22** (Precision Temperature & Humidity).
 5. **4-Channel 5V Relay Module** (Controls high-voltage pump loops via low-voltage Pi GPIO).
 6. **Submersible Water Pumps & Tubing**.
-7. **Ultrasonic Sensor (HC-SR04)** or float switch for Tank Level measurements.
+7. **XKC-Y26-V Non-contact Liquid Level Sensor** or float switch for Tank Level measurements.
 
 ### Operations Environment
 - **OS**: Raspberry Pi OS Lite or Desktop (Debian-based).

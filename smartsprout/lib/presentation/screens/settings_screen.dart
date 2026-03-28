@@ -9,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../providers/auth_provider.dart';
 import '../../data/services/data_service.dart';
 import '../../widgets/system_settings_dialog.dart';
+import '../widgets/account_switch_sheet.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -106,22 +107,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   )),
                 const SizedBox(height: 25),
                 _buildAnimatedItem(3, _buildSectionHeader('Account')),
-                if (!Platform.isLinux)
+                if (!Platform.isLinux) ...[
                   _buildAnimatedItem(4, _buildSettingsCard(
+                    title: 'Switch Account',
+                    subtitle: 'Quickly switch between saved devices',
+                    icon: Icons.people_alt_rounded,
+                    color: const Color(0xFF29B6F6),
+                    onTap: () => showAccountSwitchSheet(context),
+                  )),
+                  _buildAnimatedItem(5, _buildSettingsCard(
                     title: 'Rename Device',
                     subtitle: 'Change your device ID (requires PIN)',
                     icon: Icons.drive_file_rename_outline_rounded,
                     color: const Color(0xFF7E57C2),
                     onTap: () => _showRenameDeviceDialog(),
                   )),
-                _buildAnimatedItem(4, _buildSettingsCard(
+                ],
+                _buildAnimatedItem(6, _buildSettingsCard(
                   title: 'Change Device PIN',
                   subtitle: 'Update your hardware access PIN',
                   icon: Icons.lock_outline_rounded,
                   color: const Color(0xFF78909C),
                   onTap: () => _showChangePinDialog(),
                 )),
-                _buildAnimatedItem(5, _buildSettingsCard(
+                _buildAnimatedItem(7, _buildSettingsCard(
                   title: 'Disconnect Device',
                   subtitle: 'Log out of current hardware',
                   icon: Icons.logout_rounded,

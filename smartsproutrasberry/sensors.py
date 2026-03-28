@@ -30,7 +30,7 @@ except ImportError:
 
 try:
     import board
-    import adafruit_bme280
+    import adafruit_bme280.basic as adafruit_bme280
     _BME_AVAILABLE = True
     
     # Initialize I2C and the BME280 sensor
@@ -142,8 +142,8 @@ def read_soil_moisture() -> tuple[dict, dict, bool]:
         return cal_results, raw_results, False
     except (IOError, OSError) as e:
         print(f"[WARN] I2C soil read failed (no hardware?): {e} — returning mock data.")
-        mock_results = {"bed1": 0.0, "bed2": 0.0, "bed3": 0.0}
-        return mock_results, mock_results, False  # Return clean zeros, NOT fault sentinel
+        mock_results = {"bed1": -1.0, "bed2": -1.0, "bed3": -1.0}
+        return mock_results, mock_results, True  # Return fault sentinel and set fault bit
 
 def run_dry_calibration(target_zone=None) -> dict:
     """
@@ -192,7 +192,7 @@ def read_environment() -> dict:
     Values are 0.0 on sensor fault or simulation.
     """
     if not _BME_AVAILABLE or not _bme_device:
-        return {"temperature": 0.0, "humidity": 0.0, "pressure": 0.0}
+        return {"temperature": -1.0, "humidity": -1.0, "pressure": -1.0}
 
     try:
         return {
@@ -202,7 +202,7 @@ def read_environment() -> dict:
         }
     except Exception as e:
         print(f"[ERROR] BME280 read failure: {e}")
-        return {"temperature": 0.0, "humidity": 0.0, "pressure": 0.0}
+        return {"temperature": -1.0, "humidity": -1.0, "pressure": -1.0}
 
 
 # ═══════════════════════════════════════════════════════

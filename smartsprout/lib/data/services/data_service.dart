@@ -110,7 +110,11 @@ class DataService {
         if (!snapshot.exists || snapshot.data() == null) {
           return const SensorData(systemStatus: 'offline');
         }
-        return SensorData.fromJson(snapshot.data()!);
+        final data = SensorData.fromJson(snapshot.data()!);
+        if (data.isControllerDisconnected) {
+          return data.copyWith(systemStatus: 'offline');
+        }
+        return data;
       });
     }
   }

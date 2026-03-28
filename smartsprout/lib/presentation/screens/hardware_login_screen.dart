@@ -126,7 +126,11 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                     )),
                     const SizedBox(height: 48),
 
-                    _buildAnimatedElement(1, _buildLoginForm(authState)),
+                    if (authState.savedDevices.isNotEmpty) ...[
+                      _buildAnimatedElement(1, _buildSavedAccountsHorizontal(authState)),
+                      const SizedBox(height: 32),
+                    ],
+                    _buildAnimatedElement(2, _buildLoginForm(authState)),
                   ],
                 ),
               ),
@@ -134,6 +138,98 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSavedAccountsHorizontal(authState) {
+    final devices = authState.savedDevices;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Saved Accounts',
+          style: GoogleFonts.outfit(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.0,
+            color: const Color(0xFF4A6164),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 100,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: devices.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            itemBuilder: (context, index) {
+              final device = devices[index];
+              return GestureDetector(
+                onTap: () async {
+                  final success = await ref.read(authProvider.notifier).quickSwitch(device.deviceId);
+                  if (success && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Switched to ${device.nickname}'),
+                        backgroundColor: const Color(0xFF2BCC71),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    );
+                    context.go('/dashboard');
+                  }
+                },
+                child: Container(
+                  width: 90,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 15,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const CircleAvatar(
+                            radius: 20,
+                            backgroundColor: Color(0xFF2BCC71),
+                            child: Icon(Icons.grass_rounded, color: Colors.white, size: 20),
+                          ),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Text(
+                              device.nickname,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.outfit(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF0F2027),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 

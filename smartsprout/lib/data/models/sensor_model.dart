@@ -12,6 +12,7 @@ class SensorData {
   final double flowRate;
   final bool pumpLocked;
   final String systemStatus; // 'ok', 'sensor_fault', 'tank_low', 'offline'
+  final Map<String, String> hardwareStatus; // explicit fault flags e.g. {'bed1': 'ok', 'environment': 'fault'}
   final List<String> alerts;
   final int timestamp;
   final DateTime? lastHeartbeat;
@@ -28,6 +29,7 @@ class SensorData {
     this.flowRate = 0.0,
     this.pumpLocked = false,
     this.systemStatus = 'offline',
+    this.hardwareStatus = const {},
     this.alerts = const [],
     this.timestamp = 0,
     this.lastHeartbeat,
@@ -76,6 +78,14 @@ class SensorData {
     List<String> alerts = [];
     if (alertsRaw is List) {
       alerts = alertsRaw.map<String>((e) => e.toString()).toList();
+    }
+
+    final hwStatusRaw = json['hardware_status'];
+    Map<String, String> hwStatus = {};
+    if (hwStatusRaw is Map) {
+      hwStatusRaw.forEach((key, value) {
+        hwStatus[key.toString()] = value.toString();
+      });
     }
 
     // Parse last_heartbeat from Firestore
@@ -127,16 +137,22 @@ class SensorData {
       flowRate: (json['flow_rate'] as num?)?.toDouble() ?? 0.0,
       pumpLocked: json['pump_locked'] as bool? ?? false,
       systemStatus: json['system_status'] as String? ?? 'offline',
+      hardwareStatus: hwStatus,
       alerts: alerts,
       timestamp: json['timestamp'] as int? ?? 0,
       lastHeartbeat: heartbeat,
     );
   }
 
-  bool get hasSensorFault => systemStatus == 'sensor_fault' || alerts.contains('soil_sensor_fault') || alerts.contains('dht22_fault');
+  bool get hasSensorFault => systemStatus == 'sensor_fault' || alerts.contains('soil_sensor_fault') || alerts.contains('dht22_fault') || alerts.contains('environment_sensor_fault');
   bool get isTankLow => systemStatus == 'tank_low' || alerts.contains('tank_empty') || tankLevel < 20.0;
-  bool get isOffline => systemStatus == 'offline';
+  bool get isOffline => systemStatus == 'offline' || isControllerDisconnected;
   bool get isHealthy => !hasSensorFault && !isTankLow && !isOffline;
+  
+  bool get isEnvFault => hardwareStatus['environment'] == 'fault';
+  bool hasBedFault(int index) => hardwareStatus['bed${index + 1}'] == 'fault';
+  bool get isTankFault => hardwareStatus['tank'] == 'fault';
+  
   bool get isControllerDisconnected {
     if (lastHeartbeat == null) return true;
     return DateTime.now().difference(lastHeartbeat!).inMinutes > 2;
@@ -154,6 +170,7 @@ class SensorData {
     double? flowRate,
     bool? pumpLocked,
     String? systemStatus,
+    Map<String, String>? hardwareStatus,
     List<String>? alerts,
     int? timestamp,
     DateTime? lastHeartbeat,
@@ -170,6 +187,7 @@ class SensorData {
       flowRate: flowRate ?? this.flowRate,
       pumpLocked: pumpLocked ?? this.pumpLocked,
       systemStatus: systemStatus ?? this.systemStatus,
+      hardwareStatus: hardwareStatus ?? this.hardwareStatus,
       alerts: alerts ?? this.alerts,
       timestamp: timestamp ?? this.timestamp,
       lastHeartbeat: lastHeartbeat ?? this.lastHeartbeat,

@@ -55,6 +55,9 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
     *   **Pump Watchdog**: A dedicated GPIO-level Python daemon forces the water pump OFF if it runs longer than 120 seconds, preventing floods.
 *   **Non-Intrusive Notifications**: Real-time system alerts (e.g., Low Water, Connection Stale) are delivered via a space-efficient notification row on the dashboard, replacing obstructive banners.
 *   **Differential Data Sync**: Eco-Mode 2.0 pushes telemetry instantly only during critical environmental changes (e.g., Temp Δ > 1.5°C), saving bandwidth while maintaining real-time responsiveness.
+*   **Hardware-Aware Maintenance Mode**: Gracefully handles I2C disconnects (Errno 5). If a sensor is missing, the UI displays a "Maintenance Required" wrench icon. The system **hard-locks** auto-watering for that specific zone to prevent accidental over-watering during hardware failure.
+*   **Integrated Environment Module**: Groups Temperature, Humidity, and Pressure into a unified real-time dashboard card with fault-tolerant display logic.
+*   **Quick Account Switcher**: Save up to 5 Smart Sprout units ( nicknames, IDs, and PINs) for instant switching between different gardens without re-typing credentials.
 *   **Physical Factory Reset**: A dedicated hardware button (GPIO 24) with LED feedback (GPIO 18) allows secure, physical persistence resets.
 
 ---
@@ -87,7 +90,7 @@ sudo apt-get update && sudo apt-get install -y i2c-tools python3-pip python3-dev
 cd /home/smartsprout/Smartsprout/smartsproutrasberry
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt adafruit-circuitpython-bme280 --break-system-packages
 
 # 3. Configure Security & Credentials
 # Place your `firebase_credentials.json` in the `smartsproutrasberry/` directory.

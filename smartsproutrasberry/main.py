@@ -275,16 +275,25 @@ def collect_telemetry(interval: float) -> dict:
     elif tank >= config.TANK_LOW_THRESHOLD:
         _pump_locked = False
 
+    # Hardware status tracking
+    hardware_status = {
+        "bed1": "fault" if soil.get("bed1", 0) < 0 else "ok",
+        "bed2": "fault" if soil.get("bed2", 0) < 0 else "ok",
+        "bed3": "fault" if soil.get("bed3", 0) < 0 else "ok",
+        "environment": "fault" if env["temperature"] == -1.0 and env["humidity"] == -1.0 else "ok",
+        "tank": "fault" if tank < 0 else "ok",
+    }
+
     # Sensor fault detection
     if soil_fault or any(s < 0 for s in soil.values()):
         alerts.append("soil_sensor_fault")
         system_status = "sensor_fault"
-    if env["temperature"] <= 0 and env["humidity"] <= 0:
+    if hardware_status["environment"] == "fault":
         alerts.append("environment_sensor_fault")
-        system_status = "sensor_fault"
+        if system_status == "ok":
+            system_status = "sensor_fault"
     if tank < 0:
         alerts.append("tank_sensor_fault")
-        system_status = "sensor_fault"
         system_status = "sensor_fault"
 
     # Read current offsets from calibration data
@@ -306,6 +315,7 @@ def collect_telemetry(interval: float) -> dict:
         "tank_level": tank,
         "pump_locked": _pump_locked,
         "system_status": system_status,
+        "hardware_status": hardware_status,
         "alerts": alerts,
     }
 
@@ -497,7 +507,11 @@ def main():
                         if _last_daily_water_date != today_str:
                             print(f"[AUTO-TIMER] Triggering daily schedule for all zones at {now.strftime('%H:%M')}")
                             def _water_all_sequential():
+                                hstatus = telemetry.get("hardware_status", {})
                                 for z in [1, 2, 3]:
+                                    if hstatus.get(f"bed{z}") == "fault":
+                                        print(f"[AUTO-TIMER] Skipping Zone {z} due to hardware fault (hardlocked safety).")
+                                        continue
                                     _force_water_task(z, 10)
                                     time.sleep(1) # brief pause
                             threading.Thread(target=_water_all_sequential, daemon=True).start()

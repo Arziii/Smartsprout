@@ -59,9 +59,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     final targets = sensorData.targetMoisture;
     final tankLevel = sensorData.tankLevel.clamp(0.0, 100.0).toDouble();
     final temperature = sensorData.temperature;
+    final humidity = sensorData.humidity;
     // On Linux (Pi), never show as offline — the Pi IS the system.
     final isOffline = Platform.isLinux ? false : sensorData.isOffline;
     final hasFault = sensorData.hasSensorFault;
+    final isEnvFault = sensorData.isEnvFault;
     final isTankLow = sensorData.isTankLow;
     final isHeartbeatStale = !Platform.isLinux && sensorData.isControllerDisconnected;
 
@@ -117,9 +119,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             child: Platform.isWindows
                 ? Scrollbar(
                     thumbVisibility: true,
-                    child: _buildMainList(tankLevel, temperature, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, sensorData),
+                    child: _buildMainList(tankLevel, temperature, humidity, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, isEnvFault, sensorData),
                   )
-                : _buildMainList(tankLevel, temperature, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, sensorData),
+                : _buildMainList(tankLevel, temperature, humidity, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, isEnvFault, sensorData),
           ),
 
           // ── Status Overlays ──
@@ -179,13 +181,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   }
 
   // ── Extracted ListView for Scrollbar wrapping on Windows ──
-  Widget _buildMainList(double tankLevel, double temperature, List<double> rawSoil, List<double> offsets, List<double> targets, bool isOffline, bool isTankLow, bool hasFault, dynamic sensorData) {
+  Widget _buildMainList(double tankLevel, double temperature, double humidity, List<double> rawSoil, List<double> offsets, List<double> targets, bool isOffline, bool isTankLow, bool hasFault, bool isEnvFault, dynamic sensorData) {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       children: [
         _buildAnimatedWidget(0, _buildTopHeader(isOffline, isTankLow, hasFault)),
         const SizedBox(height: 10),
-        _buildAnimatedWidget(1, _buildVitals(tankLevel, temperature)),
+        _buildAnimatedWidget(1, _buildVitals(tankLevel, temperature, humidity, isEnvFault)),
         const SizedBox(height: 30),
         _buildAnimatedWidget(2, Text("System Overview",
             style: GoogleFonts.outfit(
@@ -211,6 +213,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               targetMoisture: targets.isNotEmpty ? targets[0] : 65.0,
               temp: temperature.toInt(),
               pulseAnim: _pulseController,
+              isFault: sensorData.hasBedFault(0),
             ),
             ZoneCard(
               zoneId: '2',
@@ -220,6 +223,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               targetMoisture: targets.length > 1 ? targets[1] : 65.0,
               temp: temperature.toInt(),
               pulseAnim: _pulseController,
+              isFault: sensorData.hasBedFault(1),
             ),
             ZoneCard(
               zoneId: '3',
@@ -229,6 +233,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               targetMoisture: targets.length > 2 ? targets[2] : 65.0,
               temp: temperature.toInt(),
               pulseAnim: _pulseController,
+              isFault: sensorData.hasBedFault(2),
             ),
             _buildSystemOverviewCard(context, sensorData),
           ],
@@ -338,7 +343,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
   }
 
-  Widget _buildVitals(double tankLevel, double systemTemp) {
+  Widget _buildVitals(double tankLevel, double systemTemp, double systemHum, bool isEnvFault) {
     return Row(
       children: [
         Expanded(
@@ -354,11 +359,12 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         const SizedBox(width: 15),
         Expanded(
           child: _buildVitalCard(
-            label: "TEMPERATURE",
-            value: systemTemp.toStringAsFixed(1),
-            unit: "°C",
+            label: "ENVIRONMENT",
+            value: "${systemTemp.toStringAsFixed(1)}° / ${systemHum.toInt()}%",
+            unit: "",
             icon: Icons.thermostat_rounded,
             color: const Color(0xFFFF7043),
+            isFault: isEnvFault,
           ),
         ),
       ],
@@ -373,6 +379,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     required Color color,
     bool isTank = false,
     double level = 0,
+    bool isFault = false,
   }) {
     return Container(
       height: 160,
@@ -410,36 +417,56 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   child: Icon(icon, color: color, size: 20),
                 ),
                 const Spacer(),
-                TweenAnimationBuilder<double>(
+                    TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0, end: 1.0),
                   duration: const Duration(seconds: 1),
                   builder: (context, val, child) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        RichText(
-                          text: TextSpan(
-                            children: [
-                              TextSpan(
-                                text: value,
-                                style: GoogleFonts.outfit(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w900,
-                                  color: const Color(0xFF0F2027),
-                                ),
-                              ),
-                              if (unit != null)
-                                TextSpan(
-                                  text: " $unit",
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: const Color(0xFF4A6164),
+                        if (isFault)
+                          Tooltip(
+                            message: "Maintenance Required",
+                            child: Row(
+                              children: [
+                                const Icon(Icons.build_rounded, color: Colors.orange, size: 32),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'FAULT',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 22,
+                                    color: Colors.orange,
+                                    letterSpacing: 0.5,
                                   ),
                                 ),
-                            ],
+                              ],
+                            ),
+                          )
+                        else
+                          RichText(
+                            text: TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: value,
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                    color: const Color(0xFF0F2027),
+                                  ),
+                                ),
+                                if (unit != null && unit.isNotEmpty)
+                                  TextSpan(
+                                    text: " $unit",
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF4A6164),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
-                        ),
                         const SizedBox(height: 2),
                         Text(label,
                             style: GoogleFonts.outfit(

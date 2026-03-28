@@ -29,7 +29,7 @@ This document serves as the permanent reference for configuring the Raspberry Pi
 Run this single command from your Raspberry Pi terminal to install all necessary system dependencies, Python libraries, and hardware drivers:
 
 ```bash
-sudo apt-get update && sudo apt-get install -y i2c-tools python3-pip python3-dev libgpiod-dev && pip3 install adafruit-circuitpython-bme280 adafruit-circuitpython-ads1x15 gpiozero python-dotenv firebase-admin smbus2
+sudo apt-get update && sudo apt-get install -y i2c-tools python3-pip python3-dev libgpiod-dev && pip3 install adafruit-circuitpython-bme280 adafruit-circuitpython-ads1x15 gpiozero python-dotenv firebase-admin smbus2 --break-system-packages
 ```
 
 ---
@@ -90,7 +90,20 @@ To maintain system stability and avoid damaging the Raspberry Pi hardware, follo
 *   **Soil Moisture Sensors:** Typically powered by **3.3V**. The capacitive v1.2 output signal (1.2V - 2.5V) is safe for the ADS1115.
 
 ---
+## 6. Maintenance Mode & Troubleshooting
 
-## 6. Maintenance Note
+The Smart Sprout system features a **Hardware-Aware Maintenance Mode**. If the app displays an orange **Wrench Icon** with a **"FAULT"** label, it means the Raspberry Pi has detected a hardware disconnect.
+
+### Common Fault Triggers:
+1.  **I2C Bus Error ([Errno 5]):** Usually indicates a loose SDA or SCL wire on the ADS1115 (Soil) or BME280 (Environment).
+2.  **Missing Driver:** If the BME280 is connected but fails to initialize, ensure you have installed the driver specifically using the `adafruit-circuitpython-bme280` package with the `--break-system-packages` flag.
+3.  **Address Conflict:** The system expects the **BME280 at 0x76** and the **ADS1115 at 0x48**. Use `i2cdetect -y 1` to verify these addresses are visible on the bus.
+
+### Safety Hard-lock:
+When a sensor is in "FAULT" state, the backend **automatically disables (Hard-locks)** all irrigation logic for that specific zone. This prevents the pump from running indefinitely due to a faulty "dry" sensor reading.
+
+---
+
+## 7. Versioning Note
 
 > **Note:** Running the install commands multiple times is perfectly safe. The package managers (`apt` and `pip`) will automatically detect if the dependencies are already present and will not duplicate files or break your environment.
