@@ -531,9 +531,11 @@ backend. These can be securely overridden locally via the `.env` configuration f
 │ I2C Bus (Sensors)     │ SDA                       │ BCM 2 (Pin 3)               │ 3.3V from Pi (Pin 1)        │
 │                       │ SCL                       │ BCM 3 (Pin 5)               │ Shared GND with Pi          │
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Water Level (XKC)     │ Brown (VCC)               │ 5V (Pin 2 or 4)             │ Powered by Pi 5V Rail       │
-│                       │ Yellow (Signal)           │ BCM 5 (Pin 29)              │ 1kΩ/2kΩ Voltage Divider Req.│
-│                       │ Black (Mode)              │ GND (Pin 6 or 9)            │ Set to Ground (Active-High) │
+│ Soil Moisture (Bed 1) │ Sensor 1 Signal           │ **ADS1115 A0**              │ Capacitive v1.2 (Analog)    │
+│ Soil Moisture (Bed 2) │ Sensor 2 Signal           │ **ADS1115 A1**              │ Capacitive v1.2 (Analog)    │
+│ Soil Moisture (Bed 3) │ Sensor 3 Signal           │ **ADS1115 A2**              │ Capacitive v1.2 (Analog)    │
+├───────────────────────┼───────────────────────────┼─────────────────────────────┤
+│ Water Level (XKC)     │ Yellow (Signal)           │ BCM 5 (Pin 29)              │ 1kΩ/2kΩ Voltage Divider Req.│
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
 │ Relay Module (5V)     │ VCC                       │ 5V (Pin 2 or 4)             │ Powered by Pi 5V Rail       │
 │                       │ IN1 (Pump)                │ BCM 17 (Pin 11)             │ COM: Buck OUT+ / NO: Pmp Red│

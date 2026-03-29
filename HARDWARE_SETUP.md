@@ -68,9 +68,10 @@ All software implementation must reference the **BCM (Broadcom)** numbering used
 | **Main Power** | Homesaya USB Jack | **Pi 4 USB-C Port** | From 8A XL4016 Buck Output |
 | **I2C Bus (Sensors)** | SDA | **BCM 2** (Pin 3) | 3.3V from Pi (Pin 1) |
 | | SCL | **BCM 3** (Pin 5) | Shared GND with Pi |
-| **Water Level (XKC)** | Brown (VCC) | **5V** (Pin 2 or 4) | Powered by Pi 5V Rail |
-| | Yellow (Signal) | **BCM 5** (Pin 29) | Requires 1kΩ/2kΩ Voltage Divider |
-| | Black (Mode) | **GND** (Pin 6 or 9) | Set to Ground for Active-High |
+| **Soil Moisture (Z1)** | Sensor 1 Signal | **ADS1115 A0** | Capacitive v1.2 (Analog) |
+| **Soil Moisture (Z2)** | Sensor 2 Signal | **ADS1115 A1** | Capacitive v1.2 (Analog) |
+| **Soil Moisture (Z3)** | Sensor 3 Signal | **ADS1115 A2** | Capacitive v1.2 (Analog) |
+| **Water Level (XKC)** | Yellow (Signal) | **BCM 5** (Pin 29) | Requires 1kΩ/2kΩ Voltage Divider |
 | **Relay Module (5V)** | VCC | **5V** (Pin 2 or 4) | Powered by Pi 5V Rail |
 | | IN1 (Pump) | **BCM 17** (Pin 11) | COM: Buck OUT+ / NO: Pump Red |
 | | IN2 (Valve 1) | **BCM 27** (Pin 13) | COM: 12V+ (IN+) / NO: Valve 1+ |
