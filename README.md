@@ -47,32 +47,34 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
 *   **Dual Operation Modes**: 
     *   **Secure IoT**: Monitor and control your garden globally via the iOS, Android, and Windows Desktop apps.
     *   **Air-Gapped Local**: Full operation and calibration via the Raspberry Pi's physical touchscreen, independent of internet connectivity.
+*   **Centralized Power Distribution**: Utilizes a single 12V source with a 5V/5A Buck Module, providing clean 5.1V logic power via USB-C and isolated 5V motor power for pump noise suppression.
 *   **Advanced Irrigation Control**:
     *   **Pulse & Soak**: Intelligent auto-watering that pulses water for 5s followed by a 20s soak period to ensure optimal absorption and prevent runoff.
     *   **Manual Modes**: Dedicated controls for "Continuous Flow" (fixed duration) and "Pulse & Soak" manual triggers.
 *   **Safety & Lockdown**:
     *   **Master Lockdown Switch**: A global safety switch that instantly kills all active watering and prevents new cycles until manually released.
+    *   **Normally Closed (NC) Safety**: All valves are NC, ensuring they fail-safe to a closed position during power or software failures.
     *   **Pump Watchdog**: A dedicated GPIO-level Python daemon forces the water pump OFF if it runs longer than 120 seconds, preventing floods.
-*   **Non-Intrusive Notifications**: Real-time system alerts (e.g., Low Water, Connection Stale) are delivered via a space-efficient notification row on the dashboard, replacing obstructive banners.
-*   **Differential Data Sync**: Eco-Mode 2.0 pushes telemetry instantly only during critical environmental changes (e.g., Temp Δ > 1.5°C), saving bandwidth while maintaining real-time responsiveness.
-*   **Hardware-Aware Maintenance Mode**: Gracefully handles I2C disconnects (Errno 5). If a sensor is missing, the UI displays a "Maintenance Required" wrench icon. The system **hard-locks** auto-watering for that specific zone to prevent accidental over-watering during hardware failure.
-*   **Integrated Environment Module**: Groups Temperature, Humidity, and Pressure into a unified real-time dashboard card with fault-tolerant display logic.
-*   **Quick Account Switcher**: Save up to 5 Smart Sprout units ( nicknames, IDs, and PINs) for instant switching between different gardens without re-typing credentials.
-*   **Physical Factory Reset**: A dedicated hardware button (GPIO 24) with LED feedback (GPIO 18) allows secure, physical persistence resets.
+*   **Hardware-Aware Maintenance Mode**: Gracefully handles I2C disconnects (Errno 5) and BME280 sensor faults. The UI displays a "Maintenance Required" wrench icon and hard-locks auto-watering for affected zones.
+*   **Integrated Environment Module**: Groups Temperature, Humidity, and Pressure into a unified real-time dashboard card.
+*   **Physical Factory Reset**: A dedicated hardware button (BCM 24) with LED feedback (BCM 18) for secure persistence resets.
 
 ---
 
-## 🔌 Hardware Pin Mapping
+## 🔌 Hardware Pin Mapping (BCM Reference)
 
-| **I2C SDA (ADS1115 & BME280)** | GPIO 2 | Pin 3 | I2C | Soil + Temp/Hum |
-| **I2C SCL (ADS1115 & BME280)** | GPIO 3 | Pin 5 | I2C | Soil + Temp/Hum |
-| **Water Level (XKC-Y26-V)** | GPIO 5 | Pin 29 | IN | Digital High/Low |
-| **Relay IN1 (Pump)** | GPIO 17 | Pin 11 | OUT | 12V DC Pump |
-| **Relay IN2 (Valve 1)** | GPIO 27 | Pin 13 | OUT | Solenoid — Zone 1 |
-| **Relay IN3 (Valve 2)** | GPIO 22 | Pin 15 | OUT | Solenoid — Zone 2 |
-| **Relay IN4 (Valve 3)** | GPIO 23 | Pin 16 | OUT | Solenoid — Zone 3 |
-| **Factory Reset Button** | GPIO 24 | Pin 18 | IN | Pull-Up, Active-Low (5s hold) |
-| **Factory Reset LED** | GPIO 18 | Pin 12 | OUT | Blink/Solid/Off feedback |
+| Component | Device Pin / Color | Pin (BCM / Phys) | Power Source & Wiring Logic |
+| :--- | :--- | :--- | :--- |
+| **Main Power** | USB-C Input | **USB-C Port** | From 5V/5A Buck Module Primary |
+| **I2C SDA** | SDA | **BCM 2** (Pin 3) | 3.3V from Pi (Pin 1) |
+| **I2C SCL** | SCL | **BCM 3** (Pin 5) | Shared GND with Pi |
+| **Water Level**| Yellow (Signal) | **BCM 5** (Pin 29) | Requires 1k/2k Voltage Divider |
+| **Relay: Pump** | IN1 (Pump) | **BCM 17** (Pin 11) | COM: Buck OUT+ / NO: Pump Red |
+| **Relay: Valve 1**| IN2 (Valve 1) | **BCM 27** (Pin 13) | COM: 12V+ / NO: Valve 1+ |
+| **Relay: Valve 2**| IN3 (Valve 2) | **BCM 22** (Pin 15) | COM: 12V+ / NO: Valve 2+ |
+| **Relay: Valve 3**| IN4 (Valve 3) | **BCM 23** (Pin 16) | COM: 12V+ / NO: Valve 3+ |
+| **Reset Button**| Button Pin | **BCM 24** (Pin 18) | One side to Pin, one to GND |
+| **Status LED** | Anode (+) | **BCM 18** (Pin 12) | Long leg (+) to Pin / GND |
 
 ---
 

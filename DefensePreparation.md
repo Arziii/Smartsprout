@@ -39,9 +39,7 @@ The system relies on a **Zero-Trust Architecture** that bridges a Raspberry Pi l
 
 ### Technologies Used
 - **Frontend**: Flutter, Dart, Riverpod (State Management), GoRouter.
-- **Backend / Edge**: Python 3, `RPi.GPIO`, `smbus2` (I2C), `adafruit_dht`.
-- **Cloud Database**: Firebase / Cloud Firestore.
-- **Hardware**: Raspberry Pi 3B (or similar), Capacitive Soil Moisture Sensors, DHT22 (Temp/Hum), ADS1115 (ADC), 4-Channel Relay Module, Submersible Pumps.
+- **Hardware**: Raspberry Pi 4, Capacitive Soil Moisture Sensors, BME280 (Temp/Hum/Pres), ADS1115 (ADC), 4-Channel Relay Module, Submersible Pumps, Normally Closed (NC) Solenoid Valves, 12V 8A DC Adapter, XL4016 High-Current Buck Module (8A), Active Ventilation (Exhaust Fan).
 
 ---
 
@@ -204,7 +202,7 @@ usecaseDiagram
 
 ### 4. Hardware Watchdog Safety
 - **Description**: Ultimate fail-safe.
-- **How it works**: A separate threaded script (`pump_watchdog.py`) directly monitors GPIO pin states. If any relay pin remains HIGH for >30 seconds continuously, it forcibly sets it LOW regardless of the main code state.
+- **How it works**: A separate threaded script (`pump_watchdog.py`) directly monitors GPIO pin states. If any relay pin remains active for >120 seconds continuously, it forcibly sets it LOW (OFF), ensuring the Normally Closed (NC) valves and pump shut off regardless of the main code state.
 
 ---
 
@@ -221,13 +219,21 @@ usecaseDiagram
 ## 6. Hardware Setup
 
 ### Hardware Components Used
-1. **Raspberry Pi 3B / 4** (The core edge controller).
+1. **Raspberry Pi 4** (The core edge controller, powered by 5.1V via Homesaya USB Jack).
 2. **Capacitive Soil Moisture Sensors (v1.2)** (Reads analog capacitance, immune to corrosion).
 3. **ADS1115 16-bit ADC** (Converts analog soil sensors to digital I2C for the Pi).
-4. **DHT22** (Precision Temperature & Humidity).
-5. **4-Channel 5V Relay Module** (Controls high-voltage pump loops via low-voltage Pi GPIO).
-6. **Submersible Water Pumps & Tubing**.
-7. **XKC-Y26-V Non-contact Liquid Level Sensor** or float switch for Tank Level measurements.
+4. **BME280 Environment Module** (Precision Temperature, Humidity, and Pressure via I2C).
+5. **4-Channel 5V Relay Module (SRD-05VDC)** (Acting as a galvanic isolation barrier).
+6. **Submersible USB Pump** (Spliced and powered by the Buck Module secondary output).
+7. **Normally Closed (NC) 12V Solenoid Valves** (Failsafe state; wired to NO relay terminals for logic isolation).
+8. **XKC-Y26-V Non-contact Liquid Level Sensor** (With 1kΩ/2kΩ voltage divider for 3.3V GPIO safety).
+9. **XL4016 8A DC-DC Buck Module** (Centralized power distributor from 12V 8A source).
+10. **Active Ventilation System** (Exhaust Fan integrated for thermal management of XL4016 and Pi 4).
+
+### Power & Logic Strategy
+- **Single-Source Input**: A single 12V DC adapter powers both the solenoids and the step-down module.
+- **BCM Mapping**: All pins are strictly mapped using Broadcom (BCM) numbering in the `SensorManager.py` backend.
+- **Voltage Protection**: Level shifting for 5V sensors and opto-isolation on relays to protect the Pi 4's logic rail.
 
 ### Operations Environment
 - **OS**: Raspberry Pi OS Lite or Desktop (Debian-based).
@@ -259,7 +265,9 @@ usecaseDiagram
 1. **Master Lockdown Switch**: A global software kill-switch that locks the system's state.
 2. **Pulse & Soak System**: Reduces hydraulic pressure and prevents soil saturation runoff.
 3. **Dead-Man's Switch**: Kills the pump if the mobile app disconnects for >5 seconds during manual operation.
-4. **Hardware Watchdog**: An isolated script directly monitoring GPIO limits duration to 120s regardless of software logic.
+4. **NC Solenoid Valves**: We use **Normally Closed** valves wired to **Normally Open** relay terminals. They require active power and logic confirmation to open, ensuring they remain shut during power loss or system crashes.
+5. **Hardware Watchdog**: An isolated script directly monitoring GPIO limits duration to 120s regardless of software logic.
+6. **Thermal Safety**: Active ventilation prevents thermal throttling that could lead to sensor lag or software hang-ups.
 
 **Q3: What happens if the internet goes down?**
 *Answer:* The system follows a **Local-First** philosophy. The Raspberry Pi maintains its scheduled auto-watering routines entirely offline. While the mobile app loses remote control, the physical touchscreen kiosk on the Pi remains fully functional for manual triggers and calibration.
@@ -274,9 +282,10 @@ usecaseDiagram
 
 ## 9. Future Recommendations
 
-1. **Admin & Analytics Dashboard**: Implementing a web-based comprehensive reporting tool utilizing Firebase BigQuery to assess water savings compared to traditional irrigation over a year.
-2. **AI Integration**: Taking weather APIs (like OpenWeatherMap) and running an edge predictive model to halt watering routines if rain or high humidity environments are expected.
-3. **Advanced Offline Mode**: Developing an ad-hoc Bluetooth Low Energy (BLE) fallback to securely relay credentials if Wi-Fi degrades.
+1. **Admin & Analytics Dashboard**: Implementing a web-based comprehensive reporting tool utilizing Firebase BigQuery.
+2. **AI Integration**: Taking weather APIs and predictive models to halt watering if rain is expected.
+3. **Connectivity Diagnostics**: Future iterations of the 'System Health' screen will include a specific 'Last Heartbeat' timestamp to distinguish between hardware faults and network outages.
+4. **Advanced Offline Mode**: Developing an ad-hoc Bluetooth Low Energy (BLE) fallback.
 4. **Data Backup/Recovery Plans**: Automating nightly Firebase storage exports to GCP Cloud Storage.
 5. **Push Notifications**: Utilizing Firebase Cloud Messaging (FCM) to trigger iOS/Android banner notifications the moment the `system_status` hits `tank_low` or `CONNECTION_LOST_SHUTDOWN`.
 6. **User Accounts & Role-Based Access**: Multi-tenancy configurations so a family can have 'admin' rights (changing parameters) vs 'viewer' rights (just viewing stats).

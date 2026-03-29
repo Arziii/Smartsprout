@@ -72,6 +72,7 @@ The Smart Sprout hardware system integrates:
 • Soil moisture sensors (volumetric water content)
 • BME280 sensors (temperature, humidity, and barometric pressure)
 • Non-contact liquid level sensor (reservoir level monitoring)
+• 12V Solenoid Valves - Normally Closed (Zone isolation)
 • Raspberry Pi controller with Physical Touchscreen Display (Flutter Kiosk Mode)
 
 
@@ -363,7 +364,7 @@ PHASE 4.10: EMERGENCY FORCE SYNC ("ECO-MODE BYPASS") [COMPLETED]
 ☑ Added `FORCE_SYNC` command to Python event listener — immediately triggers telemetry push.
 ☑ Implemented `forceSync()` in Flutter `DataService` with `requested_at` freshness timestamp.
 ☑ Added a Sync Now icon button on the mobile Dashboard with loading spinner and SnackBar feedback.
-☑ Pi stays in 30-min Eco-Mode 99% of the time; one tap wakes it for a sub-second cloud push.
+☑ **Technical Note:** Documented the `FORCE_SYNC` command (Phase 4.10) enabling sub-second telemetry updates from the mobile app, bypassing the 30-minute Eco-Mode for immediate diagnostics.
 
 
 PHASE 4.11: ADVANCED CONTROL & SAFETY REDESIGN [COMPLETED]
@@ -515,36 +516,45 @@ Linux Kiosk UI / Hardware Button            Raspberry Pi
 
 7.3 HARDWARE PIN ASSIGNMENTS
 
-
 The following represents the physical GPIO mapping configured for the Raspberry Pi 
 backend. These can be securely overridden locally via the `.env` configuration file.
 
+**Power Infrastructure:** 12V 8A DC Power Adapter using 18AWG copper wiring for the main power rails to ensure current stability.
+**Voltage Regulation:** XL4016 High-Current Buck Converter (8A) calibrated to 5.1V. This setup powers the Raspberry Pi 4 via a 2-wire Homesaya USB Female Jack, the Relay VCC, and the USB Pump.
+**Irrigation Failsafe:** Normally Closed (NC) solenoid valves are wired to Normally Open (NO) relay terminals. The valves receive 12V directly from the adapter (bypassing the buck converter).
+
 ┌───────────────────────┬───────────────────────────┬─────────────────────────────┐
-│ Component             │ Interface                 │ Physical Pin Allocation     │
+│ Component             │ Device Pin / Wire Color   │ Raspberry Pi Pin (BCM / Phys)│ Power Source & Wiring Logic │
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ BME280 (Temp/Hum/Pres)│ I2C Bus 1 (0x76/77)       │ SDA: GPIO 2, SCL: GPIO 3    │
+│ Main Power            │ USB-C / Homesaya Jack    │ Pi 4 USB-C Port             │ XL4016 Buck Output (5.1V)   │
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Non-Contact Tank Level│ Digital GPIO              │ Yellow (OUT): GPIO 5        │
+│ I2C Bus (Sensors)     │ SDA                       │ BCM 2 (Pin 3)               │ 3.3V from Pi (Pin 1)        │
+│                       │ SCL                       │ BCM 3 (Pin 5)               │ Shared GND with Pi          │
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ ADS1115 ADC (I2C)     │ I2C Bus 1 (Address 0x48)  │ SDA: GPIO 2, SCL: GPIO 3    │
-│  ↳ Soil Moisture Bed 1│ Analog                    │ ADC Channel A0              │
-│  ↳ Soil Moisture Bed 2│ Analog                    │ ADC Channel A1              │
-│  ↳ Soil Moisture Bed 3│ Analog                    │ ADC Channel A2              │
+│ Water Level (XKC)     │ Brown (VCC)               │ 5V (Pin 2 or 4)             │ Powered by Pi 5V Rail       │
+│                       │ Yellow (Signal)           │ BCM 5 (Pin 29)              │ 1kΩ/2kΩ Voltage Divider Req.│
+│                       │ Black (Mode)              │ GND (Pin 6 or 9)            │ Set to Ground (Active-High) │
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Relay Header (Pump)   │ Digital GPIO (Active-Low) │ GPIO 17 (IN1)               │
+│ Relay Module (5V)     │ VCC                       │ 5V (Pin 2 or 4)             │ Powered by Pi 5V Rail       │
+│                       │ IN1 (Pump)                │ BCM 17 (Pin 11)             │ COM: Buck OUT+ / NO: Pmp Red│
+│                       │ IN2 (Valve 1)             │ BCM 27 (Pin 13)             │ COM: 12V+ (IN+) / NO: V1+   │
+│                       │ IN3 (Valve 2)             │ BCM 22 (Pin 15)             │ COM: 12V+ (IN+) / NO: V2+   │
+│                       │ IN4 (Valve 3)             │ BCM 23 (Pin 16)             │ COM: 12V+ (IN+) / NO: V3+   │
 ├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Relay Header (Valve 1)│ Digital GPIO (Active-Low) │ GPIO 27 (IN2)               │
-├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Relay Header (Valve 2)│ Digital GPIO (Active-Low) │ GPIO 22 (IN3)               │
-├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Relay Header (Valve 3)│ Digital GPIO (Active-Low) │ GPIO 23 (IN4)               │
-├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Factory Reset Button  │ Digital GPIO (Pull-Up)    │ GPIO 24 (Active-LOW to GND) │
-│                       │                           │ Hold 5 seconds to trigger   │
-├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Reset Feedback LED    │ Digital GPIO (Output)     │ GPIO 18 (220Ω → LED → GND)  │
-│                       │                           │ Blink/Solid/Off feedback    │
+│ User Interface        │ Reset Button              │ BCM 24 (Pin 18)             │ One side to Pin, one to GND │
+│                       │ Feedback LED              │ BCM 18 (Pin 12)             │ Heartbeat Pulse / Rapid Blnk│
 └───────────────────────┴───────────────────────────┴─────────────────────────────┘
+
+7.4 THERMAL MANAGEMENT & ENCLOSURE DESIGN
+
+Active Cooling: A dedicated 5V or 12V exhaust fan is integrated into the custom enclosure to dissipate heat from the XL4016 heatsinks and the Raspberry Pi 4 CPU.
+
+Airflow Path: The fan is positioned to pull hot air out of the case, preventing "thermal throttling" which can lead to system lag and sensor read errors.
+
+Wiring Strategy: 
+*   **12V Fan:** Connect to the IN+ / IN- pins of the XL4016 (Full speed, maximum cooling).
+*   **5V Fan:** Connect to the OUT+ / OUT- pins of the XL4016 (Synced with Pi status).
+The fan runs whenever the system is powered to ensure continuous thermal safety.
 
 
 
@@ -620,7 +630,7 @@ Technical Validation: Field testing demonstrated seamless cloud
 orchestration and multi-device concurrency. Multiple administrative 
 clients were observed to receive real-time telemetry updates 
 simultaneously, with command arbitration handled effectively by the 
-Firestore-to-Python listener queue. The application maintains full 
+Firestore-to-Python listener queue. The hardware implementation transitioned to a robust **12V 8A power infrastructure** utilizing **18AWG copper rails** and an **XL4016 High-Current Buck Converter** for stability. Thermal safety was addressed through **Active Ventilation** (Exhaust Fan), while the irrigation logic was secured using **Normally Closed (NC) Solenoid Valves**. Sub-second telemetry sync was achieved via the **FORCE_SYNC** command (Phase 4.10), and future diagnostics will include a 'Last Heartbeat' timestamp on the System Health screen. The application maintains full 
 systemic integrity...
 
 

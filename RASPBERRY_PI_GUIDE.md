@@ -58,8 +58,9 @@ For large folders, using the command line is significantly faster than VNC's fil
 ## 🛠️ Step 1: Install & Prepare the OS
 
 1.  **Flash the OS**: Use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) to flash **Raspberry Pi OS (64-bit)**.
-2.  **Enable SSH & VNC**: Go to **Menu** → **Preferences** → **Raspberry Pi Configuration** → **Interfaces**.
-3.  **Update the System**:
+2.  **Power Supply Note**: The Raspberry Pi 4 is powered via an **XL4016 High-Current Buck Module (8A)** stepped down from a **12V 8A** master supply. Ensure the buck converter is calibrated to exactly **5.1V via the Homesaya USB Jack** to avoid undervoltage warnings during peak load.
+3.  **Enable SSH & VNC**: Go to **Menu** → **Preferences** → **Raspberry Pi Configuration** → **Interfaces**.
+4.  **Update the System**:
     ```bash
     sudo apt update && sudo apt upgrade -y
     sudo apt install git python3-pip python3-venv -y
