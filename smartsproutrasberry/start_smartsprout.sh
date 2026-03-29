@@ -4,9 +4,8 @@
 # Immortal Bash Launcher for SmartSprout Kiosk
 # ---------------------------------------------------------
 
-# OpenGL Environment Overrides for Raspberry Pi 3/4
-export LIBGL_ALWAYS_SOFTWARE=1
-export MESA_GL_VERSION_OVERRIDE=3.3
+# OpenGL Environment Variables (Pi 4 Hardware Acceleration enabled)
+# Removed LIBGL_ALWAYS_SOFTWARE=1 and Mesa override to allow smooth Premium UI.
 
 echo "Starting SmartSprout Kiosk System..."
 

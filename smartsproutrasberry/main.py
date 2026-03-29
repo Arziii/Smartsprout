@@ -267,12 +267,12 @@ def collect_telemetry(interval: float) -> dict:
     alerts = []
     system_status = "ok"
 
-    # Tank safety lock
-    if tank >= 0 and tank < config.TANK_LOW_THRESHOLD:
+    # Tank safety lock String formatting
+    if tank == "LOW" or tank == "FAULT":
         _pump_locked = True
-        alerts.append("tank_empty")
-        system_status = "tank_low"
-    elif tank >= config.TANK_LOW_THRESHOLD:
+        alerts.append("tank_empty" if tank == "LOW" else "tank_sensor_fault")
+        system_status = "tank_low" if tank == "LOW" else "sensor_fault"
+    elif tank == "HIGH":
         _pump_locked = False
 
     # Hardware status tracking
@@ -281,7 +281,7 @@ def collect_telemetry(interval: float) -> dict:
         "bed2": "fault" if soil.get("bed2", 0) < 0 else "ok",
         "bed3": "fault" if soil.get("bed3", 0) < 0 else "ok",
         "environment": "fault" if env["temperature"] == -1.0 and env["humidity"] == -1.0 else "ok",
-        "tank": "fault" if tank < 0 else "ok",
+        "tank": "fault" if tank == "FAULT" else "ok",
     }
 
     # Sensor fault detection
@@ -292,9 +292,9 @@ def collect_telemetry(interval: float) -> dict:
         alerts.append("environment_sensor_fault")
         if system_status == "ok":
             system_status = "sensor_fault"
-    if tank < 0:
-        alerts.append("tank_sensor_fault")
-        system_status = "sensor_fault"
+    if tank == "FAULT":
+        # Note: If tank == "FAULT", alerts/system_status is now handled by the safety logic above.
+        pass
 
     # Read current offsets from calibration data
     cal_data = sensor_manager.load_calibration()
@@ -342,11 +342,11 @@ def _should_differential_push(current: dict) -> bool:
         print(f"[DIFF_SYNC] Temperature change detected: {last_temp}→{curr_temp}°C")
         return True
 
-    # Tank level delta > 5%
-    last_tank = _last_sent_telemetry.get("tank_level", 0)
-    curr_tank = current.get("tank_level", 0)
-    if abs(curr_tank - last_tank) > 5:
-        print(f"[DIFF_SYNC] Tank level change detected: {last_tank}→{curr_tank}%")
+    # Tank level string comparison
+    last_tank = _last_sent_telemetry.get("tank_level", "FAULT")
+    curr_tank = current.get("tank_level", "FAULT")
+    if curr_tank != last_tank:
+        print(f"[DIFF_SYNC] Tank level change detected: {last_tank}→{curr_tank}")
         return True
 
     # Soil moisture delta > 3% (any bed)
@@ -439,7 +439,7 @@ def main():
 
             print(
                 f"[TEL] Soil={telemetry['soil_moisture']} | "
-                f"Tank={telemetry['tank_level']}% | "
+                f"Tank={telemetry['tank_level']} | "
                 f"Temp={telemetry['temperature']}°C | "
                 f"Status={telemetry['system_status']}"
             )

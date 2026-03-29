@@ -103,14 +103,10 @@ def read_soil_moisture() -> tuple[dict, dict, bool]:
     cal_data = load_calibration()
     
     if not _SMBUS_AVAILABLE:
-        # No hardware: raw is 0%, calibrated is 0% + offset
-        raw_results = {"bed1": 0.0, "bed2": 0.0, "bed3": 0.0}
-        cal_results = {
-            "bed1": max(0.0, min(100.0, 0.0 + cal_data["zone_1"].get("manual_offset_pct", 0))),
-            "bed2": max(0.0, min(100.0, 0.0 + cal_data["zone_2"].get("manual_offset_pct", 0))),
-            "bed3": max(0.0, min(100.0, 0.0 + cal_data["zone_3"].get("manual_offset_pct", 0)))
-        }
-        return cal_results, raw_results, False
+        # No hardware detected — return fault sentinels so the UI shows FAULT, not 0%.
+        print("[WARN] read_soil_moisture: SMBus not available — returning fault sentinels (-1.0).")
+        fault_results = {"bed1": -1.0, "bed2": -1.0, "bed3": -1.0}
+        return fault_results, fault_results, True
 
     try:
         bus = SMBus(config.ADS1115_I2C_BUS)
@@ -123,6 +119,13 @@ def read_soil_moisture() -> tuple[dict, dict, bool]:
             offset = cal_data[zone_key].get("manual_offset_pct", 0)
 
             raw = _read_ads1115_channel(bus, ch)
+            
+            # Fault detection for physically disconnected probes
+            # A 3.3V sensor on a ±4.096V scale shouldn't read below 1000 or near 32767.
+            if raw < 1000 or raw > 30000:
+                raw_results[f"bed{ch+1}"] = -1.0
+                cal_results[f"bed{ch+1}"] = -1.0
+                continue
             
             # Avoid division by zero
             if dry_raw == wet_raw:
@@ -209,31 +212,56 @@ def read_environment() -> dict:
 # XKC-Y26-V — Non-contact Tank Level (Digital)
 # ═══════════════════════════════════════════════════════
 def _setup_tank_sensor():
-    if not _GPIO_AVAILABLE:
-        return
-    GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN)
+    # Only run general setup, but we'll manipulate the pin dynamically in the read function
+    pass
 
 
-def read_tank_level() -> float:
+def read_tank_level() -> str:
     """
-    Returns tank fill percentage (0-100%).
-    Since XKC is a digital sensor, it returns 100% if water is detected 
-    at the sensor's mounting level, and 0% if not.
+    Returns tank fill state as a string: 'HIGH', 'LOW', or 'FAULT'.
+    Uses aggressive floating-pin detection to verify physical connection.
+    By rapidly testing against both internal PULL-UP and PULL-DOWN resistors,
+    we can determine if the sensor is actively driving the line, or if the wire
+    is completely disconnected.
     """
     if not _GPIO_AVAILABLE:
-        return 0.0
+        print("[WARN] read_tank_level: GPIO not available — returning FAULT sentinel.")
+        return "FAULT"
 
     try:
-        _setup_tank_sensor()
-        # XKC-Y26-V typically outputs HIGH when water is detected.
-        # Ensure your specific model's logic matches (adjust if needed).
-        if GPIO.input(config.XKC_LEVEL_PIN):
-            return 100.0
-        return 0.0
+        # TEST 1: Pull the pin HIGH internally
+        GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        time.sleep(0.02)  # Wait 20ms for wire capacitance to settle
+        up_sample = GPIO.input(config.XKC_LEVEL_PIN)
+
+        # TEST 2: Pull the pin LOW internally
+        GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        time.sleep(0.02)
+        down_sample = GPIO.input(config.XKC_LEVEL_PIN)
+
+        # Evaluate the results:
+        if up_sample == True and down_sample == False:
+            # The pin blindly followed our weak internal resistors.
+            # This mathematically proves nothing is wired to the pin to resist it.
+            print("[WARN] Tank sensor pin is floating (DISCONNECTED) — returning FAULT.")
+            return "FAULT"
+        
+        elif up_sample == True and down_sample == True:
+            # Sensor is forcefully driving the line HIGH (Voltage present)
+            return "HIGH"
+            
+        elif up_sample == False and down_sample == False:
+            # Sensor is forcefully driving the line LOW (Ground present)
+            return "LOW"
+            
+        else:
+            # Highly improbable (False / True) - indicates rapid electrical flapping
+            print("[WARN] Tank sensor signal is severely oscillating — returning FAULT.")
+            return "FAULT"
 
     except Exception as e:
         print(f"[ERROR] Tank level read failed: {e}")
-        return -1.0
+        return "FAULT"
 
 
 

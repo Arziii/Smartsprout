@@ -39,7 +39,7 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
   bool get isTempFault => widget.temp <= -1;
 
   Color getMoodColor() {
-    if (widget.isFault) return Colors.grey.shade400;
+    if (widget.isFault || widget.rawMoisture < 0) return Colors.grey.shade400;
 
     final val = widget.rawMoisture;
     final target = widget.targetMoisture.round();
@@ -117,7 +117,7 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
               // ── Ghost Background Image ──
               if (plantImageName != null && plantImageName.isNotEmpty)
                 Positioned.fill(
-                  child: Platform.isLinux
+                  child: isLiteMode
                       ? ColorFiltered(
                           colorFilter: ColorFilter.mode(
                             Colors.black.withOpacity(0.25),
@@ -224,7 +224,7 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                   children: [
                     Icon(Icons.water_drop, size: 16, color: statusColor),
                     const SizedBox(width: 5),
-                    if (widget.isFault)
+                    if (widget.isFault || widget.rawMoisture < 0)
                       Tooltip(
                         message: "Maintenance Required",
                         child: Row(

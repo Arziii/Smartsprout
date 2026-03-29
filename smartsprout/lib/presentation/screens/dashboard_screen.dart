@@ -119,12 +119,11 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildTankVisual(double tankLevel, BuildContext context) {
+  Widget _buildTankVisual(String tankLevel, BuildContext context) {
     Color waterColor = Colors.lightBlue;
-    if (tankLevel < 20) {
+    bool isLow = tankLevel == 'LOW' || tankLevel == 'FAULT';
+    if (isLow) {
       waterColor = Colors.redAccent;
-    } else if (tankLevel < 40) {
-      waterColor = Colors.orangeAccent;
     }
 
     return Card(
@@ -133,22 +132,14 @@ class DashboardScreen extends ConsumerWidget {
         child: Padding(
             padding: const EdgeInsets.all(24.0),
             child: Row(children: [
-              // Mock Tank Graphic
+              // Binary Tank Graphic
               Container(
                 height: 100,
                 width: 60,
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade300, width: 2),
+                  border: Border.all(color: isLow ? Colors.redAccent : Colors.grey.shade300, width: isLow ? 3 : 2),
                   borderRadius: BorderRadius.circular(8),
-                ),
-                alignment: Alignment.bottomCenter,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 500),
-                  height: 100 * (tankLevel / 100),
-                  decoration: BoxDecoration(
-                      color: waterColor.withOpacity(0.8),
-                      borderRadius: const BorderRadius.vertical(
-                          bottom: Radius.circular(6))),
+                  color: isLow ? Colors.transparent : Colors.lightBlue.withOpacity(0.8),
                 ),
               ),
               const SizedBox(width: 24),
@@ -156,18 +147,18 @@ class DashboardScreen extends ConsumerWidget {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    Text('Reservoir Level',
+                    Text('Reservoir Status',
                         style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 8),
-                    Text('${tankLevel.toStringAsFixed(0)}%',
+                    Text(tankLevel == 'HIGH' ? 'Normal' : 'Low/Refill Required',
                         style: Theme.of(context)
                             .textTheme
-                            .headlineMedium
+                            .headlineSmall
                             ?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: waterColor)),
                     const SizedBox(height: 8),
-                    if (tankLevel < 20)
+                    if (isLow)
                       const Row(children: [
                         Icon(Icons.warning, color: Colors.redAccent, size: 16),
                         SizedBox(width: 8),

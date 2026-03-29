@@ -122,7 +122,9 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       // 1. Sign in anonymously FIRST to get Firestore read permission
-      await _auth.signInAnonymously();
+      if (_auth.currentUser == null) {
+        await _auth.signInAnonymously();
+      }
 
       // 2. Fetch device document from Firestore (force server read to bypass emulator cache)
       final doc = await _firestore.collection('devices').doc(deviceId).get(const GetOptions(source: Source.server));

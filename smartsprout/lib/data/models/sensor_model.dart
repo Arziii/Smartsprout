@@ -8,7 +8,7 @@ class SensorData {
   final List<int> maxPumpRuntime;     // 3 zone safety timeouts (seconds)
   final double temperature;
   final double humidity;
-  final double tankLevel;
+  final String tankLevel;
   final double flowRate;
   final bool pumpLocked;
   final String systemStatus; // 'ok', 'sensor_fault', 'tank_low', 'offline'
@@ -25,7 +25,7 @@ class SensorData {
     this.maxPumpRuntime = const [30, 30, 30],
     this.temperature = 0.0,
     this.humidity = 0.0,
-    this.tankLevel = 0.0,
+    this.tankLevel = 'FAULT',
     this.flowRate = 0.0,
     this.pumpLocked = false,
     this.systemStatus = 'offline',
@@ -133,7 +133,7 @@ class SensorData {
       maxPumpRuntime: runtimes,
       temperature: (json['temperature'] as num?)?.toDouble() ?? -1.0,
       humidity: (json['humidity'] as num?)?.toDouble() ?? -1.0,
-      tankLevel: (json['tank_level'] as num?)?.toDouble() ?? -1.0,
+      tankLevel: json['tank_level']?.toString() ?? 'FAULT',
       flowRate: (json['flow_rate'] as num?)?.toDouble() ?? 0.0,
       pumpLocked: json['pump_locked'] as bool? ?? false,
       systemStatus: json['system_status'] as String? ?? 'offline',
@@ -145,7 +145,7 @@ class SensorData {
   }
 
   bool get hasSensorFault => systemStatus == 'sensor_fault' || alerts.contains('soil_sensor_fault') || alerts.contains('dht22_fault') || alerts.contains('environment_sensor_fault');
-  bool get isTankLow => systemStatus == 'tank_low' || alerts.contains('tank_empty') || tankLevel < 20.0;
+  bool get isTankLow => systemStatus == 'tank_low' || alerts.contains('tank_empty') || tankLevel == 'LOW' || tankLevel == 'FAULT';
   bool get isOffline => systemStatus == 'offline' || isControllerDisconnected;
   bool get isHealthy => !hasSensorFault && !isTankLow && !isOffline;
   
@@ -166,7 +166,7 @@ class SensorData {
     List<int>? maxPumpRuntime,
     double? temperature,
     double? humidity,
-    double? tankLevel,
+    String? tankLevel,
     double? flowRate,
     bool? pumpLocked,
     String? systemStatus,

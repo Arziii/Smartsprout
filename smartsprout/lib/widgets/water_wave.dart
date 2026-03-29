@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-import 'dart:io';
+import '../core/utils/platform_utils.dart';
 
 class WaterWave extends StatefulWidget {
   final double value; // 0 to 100
@@ -24,8 +24,8 @@ class _WaterWaveState extends State<WaterWave>
       vsync: this,
       duration: const Duration(seconds: 2),
     );
-    // CRITICAL PERF: Don't repeat animation loop on Linux
-    if (!Platform.isLinux) {
+    // CRITICAL PERF: Don't repeat animation loop on Pi 3B (Lite mode)
+    if (!isLiteMode) {
       _controller.repeat();
     }
   }
@@ -77,13 +77,13 @@ class _WavePainter extends CustomPainter {
     final yBase = size.height * (1 - fillLevel);
     
     // Wave parameters
-    final double waveHeight = fillLevel > 0 && fillLevel < 1 && !Platform.isLinux ? 4.0 : 0.0;
+    final double waveHeight = fillLevel > 0 && fillLevel < 1 && !isLiteMode ? 4.0 : 0.0;
     const double waveFrequency = 1.5;
 
     path.moveTo(0, yBase);
 
     if (fillLevel > 0) {
-      if (Platform.isLinux) {
+      if (isLiteMode) {
         // PERF: Draw flat level to skip heavy sine generation on Kiosk
         path.lineTo(size.width, yBase);
       } else {
@@ -112,7 +112,7 @@ class _WavePainter extends CustomPainter {
     pathDark.moveTo(0, yBase);
     
     if (fillLevel > 0) {
-      if (Platform.isLinux) {
+      if (isLiteMode) {
         pathDark.lineTo(size.width, yBase);
       } else {
         for (double x = 0; x <= size.width; x += 1) {

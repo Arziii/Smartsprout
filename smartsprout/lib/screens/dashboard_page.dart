@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../core/utils/platform_utils.dart';
 import '../presentation/providers/sensor_provider.dart';
 import '../widgets/zone_card.dart';
 import '../widgets/water_wave.dart';
@@ -57,7 +58,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     final rawSoil = sensorData.soilMoistureRaw;
     final offsets = sensorData.soilOffsets;
     final targets = sensorData.targetMoisture;
-    final tankLevel = sensorData.tankLevel.clamp(0.0, 100.0).toDouble();
+    final tankLevelStr = sensorData.tankLevel;
     final temperature = sensorData.temperature;
     final humidity = sensorData.humidity;
     // On Linux (Pi), never show as offline — the Pi IS the system.
@@ -119,9 +120,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             child: Platform.isWindows
                 ? Scrollbar(
                     thumbVisibility: true,
-                    child: _buildMainList(tankLevel, temperature, humidity, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, isEnvFault, sensorData),
+                    child: _buildMainList(tankLevelStr, temperature, humidity, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, isEnvFault, sensorData),
                   )
-                : _buildMainList(tankLevel, temperature, humidity, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, isEnvFault, sensorData),
+                : _buildMainList(tankLevelStr, temperature, humidity, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, isEnvFault, sensorData),
           ),
 
           // ── Status Overlays ──
@@ -180,14 +181,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
   }
 
-  // ── Extracted ListView for Scrollbar wrapping on Windows ──
-  Widget _buildMainList(double tankLevel, double temperature, double humidity, List<double> rawSoil, List<double> offsets, List<double> targets, bool isOffline, bool isTankLow, bool hasFault, bool isEnvFault, dynamic sensorData) {
+  Widget _buildMainList(String tankLevelStr, double temperature, double humidity, List<double> rawSoil, List<double> offsets, List<double> targets, bool isOffline, bool isTankLow, bool hasFault, bool isEnvFault, dynamic sensorData) {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       children: [
         _buildAnimatedWidget(0, _buildTopHeader(isOffline, isTankLow, hasFault)),
         const SizedBox(height: 10),
-        _buildAnimatedWidget(1, _buildVitals(tankLevel, temperature, humidity, isEnvFault)),
+        _buildAnimatedWidget(1, _buildVitals(tankLevelStr, temperature, humidity, isEnvFault)),
         const SizedBox(height: 30),
         _buildAnimatedWidget(2, Text("System Overview",
             style: GoogleFonts.outfit(
@@ -256,7 +256,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           color: color,
           shape: BoxShape.circle,
         ),
-        child: Platform.isLinux 
+        child: isLiteMode 
             ? null 
             : BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
@@ -343,17 +343,35 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
   }
 
-  Widget _buildVitals(double tankLevel, double systemTemp, double systemHum, bool isEnvFault) {
+  Widget _buildVitals(String tankLevelStr, double systemTemp, double systemHum, bool isEnvFault) {
+    String displayValue;
+    Color tankColor;
+    double fillLevel;
+    
+    if (tankLevelStr == 'HIGH') {
+      displayValue = 'NORMAL';
+      tankColor = const Color(0xFF29B6F6);
+      fillLevel = 100.0;
+    } else if (tankLevelStr == 'LOW') {
+      displayValue = 'LOW';
+      tankColor = Colors.redAccent;
+      fillLevel = 0.0;
+    } else {
+      displayValue = 'FAULT';
+      tankColor = Colors.orange;
+      fillLevel = 0.0;
+    }
+
     return Row(
       children: [
         Expanded(
           child: _buildVitalCard(
             label: "TANK LEVEL",
-            value: "${tankLevel.toInt()}%",
+            value: displayValue,
             icon: Icons.waves_rounded,
-            color: tankLevel < 20 ? Colors.redAccent : const Color(0xFF29B6F6),
+            color: tankColor,
             isTank: true,
-            level: tankLevel,
+            level: fillLevel,
           ),
         ),
         const SizedBox(width: 15),
@@ -384,10 +402,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     return Container(
       height: 160,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.8),
+        color: Colors.white.withOpacity(isLiteMode ? 1.0 : 0.8),
         borderRadius: BorderRadius.circular(32),
         border: Border.all(color: Colors.white, width: 2),
-        boxShadow: Platform.isLinux ? null : [
+        boxShadow: isLiteMode ? null : [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
             blurRadius: 20,
@@ -496,7 +514,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
       },
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.8),
+          color: Colors.white.withOpacity(isLiteMode ? 1.0 : 0.8),
           borderRadius: BorderRadius.circular(28),
           border: Border.all(color: Colors.white, width: 2),
         ),
@@ -549,7 +567,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(32),
-            boxShadow: Platform.isLinux ? null : [BoxShadow(color: Colors.black26, blurRadius: 30, offset: const Offset(0, 10))],
+            boxShadow: isLiteMode ? null : [BoxShadow(color: Colors.black26, blurRadius: 30, offset: const Offset(0, 10))],
           ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -570,7 +588,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
 
     return Positioned.fill(
-      child: Platform.isLinux 
+      child: isLiteMode 
           ? content 
           : BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),

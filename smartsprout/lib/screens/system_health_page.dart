@@ -1,8 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../core/utils/platform_utils.dart';
 import '../presentation/providers/sensor_provider.dart';
 
 class SystemHealthPage extends ConsumerWidget {
@@ -69,8 +69,8 @@ class SystemHealthPage extends ConsumerWidget {
                 description: isOffline 
                     ? "Reservoir level unavailable while disconnected."
                     : (sensorData.isTankLow 
-                        ? "Water level is deeply critical (${sensorData.tankLevel.toStringAsFixed(0)}%). Pump protection is active."
-                        : "Water level is at ${sensorData.tankLevel.toStringAsFixed(0)}%."),
+                        ? "Water level is deeply critical (${sensorData.tankLevel}). Pump protection is active."
+                        : "Water level is at ${sensorData.tankLevel}."),
               ),
               const SizedBox(height: 16),
 
@@ -143,10 +143,10 @@ class SystemHealthPage extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.8),
+        color: Colors.white.withOpacity(isLiteMode ? 1.0 : 0.8),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white, width: 2),
-        boxShadow: Platform.isLinux ? null : [
+        boxShadow: isLiteMode ? null : [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
             blurRadius: 20,
@@ -214,10 +214,10 @@ class SystemHealthPage extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.8),
+        color: Colors.white.withOpacity(isLiteMode ? 1.0 : 0.8),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white, width: 2),
-        boxShadow: Platform.isLinux ? null : [
+        boxShadow: isLiteMode ? null : [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
             blurRadius: 20,

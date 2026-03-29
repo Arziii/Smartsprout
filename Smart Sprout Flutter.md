@@ -349,7 +349,7 @@ PHASE 4.6: TESTING & REFINEMENT [COMPLETED]
 PHASE 4.7: HARDWARE-OPTIMIZED KIOSK UI [COMPLETED]
 ☑ Stripped expensive glassmorphism (BackdropFilter) and vector shadows (BoxShadow) on Linux targets.
 ☑ Optimized navigation performance by disabling sliding page transitions in GoRouter.
-☑ Simplified trigonometric math loops for water-wave animations on limited Pi 3B hardware.
+☑ Reverted simplified trigonometric math loops for water-wave animations since Raspberry Pi 4 (4GB RAM) can handle full animations.
 
 PHASE 4.8: HIGH-PERFORMANCE CALIBRATION & DIRECT INPUT [COMPLETED]
 ☑ Replaced repetitive +1%/-1% buttons with direct numeric input for precision.
@@ -424,9 +424,15 @@ PHASE 4.18: HARDWARE SAFETY & LED FEEDBACK [COMPLETED]
 PHASE 4.19: MULTI-TIER PLATFORM OPTIMIZATION [COMPLETED]
 ☑ Platform Helpers: Created `platform_utils.dart` providing `isLiteMode`, `isPremiumMode`, `isDesktopMode`.
 ☑ Linux GPU Relief: Safely scrubbed heavy `BackdropFilter` (glassmorphism) and vector shadows (`BoxShadow`) from Kiosk UI.
-☑ Memory Safety: Embedded 50MB `imageCache` limit exclusively for Linux to prevent Pi 3B 1GB RAM exhaustion.
+☑ Hardware Upgrade: Migrated from Pi 3B to Raspberry Pi 4 (4GB RAM) for improved UI/UX consistency with mobile.
+☑ Memory Safety: Removed 50MB `imageCache` limit, previously used exclusively for Linux to prevent Pi 3B 1GB RAM exhaustion.
 ☑ Desktop UX: Implemented `MouseRegion` hover glows and always-visible `Scrollbar` wrappers for Windows.
 ☑ Cross-Platform Firebase: Fallback to `firebase_stub.dart` enables zero-code-change Windows Desktop compilation.
+
+PHASE 4.20: UI RESPONSIVENESS PATCH [COMPLETED]
+☑ ZoneCard Text Overflow: Wrapped Zone Title and Moisture text in Flexible/Expanded widgets with TextOverflow.ellipsis to handle long strings gracefully.
+☑ Padding Adjustments: Added SizedBox(width: 8) buffer between text strings and action buttons to prevent crowding.
+☑ Adaptive Scaling: Wrapped the Zone action toggles ('Stop' button) in Flexible wrappers to ensure proportional scaling on narrow devices (e.g., iPhone SE), maintaining layout integrity.
 
 
 ═══════════════════════════════════════════════════════════════════

@@ -6,15 +6,11 @@
 
 import 'dart:io';
 
-/// **Lite Mode** — Raspberry Pi 3B (Linux ARM64 Kiosk).
-/// Disables GPU-heavy effects: BackdropFilter, BoxShadow,
-/// and complex animations to stay within 1 GB RAM / VideoCore IV.
-bool get isLiteMode => Platform.isLinux;
+/// **Lite Mode** — Formerly for Pi 3B. Disabled for Pi 4 (4GB RAM).
+bool get isLiteMode => false;
 
-/// **Premium Mode** — iOS, Android, and Windows Desktop.
-/// Full glassmorphism, blurred shadows, Hero transitions,
-/// and smooth micro-animations enabled.
-bool get isPremiumMode => !Platform.isLinux;
+/// **Premium Mode** — Now enabled universally (Pi 4, iOS, Android, Windows).
+bool get isPremiumMode => true;
 
 /// **Desktop Mode** — Windows, macOS, or Linux.
 /// Enables mouse/keyboard UX: visible scrollbars, hover states,

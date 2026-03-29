@@ -10,6 +10,7 @@ import '../providers/auth_provider.dart';
 import '../../data/services/data_service.dart';
 import '../../widgets/system_settings_dialog.dart';
 import '../widgets/account_switch_sheet.dart';
+import '../../core/utils/platform_utils.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -202,10 +203,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(Platform.isLinux ? 0.95 : 0.7),
+        color: Colors.white.withOpacity(isLiteMode ? 0.95 : 0.7),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white, width: 2),
-        boxShadow: Platform.isLinux ? null : [
+        boxShadow: isLiteMode ? null : [
           BoxShadow(
             color: Colors.black.withOpacity(0.03),
             blurRadius: 20,
@@ -215,7 +216,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: Platform.isLinux 
+        child: isLiteMode 
             ? listTile 
             : BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -236,7 +237,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         width: size,
         height: size,
         decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        child: Platform.isLinux ? null : BackdropFilter(
+        child: isLiteMode ? null : BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
           child: Container(color: Colors.transparent),
         ),
