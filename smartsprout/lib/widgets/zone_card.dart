@@ -51,7 +51,6 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
   @override
   Widget build(BuildContext context) {
     final statusColor = getMoodColor();
-    final hasThreshold = widget.calibratedValue != 0.0;
     final plantImageAsync = ref.watch(plantImageProvider(widget.zoneId));
     final plantImageName = plantImageAsync.value;
 
@@ -114,42 +113,55 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
           clipBehavior: Clip.hardEdge,
           child: Stack(
             children: [
-              // ── Ghost Background Image ──
-              if (plantImageName != null && plantImageName.isNotEmpty)
+              // ── Full Background Image ──
+              if (plantImageName != null && plantImageName.isNotEmpty) ...[
                 Positioned.fill(
-                  child: isLiteMode
-                      ? ColorFiltered(
-                          colorFilter: ColorFilter.mode(
-                            Colors.black.withOpacity(0.25),
-                            BlendMode.dstIn,
-                          ),
-                          child: Image.asset(
-                            'assets/images/plants/$plantImageName',
-                            fit: BoxFit.cover,
-                          ),
-                        )
-                      : Opacity(
-                          opacity: 0.25,
-                          child: Image.asset(
-                            'assets/images/plants/$plantImageName',
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                ),
-
-              // ── Subtle background accent ──
-              Positioned(
-                top: -20,
-                right: -20,
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.05),
-                    shape: BoxShape.circle,
+                  child: Image.asset(
+                    'assets/images/plants/$plantImageName',
+                    fit: BoxFit.cover,
                   ),
                 ),
-              ),
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white.withOpacity(0.85),
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.5),
+                        ],
+                        stops: const [0.0, 0.4, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+              ] else ...[
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          statusColor.withOpacity(0.1),
+                          statusColor.withOpacity(0.3),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: -20,
+                  bottom: -20,
+                  child: Icon(
+                    Icons.local_florist_rounded,
+                    size: 150,
+                    color: statusColor.withOpacity(0.1),
+                  ),
+                ),
+              ],
 
               // ── TOP-LEFT: Zone Name + Temperature ──
               Positioned(
@@ -162,26 +174,26 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                     Text(
                       widget.zoneName,
                       style: const TextStyle(
-                        color: Color(0xFF4A6164),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0F2027),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
                         letterSpacing: 0.3,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      isTempFault ? '--°C' : '${widget.temp}°C',
-                      style: TextStyle(
-                        color: Colors.grey.shade700,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w400,
+                      isTempFault ? '-- °C' : '${widget.temp} °C',
+                      style: const TextStyle(
+                        color: Color(0xFF0F2027),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
 
-              // ── TOP-RIGHT: Start Threshold + (fault) Target Moisture badges ──
+              // ── TOP-RIGHT: Current Moisture & Target Moisture Pills ──
               Positioned(
                 top: 16,
                 right: 16,
@@ -189,208 +201,108 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Start Threshold badge (always shown)
-                    Tooltip(
-                      message: 'Start Threshold (pump ON)',
-                      child: hasThreshold
-                          ? Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF29B6F6).withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                    color: const Color(0xFF29B6F6).withOpacity(0.3)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.water_damage_outlined,
-                                      size: 10, color: Color(0xFF0277BD)),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    '${widget.calibratedValue.toStringAsFixed(0)}%',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 11,
-                                      color: Color(0xFF0277BD),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : Text(
-                              'No set',
-                              style: TextStyle(
-                                color: Colors.grey.shade300,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                    ),
-
-                    // Target Moisture badge — only shown when sensor is at fault
-                    if ((widget.isFault || widget.rawMoisture < 0) &&
-                        widget.targetMoisture > 0) ...[
-                      const SizedBox(height: 5),
-                      Tooltip(
-                        message: 'Target Saturation (pump OFF)',
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2BCC71).withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: const Color(0xFF2BCC71).withOpacity(0.35)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.flag_rounded,
-                                  size: 10, color: Color(0xFF1B8E4F)),
-                              const SizedBox(width: 3),
-                              Text(
-                                '${widget.targetMoisture.toStringAsFixed(0)}%',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 11,
-                                  color: Color(0xFF1B8E4F),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              // ── BOTTOM-LEFT: Raw Sensor Value + Ghost Target ──
-              Positioned(
-                left: 18,
-                bottom: 18,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Icon(Icons.water_drop, size: 16, color: statusColor),
-                    const SizedBox(width: 5),
-                    if (widget.isFault || widget.rawMoisture < 0)
-                      FadeTransition(
-                        opacity: widget.pulseAnim,
-                        child: Tooltip(
-                          message: "Sensor disconnected — Maintenance Required",
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.orange.withOpacity(0.4)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.sensors_off_rounded,
-                                        color: Colors.orange, size: 16),
-                                    const SizedBox(width: 5),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Text(
-                                          'FAULT',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w900,
-                                            fontSize: 15,
-                                            color: Colors.orange,
-                                            letterSpacing: 0.5,
-                                            height: 1.1,
-                                          ),
-                                        ),
-                                        Text(
-                                          'Sensor disconnected',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w500,
-                                            fontSize: 9,
-                                            color: Colors.orange.shade700,
-                                            letterSpacing: 0.2,
-                                            height: 1.1,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else
-                      FadeTransition(
-                        opacity: widget.pulseAnim,
-                        child: Text(
-                          '${widget.rawMoisture}%',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 26,
-                            color: statusColor,
-                            letterSpacing: -1.0,
-                            height: 1.0,
-                          ),
-                        ),
-                      ),
-                    // Ghost target label (hidden in fault state)
-                    if (!widget.isFault && widget.rawMoisture >= 0 && widget.targetMoisture > 0)
-
-                      Padding(
-                        padding: const EdgeInsets.only(left: 6, bottom: 2),
-                        child: Text(
-                          '→ ${widget.targetMoisture.round()}%',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                            color: Colors.grey.shade700,
-                            letterSpacing: -0.3,
-                            height: 1.0,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-
-              // ── BOTTOM-RIGHT: Plant icon fallback ──
-              if (plantImageName == null || plantImageName.isEmpty)
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 70,
-                    height: 70,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          statusColor.withOpacity(0.1),
-                          statusColor.withOpacity(0.3),
+                    // Current Moisture
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: Offset(0, 2))
                         ],
                       ),
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(35),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.water_drop_rounded, size: 14, color: Color(0xFF0277BD)),
+                          const SizedBox(width: 4),
+                          Text(
+                            (widget.isFault || widget.rawMoisture < 0) ? '--%' : '${widget.rawMoisture}%',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                              color: Color(0xFF0277BD),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    child: Center(
-                      child: Icon(
-                        Icons.local_florist_rounded,
-                        size: 30,
-                        color: statusColor,
+                    const SizedBox(height: 6),
+                    // Target Moisture
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: Offset(0, 2))
+                        ],
                       ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.eco_rounded, size: 14, color: Color(0xFF1B8E4F)),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${widget.targetMoisture.round()}%',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                              color: Color(0xFF1B8E4F),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── BOTTOM FAULT BANNER ──
+              if (widget.isFault || widget.rawMoisture < 0)
+                Positioned(
+                  bottom: 12,
+                  left: 12,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3E0).withOpacity(0.95), // Light warm orange
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.orange.shade200, width: 1.5),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'FAULT',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                  color: Colors.orange,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              Text(
+                                'Sensor disconnected',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
+                                  color: Colors.orange,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

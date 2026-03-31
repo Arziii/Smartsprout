@@ -201,6 +201,14 @@ def handle_firebase_command(payload: dict):
         result = sensor_manager.run_dry_calibration(target_zone=zone)
         print(f"[SETTINGS] Dry calibration complete: {result}")
         _force_sync = True
+    elif command == "run_wet_calibration":
+        # Expected payload: {'command': 'run_wet_calibration', 'zone': 1}
+        # 'zone' is optional — omit or set to None to calibrate all zones.
+        zone = payload.get("zone", None)
+        print(f"[SETTINGS] Starting wet calibration from Firebase (zone={zone})...")
+        result = sensor_manager.run_wet_calibration(target_zone=zone)
+        print(f"[SETTINGS] Wet calibration complete: {result}")
+        _force_sync = True
     elif command == "set_offset":
         zone = payload.get("zone", 1)
         value = payload.get("value", 0)
@@ -276,10 +284,13 @@ def handle_firebase_command(payload: dict):
 # ═══════════════════════════════════════════════════════
 # Telemetry Collection
 # ═══════════════════════════════════════════════════════
-def collect_telemetry(interval: float) -> dict:
+def collect_telemetry() -> dict:
     """
     Reads ALL sensors and returns a unified telemetry dict.
     The 'status' field indicates health: 'ok', 'sensor_fault', 'tank_low'.
+    NOTE: This function only reads hardware. It never writes to Firebase.
+    Cloud pushes are gated entirely by the main loop's Eco-Mode / Differential
+    Sync / FORCE_SYNC logic.
     """
     global _pump_locked
 
@@ -432,42 +443,71 @@ def main():
     if firebase_manager.init_firebase():
         firebase_manager.listen_for_commands(handle_firebase_command)
 
-    interval = config.TELEMETRY_INTERVAL
-    cloud_sync_interval = config.CLOUD_SYNC_INTERVAL
-    last_cloud_sync = 0
+    interval = config.TELEMETRY_INTERVAL          # Local sensor read cadence (3 s)
+    cloud_sync_interval = config.CLOUD_SYNC_INTERVAL  # Eco-Mode ceiling (1800 s = 30 min)
+
+    # ── Seed the clock and diff baseline BEFORE entering the loop ──
+    # Initialising to time.time() (not 0) prevents an immediate Firebase write
+    # on the very first iteration. The first real push will happen once one of
+    # the three gate conditions becomes True organically.
+    last_cloud_sync = time.time()
+
+    # Seed the differential-sync baseline with a real sensor reading so the
+    # diff logic does not compare against an empty dict and fire immediately.
+    print("[MAIN] Seeding differential-sync baseline...")
+    try:
+        _last_sent_telemetry = collect_telemetry()
+    except Exception as _seed_err:
+        print(f"[WARN] Could not seed telemetry baseline: {_seed_err}")
+        _last_sent_telemetry = {}
+
     print(f"[MAIN] Starting local polling loop (every {interval}s)...")
-    print(f"[MAIN] Cloud sync interval set to {cloud_sync_interval} seconds ({(cloud_sync_interval/60):.1f} min).\n")
+    print(f"[MAIN] Cloud sync interval set to {cloud_sync_interval}s ({cloud_sync_interval/60:.0f} min). "
+          f"Differential threshold: 3% moisture / 1.5°C.\n")
 
     # ── Main Polling Loop ──
     try:
         while _running:
             global _force_sync
             current_time = time.time()
-            telemetry = collect_telemetry(interval)
+            telemetry = collect_telemetry()
 
-            # ── Differential Sync: push immediately if critical values changed ──
-            diff_push = _should_differential_push(telemetry)
+            # ── Cloud Push Gate ── (Eco-Mode + Differential Sync + FORCE_SYNC)
+            # Local sensor reads happen every 3 s (TELEMETRY_INTERVAL).
+            # Firebase writes are rate-limited to avoid 429 Quota Exceeded errors.
+            # A push is allowed ONLY when one of the three conditions below is met.
+            eco_due     = (current_time - last_cloud_sync) >= cloud_sync_interval
+            diff_push   = _should_differential_push(telemetry)
+            push_reason = None
 
-            # Sync to cloud every 30-60 mins as designated by CLOUD_SYNC_INTERVAL (or immediately if commanded)
-            if _force_sync or diff_push or (current_time - last_cloud_sync) >= cloud_sync_interval:
+            if _force_sync:
+                push_reason = "FORCE_SYNC (mobile command)"
+            elif diff_push:
+                push_reason = "DIFFERENTIAL_SYNC (sensor value threshold crossed)"
+            elif eco_due:
+                push_reason = f"ECO_MODE (30-min interval elapsed)"
+
+            if push_reason:
                 try:
+                    print(f"[FIREBASE] Push triggered by: {push_reason}")
                     # Publish telemetry to Firebase
                     firebase_manager.push_telemetry(telemetry)
 
                     # Publish alerts separately to Firebase
                     if telemetry["alerts"]:
                         firebase_manager.push_alerts(telemetry["alerts"])
-                        
+
                     # ── Storage Management ──
                     # Cleanup old data (older than 30 days by default)
                     firebase_manager.perform_storage_cleanup()
-                    
+
                     last_cloud_sync = current_time
                     _force_sync = False
                     _last_sent_telemetry = telemetry.copy()  # Update baseline for differential sync
-                    print(f"[FIREBASE] Telemetry payload synced to cloud (next sync in {cloud_sync_interval}s).")
+                    mins_until_next = cloud_sync_interval / 60
+                    print(f"[FIREBASE] Telemetry synced ✓ (next Eco-Mode push in {mins_until_next:.0f} min unless diff/force fires first).")
                 except Exception as e:
-                    print(f"[FIREBASE] Offline or error pushing to cloud: {e}")
+                    print(f"[FIREBASE] Push FAILED — will retry on next trigger. Error: {e}")
 
             print(
                 f"[TEL] Soil={telemetry['soil_moisture']} | "

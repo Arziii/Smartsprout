@@ -4,8 +4,8 @@
 1. [System Overview](#1-system-overview)
 2. [System Architecture](#2-system-architecture)
 3. [UI/UX Documentation](#3-uiux-documentation)
-4. [Features Documentation](#4-features-documentation)
-5. [Technical Documentation](#5-technical-documentation)
+4. [Mobile Application Functions](#4-mobile-application-functions)
+5. [Detailed Cloud & Firebase Operations](#5-detailed-cloud--firebase-operations)
 6. [Hardware Setup](#6-hardware-setup)
 7. [Testing & Limitations](#7-testing--limitations)
 8. [Defense Q&A Preparation](#8-defense-qa-preparation)
@@ -184,35 +184,61 @@ usecaseDiagram
 
 ---
 
-## 4. Features Documentation
+## 4. Mobile Application Functions
 
-### 1. Zero-Trust Precision Auto-Watering
-- **Description**: The system reads soil capacitance, converts it to a percentage, and waters if it drops below a user-defined threshold until an exact *target_moisture* is met.
-- **How it works**: Uses a "Pulse & Soak" methodology. It pulses water for 5 seconds, waits 20 seconds for the soil to absorb and re-evaluates.
-- **Error Handling**: Hardcoded max pump runtimes ensure the soil sensor won't keep the pump running forever if it fails or dislodges.
+The Flutter mobile application serves as the primary remote control interface for the system. Here is a breakdown of every core function:
 
-### 2. Manual "Dead-Man's Switch"
-- **Description**: Prevents runaway watering during manual operations if the app crashes or network fails.
-- **How it works**: The app writes a heartbeat timestamp to Firestore every 2s. The Pi checks this; if the heartbeat is 5 seconds stale, the Pi kills the pump.
-- **Error Handling**: Automatically writes `CONNECTION_LOST_SHUTDOWN` to the status log if triggered.
+### 1. The Dashboard (Home)
+- **Live Sensor Cards**: Displays current Soil Moisture, Temperature, Humidity, and Tank Level.
+- **Sync Now Button**: A manually triggered Force Sync that commands the Pi to bypass Eco-Mode and immediately push the freshest sensor data to the cloud.
+- **Zone Cards**: Represent the specific planter beds. They change color based on health (Green=Good, Warning=Low/Fault). Tapping them leads to the Plant Selection screen.
 
-### 3. External Hydration Detection
-- **Description**: Identifies if the plant was watered manually (e.g., rain, watering can).
-- **How it works**: Compares current soil moisture against previous cycle. If the pump is OFF and moisture jumped >10%, it pushes an alert.
+### 2. System Health Screen
+- **Controller Status**: Confirms if the Raspberry Pi is online by checking the `last_heartbeat` timestamp. If it is stale by >120 seconds, the app declares it offline.
+- **Maintenance Wrench**: If the Pi detects hardware disconnects (e.g., I2C bus fails or sensor unplugs), it sends a sentinel value (`-1.0`). The app reads this and displays a "FAULT" state with a warning icon, automatically disabling auto-watering for safety.
 
-### 4. Hardware Watchdog Safety
-- **Description**: Ultimate fail-safe.
-- **How it works**: A separate threaded script (`pump_watchdog.py`) directly monitors GPIO pin states. If any relay pin remains active for >120 seconds continuously, it forcibly sets it LOW (OFF), ensuring the Normally Closed (NC) valves and pump shut off regardless of the main code state.
+### 3. Control Screen (Manual Operations)
+- **Pump Toggles**: Allows the user to select between "Continuous" and "Pulse & Soak" watering. Tapping the button writes a `force_water` command to Firebase.
+- **Master Lockdown Switch**: A critical safety toggle. When activated, it writes `pump_locked = true` to the cloud. The Pi receives this instantly and permanently refuses to turn on the pumps—even for auto-watering—until the user manually releases the lockdown.
+- **Auto-Watering Strategies**: Users can switch the autonomous system between *Sensor Threshold* (waters when soil gets dry) or *Timer Schedule* (waters at a specific time daily).
+
+### 4. Calibration Screen
+- Allows precise tuning of the raw analog bounds for 0% (Dry) and 100% (Wet) moisture.
+- Users can input direct raw analog values, or press the **"Run Wet/Dry Calibration"** buttons. These buttons queue Firebase commands (`run_wet_calibration`) which tell the Pi to physically read the sensor 10 times, calculate the average, and save it directly to the Pi's internal storage.
+
+### 5. Settings & Account Management
+- **Device Switcher**: The app can store up to 5 unique devices (Device ID + PIN), allowing the user to seamlessly swap between different Smart Sprout setups without logging out.
+- **Device Rename**: Users can give their hardware nicknames (e.g., "Front Porch Sprout").
+- **System Controls**: Advanced commands to `RESTART_APP` or `REBOOT_PI` securely over the cloud if the Pi experiences OS-level freezing.
 
 ---
 
-## 5. Technical Documentation
+## 5. Detailed Cloud & Firebase Operations (How it runs every function)
 
-### Stack Breakdowns
-- **State Management**: **Riverpod** is utilized in Flutter, keeping UI precisely synced with streams flowing from Cloud Firestore.
-- **Python Edge Logic**: Uses `threading` for asynchronous execution (telemetry loop vs command listening vs watchdog).
-- **Security Features**: Implementation restricts hardware network access purely to outbound API connections over HTTPS to Firebase. No local network ports are opened (eliminating local scanning vulnerabilities).
-- **Optimized Pi Graphics**: Memory constraints (`imageCache` limited to 50MB) and GPU reliefs (`ColorFiltered` replacing heavy glassmorphism) ensure the Linux Kiosk operates smoothly over 1GB of RAM.
+To prepare for your defense, it is critical to understand **exactly** how the Cloud connects the User to the Hardware. The system operates on an asynchronous NoSQL database called Google Cloud Firestore.
+
+### A. How Commands flow (User -> App -> Cloud -> Pi)
+When you press a button on the app (e.g., "Turn Pump On" or "Run Wet Calibration"):
+1. The **Flutter App** creates a new document inside a special `commands/` subcollection in Firestore. 
+2. The payload looks like this: `{"command": "force_water", "processed": false, "timestamp": NOW}`.
+3. The **Raspberry Pi** runs a continuous background thread utilizing `firebase_admin.firestore.on_snapshot()`. This function "listens" to the cloud 24/7.
+4. The moment the new document hits the cloud, Google pushes it to the Pi.
+5. The Pi's `handle_firebase_command()` function reads the command, triggers the physical relay (turning the pump on), and then updates the cloud document to `{"processed": true}` so it doesn't run it again.
+
+### B. How Data flows (Pi -> Cloud -> App)
+Instead of spamming the database every second (which would crash the quota), the system employs **Differential Sync** and **Eco-Mode**.
+1. **Local Reads**: The Pi physically reads the soil sensors via I2C every **3 seconds**.
+2. **The Cloud Gate**: Before sending that data to Firebase, the Pi checks three rules:
+   - **Rule 1 (Eco-Mode)**: Has it been 30 minutes since the last push? If yes, push.
+   - **Rule 2 (Differential Sync)**: Did the moisture jump by more than 3%? Or the temperature by 1.5°C? If yes, push immediately.
+   - **Rule 3 (Force Sync)**: Did the user tap "Sync Now" in the app? If yes, push immediately.
+3. If none of these are met, the Pi stays quiet and saves bandwidth.
+4. When it *does* push, it overwrites the main device document in Firestore. The Flutter app is "listening" (via Riverpod Streams) to this document and instantly updates the mobile screen UI locally without requiring a manual refresh.
+
+### C. The Dead-Man's Switch (Safety)
+If a user is manually watering via the app, what happens if their phone loses internet? 
+- **The Cloud Fix**: While holding the water button, the mobile app writes a "Heartbeat" timestamp to Firestore every 2 seconds.
+- **The Pi Check**: Before the Pi fires the relay, it reads that timestamp. If the timestamp is older than 5 seconds (meaning the phone disconnected), the Pi **aborts** the pump operation to prevent flooding the house.
 
 ---
 

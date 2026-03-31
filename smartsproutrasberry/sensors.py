@@ -188,6 +188,47 @@ def run_dry_calibration(target_zone=None) -> dict:
 
 
 
+def run_wet_calibration(target_zone=None) -> dict:
+    """
+    Samples current sensor values while probes are submerged in water
+    and sets them as the new 'wet' reference (100%).
+
+    Takes 10 averaged readings per zone from the ADS1115 via the
+    with SMBus(...) as bus: context manager to guarantee the file
+    descriptor is released even on IOError, preventing [Errno 24] leaks.
+
+    target_zone: 1, 2, 3 or None (calibrates all zones)
+    Returns: {"status": "success", "updates": {"zone_1": <avg_raw>, ...}}
+             or {"status": "error", "message": <str>} on failure.
+    """
+    cal_data = load_calibration()
+    results = {"status": "success", "updates": {}}
+
+    if not _SMBUS_AVAILABLE:
+        print("[WARN] Wet calibration called but SMBus not available.")
+        return {"status": "error", "message": "Simulation mode, hardware not available."}
+
+    try:
+        zones_to_test = [target_zone - 1] if target_zone in (1, 2, 3) else [0, 1, 2]
+        with SMBus(config.ADS1115_I2C_BUS) as bus:  # Context manager guarantees fd release on any exception
+            for ch in zones_to_test:
+                readings = []
+                for _ in range(10):
+                    readings.append(_read_ads1115_channel(bus, ch))
+                    time.sleep(0.02)
+                avg_raw = int(sum(readings) / len(readings))
+
+                zone_key = f"zone_{ch+1}"
+                cal_data[zone_key]["wet_raw"] = avg_raw
+                results["updates"][zone_key] = avg_raw
+        save_calibration()
+        print(f"[CAL] Wet calibration complete: {results['updates']}")
+        return results
+    except (IOError, OSError) as e:
+        print(f"[ERROR] Wet calibration failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
 
 # ═══════════════════════════════════════════════════════
 # BME280 — Temperature, Humidity & Pressure
@@ -521,6 +562,10 @@ class SensorManager:
 
     def run_dry_calibration(self, target_zone=None):
         return run_dry_calibration(target_zone=target_zone)
+
+    def run_wet_calibration(self, target_zone=None):
+        """Captures saturated-soil (wet) reference values for the given zone (or all zones)."""
+        return run_wet_calibration(target_zone=target_zone)
 
     def read_soil_moisture(self):
         # Reads A0, A1, A2 from ADS1115 and returns dict {"bed1": val...}

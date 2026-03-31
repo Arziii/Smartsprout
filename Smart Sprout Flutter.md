@@ -129,9 +129,29 @@ The Smart Sprout hardware system integrates:
     │ (Concurrent Access)     │          │                          │
     └─────────────────────────┘          └────────────┬─────────────┘
                                                       │
-                                                      ◄
-                                           Physical Touchscreen UI
-                                           (Air-gapped local access)
+                                                       ◄
+                                            Physical Touchscreen UI
+                                            (Air-gapped local access)
+
+
+3.2 DETAILED CLOUD & FIREBASE OPERATIONS (HOW IT WORKS)
+
+The "Zero-Trust" architecture means the mobile application NEVER speaks directly to the Raspberry Pi over a home Wi-Fi network. Instead, Google Cloud Firestore acts as the ultimate middleman. 
+
+A. How Commands Turn On Pumps (App -> Cloud -> Pi)
+1. User taps "Water Now" in the Flutter Dashboard.
+2. Flutter writes a NoSQL document to `devices/{deviceID}/commands/{auto-id}` with payload `{"command": "force_water", "processed": false}`.
+3. The Raspberry Pi runs a background Python thread (`firebase_admin.firestore.on_snapshot()`) that is constantly listening to the cloud.
+4. The Pi detects the new command within ~250ms, parses it, triggers the physical GPIO relay for the 12V pump, and strictly updates the cloud document to `{"processed": true}` so it isn't run twice.
+
+B. How Telemetry Reaches the Screen (Pi -> Cloud -> App)
+Real-time streaming is expensive and drains database quotas (creating "Quota Exceeded 429" errors). To solve this, the Pi separates local reading operations from cloud writing operations:
+1. Local Hardware: The Pi reads the soil and environment I2C sensors every 3 seconds locally.
+2. The Database Gate: The Pi refuses to upload this data to Firebase unless one of three rules is passed:
+   - Rule 1 (Eco-Mode): 30 minutes have elapsed since the last push.
+   - Rule 2 (Differential Sync): The soil moisture suddenly changed by >3% or temp by >1.5°C since the last baseline push.
+   - Rule 3 (Force Sync): The user pressed "Sync Now" on the mobile app, triggering an immediate bypass.
+3. Mobile Consumption: The Flutter UI uses Riverpod (`StreamProvider`) to listen to the `devices/{deviceID}` document. When the Pi finally pushes the data based on the rules above, the Mobile screen automatically updates its visual gauges instantly.
 
 
 3.3 MULTI-USER ACCESS & CONCURRENCY

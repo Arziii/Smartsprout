@@ -187,6 +187,11 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                     4,
                     _buildDryCalibrationButton(isConnected),
                   ),
+                  const SizedBox(height: 12),
+                  _buildAnimatedItem(
+                    5,
+                    _buildWetCalibrationButton(isConnected),
+                  ),
                 ],
               ),
             ),
@@ -622,16 +627,16 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
         child: Ink(
           padding: const EdgeInsets.symmetric(vertical: 20),
           decoration: BoxDecoration(
-             gradient: LinearGradient(
+            gradient: LinearGradient(
               colors: isConnected 
-                  ? [const Color(0xFF2BCC71), const Color(0xFF20A056)]
+                  ? [const Color(0xFFA1887F), const Color(0xFF795548)]
                   : [Colors.grey.withOpacity(0.4), Colors.grey.withOpacity(0.5)],
             ),
             borderRadius: BorderRadius.circular(20),
             border: isConnected ? null : Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
             boxShadow: isConnected ? [
               BoxShadow(
-                color: const Color(0xFF2BCC71).withOpacity(0.3),
+                color: const Color(0xFF795548).withOpacity(0.3),
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               )
@@ -716,16 +721,144 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: const Text('Dry calibration command sent — syncing live data...'),
-                    backgroundColor: const Color(0xFF0F2027),
+                    backgroundColor: const Color(0xFF5D4037),
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2BCC71),
+                backgroundColor: const Color(0xFF795548),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: Text('CONFIRM', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+              child: Text('CONFIRM', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Wet Calibration ───────────────────────────────────
+
+  Widget _buildWetCalibrationButton(bool isConnected) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: isConnected
+            ? () {
+                _showConfirmWetCalibrationDialog();
+              }
+            : null,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: isConnected
+                  ? [const Color(0xFF29B6F6), const Color(0xFF0288D1)]
+                  : [Colors.grey.withOpacity(0.4), Colors.grey.withOpacity(0.5)],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: isConnected ? null : Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
+            boxShadow: isConnected
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF29B6F6).withOpacity(0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    )
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: isConnected
+                ? [
+                    const Icon(Icons.water_rounded, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text(
+                      'RUN WET CALIBRATION (ALL ZONES)',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: Colors.white,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ]
+                : [
+                    const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.5,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'WAITING FOR CONNECTION...',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: Colors.white,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showConfirmWetCalibrationDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+        child: AlertDialog(
+          backgroundColor: Colors.white.withOpacity(0.9),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Text(
+            'Confirm Wet Calibration',
+            style: GoogleFonts.outfit(
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF0F2027),
+            ),
+          ),
+          content: Text(
+            'Please submerge all soil sensors fully in water (or press them into saturated soil) before confirming. This will reset the 100% reference for all zones.',
+            style: GoogleFonts.outfit(color: const Color(0xFF37474F)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: Text(
+                'CANCEL',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final dataService = ref.read(dataServiceProvider);
+                dataService?.sendCommand({'command': 'run_wet_calibration'});
+                // Auto force-sync so the new wet_raw values appear immediately
+                dataService?.forceSync();
+                Navigator.pop(dialogCtx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Wet calibration command sent — syncing live data...'),
+                    backgroundColor: const Color(0xFF0288D1),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF29B6F6),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Text('CONFIRM', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: Colors.white)),
             ),
           ],
         ),

@@ -21,6 +21,7 @@ This document serves as the permanent reference for configuring the **Raspberry 
 To prevent I2C `[Errno 5]` errors and system instability, the project utilizes a **High-Current Single-Source Power Strategy** with an **XL4016 DC-DC Buck Module (8A)**.
 
 *   **Master Input:** 12V 8A DC Power Adapter (Powers the 12V Solenoid Rail and the Buck Module) using **18AWG copper wiring** for rail stability.
+*   **PC-Style Power Management:** A physical power-gating mechanism (latching switch) is wired between the 12V source and the XL4016. This ensures the system remains powered off after plugging in the adapter until a manual power-on intervention occurs, mimicking a traditional PC power supply.
 *   **Logic Power:** The XL4016 steps 12V down to **5.1V**. This is delivered via a **Homesaya USB Female Jack** (2-wire) to the Raspberry Pi 4 to meet its 3.0A peak demand.
 *   **Peripheral Power:** The Buck Module’s secondary output terminals provide dedicated 5V power to the **USB Pump** and **Relay VCC**, isolating motor noise from the Pi’s internal power rail.
 

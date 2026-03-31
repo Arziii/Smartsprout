@@ -164,8 +164,8 @@ class SensorData {
     );
   }
 
-  bool get hasSensorFault => systemStatus == 'sensor_fault' || alerts.contains('soil_sensor_fault') || alerts.contains('dht22_fault') || alerts.contains('environment_sensor_fault');
-  bool get isTankLow => systemStatus == 'tank_low' || alerts.contains('tank_empty') || tankLevel == 'LOW' || tankLevel == 'FAULT';
+  bool get hasSensorFault => systemStatus == 'sensor_fault' || alerts.contains('soil_sensor_fault') || alerts.contains('dht22_fault') || alerts.contains('environment_sensor_fault') || isTankFault;
+  bool get isTankLow => systemStatus == 'tank_low' || alerts.contains('tank_empty') || tankLevel == 'LOW';
   bool get isOffline => systemStatus == 'offline' || isControllerDisconnected;
   bool get isHealthy => !hasSensorFault && !isTankLow && !isOffline;
   
@@ -177,7 +177,7 @@ class SensorData {
     final rawFault = index < soilMoistureRaw.length && soilMoistureRaw[index] < 0;
     return hwFault || rawFault;
   }
-  bool get isTankFault => hardwareStatus['tank'] == 'fault';
+  bool get isTankFault => hardwareStatus['tank'] == 'fault' || tankLevel == 'FAULT';
   
   bool get isControllerDisconnected {
     if (lastHeartbeat == null) return true;

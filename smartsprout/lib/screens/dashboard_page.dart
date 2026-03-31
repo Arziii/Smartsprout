@@ -7,7 +7,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../core/utils/platform_utils.dart';
 import '../presentation/providers/sensor_provider.dart';
 import '../widgets/zone_card.dart';
-import '../widgets/water_wave.dart';
 import 'system_health_page.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
@@ -149,23 +148,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               color: const Color(0xFF4A6164),
             ),
 
-          if (_showTankLowOverlay && !isOffline)
-            _buildStatusOverlay(
-              icon: Icons.water_drop_rounded,
-              title: tankLevelStr == 'FAULT'
-                  ? "Tank Sensor Fault"
-                  : "Water Level LOW",
-              subtitle: tankLevelStr == 'FAULT'
-                  ? "The water level sensor is not responding.\nPump is locked until sensor is restored."
-                  : "Water reservoir is LOW.\nPump is locked — refill the tank to resume irrigation.",
-              color: Colors.redAccent,
-            ),
-
-          if (_showFaultOverlay && !isOffline && !_showTankLowOverlay)
+          if ((_showTankLowOverlay || _showFaultOverlay) && !isOffline)
             _buildStatusOverlay(
               icon: Icons.warning_amber_rounded,
               title: "Issues Detected",
-              subtitle: "One or more sensors are reporting errors.\nCheck the System Health page for verification and details.",
+              subtitle: "System issues have been detected.\nCheck the System Health page for verification.",
               color: Colors.orange,
             ),
 
@@ -216,13 +203,18 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         const SizedBox(height: 10),
         _buildAnimatedWidget(1, _buildVitals(tankLevelStr, temperature, humidity, isEnvFault)),
         const SizedBox(height: 30),
-        _buildAnimatedWidget(2, Text("System Overview",
-            style: GoogleFonts.outfit(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF0F2027),
-              letterSpacing: -0.5,
-            ))),
+        _buildAnimatedWidget(2, Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text("System Overview",
+                style: GoogleFonts.outfit(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF0F2027),
+                  letterSpacing: -0.5,
+                )),
+          ],
+        )),
         const SizedBox(height: 15),
         _buildAnimatedWidget(3, GridView.count(
           shrinkWrap: true,
@@ -371,169 +363,228 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   }
 
   Widget _buildVitals(String tankLevelStr, double systemTemp, double systemHum, bool isEnvFault) {
-    String displayValue;
+    // Tank logic
     Color tankColor;
-    double fillLevel;
-    
+    String tankLabel;
+    String tankStatus;
+    IconData tankIcon;
     if (tankLevelStr == 'HIGH') {
-      displayValue = 'NORMAL';
-      tankColor = const Color(0xFF29B6F6);
-      fillLevel = 100.0;
+      tankColor = const Color(0xFF2BCC71);
+      tankLabel = 'NORMAL';
+      tankStatus = 'Level Sufficient';
+      tankIcon = Icons.water_drop_rounded;
     } else if (tankLevelStr == 'LOW') {
-      displayValue = 'LOW';
       tankColor = Colors.redAccent;
-      fillLevel = 0.0;
+      tankLabel = 'LOW';
+      tankStatus = 'Refill Required';
+      tankIcon = Icons.warning_amber_rounded;
     } else {
-      displayValue = 'FAULT';
       tankColor = Colors.orange;
-      fillLevel = 0.0;
+      tankLabel = 'FAULT';
+      tankStatus = 'Sensor Disconnected';
+      tankIcon = Icons.warning_amber_rounded;
     }
 
     return Row(
       children: [
+        // TANK LEVEL CARD
         Expanded(
-          child: _buildVitalCard(
-            label: "TANK LEVEL",
-            value: displayValue,
-            icon: Icons.waves_rounded,
-            color: tankColor,
-            isTank: true,
-            level: fillLevel,
+          child: Container(
+            height: 140, // Match design
+            decoration: BoxDecoration(
+              color: tankLevelStr == 'HIGH' ? Colors.white.withOpacity(0.9) : tankColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: tankColor.withOpacity(tankLevelStr == 'HIGH' ? 0.3 : 0.8), width: 1.5),
+              boxShadow: isLiteMode ? null : [
+                BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))
+              ],
+            ),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: tankColor.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                      child: Icon(Icons.waves_rounded, color: tankColor, size: 28),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          tankLabel,
+                          style: GoogleFonts.outfit(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: tankColor,
+                            height: 1.1,
+                          ),
+                        ),
+                        Text(
+                          "TANK LEVEL",
+                          style: GoogleFonts.outfit(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                            color: const Color(0xFF4A6164),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: tankColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(tankIcon, color: tankColor, size: 16),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          tankStatus,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            color: tankColor,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(width: 15),
+        
+        // ENVIRONMENT CARD
         Expanded(
-          child: _buildVitalCard(
-            label: "ENVIRONMENT",
-            value: "${systemTemp.toStringAsFixed(1)}° / ${systemHum.toInt()}%",
-            unit: "",
-            icon: Icons.thermostat_rounded,
-            color: const Color(0xFFFF7043),
-            isFault: isEnvFault,
+          child: Container(
+            height: 140,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withOpacity(0.95),
+                  const Color(0xFFE0ECE9).withOpacity(0.85),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: isLiteMode ? null : [
+                BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))
+              ],
+            ),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: const Color(0xFF29B6F6).withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                      child: const Icon(Icons.thermostat_rounded, color: Color(0xFF0277BD), size: 28),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "ENVIRONMENT",
+                            style: GoogleFonts.outfit(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                              color: const Color(0xFF4A6164),
+                            ),
+                          ),
+                          Text(
+                            isEnvFault ? "--°/--%" : "${systemTemp.toStringAsFixed(1)}° / ${systemHum.toInt()}%",
+                            style: GoogleFonts.outfit(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0xFF0F2027),
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF29B6F6).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.thermostat_rounded, color: Color(0xFF0277BD), size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            isEnvFault ? "--°C" : "${systemTemp.toStringAsFixed(1)}°C",
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF0277BD)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2BCC71).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.water_drop_rounded, color: Color(0xFF1B8E4F), size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            isEnvFault ? "--%" : "${systemHum.toInt()}%",
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF1B8E4F)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildVitalCard({
-    required String label,
-    required String value,
-    String? unit,
-    required IconData icon,
-    required Color color,
-    bool isTank = false,
-    double level = 0,
-    bool isFault = false,
-  }) {
-    return Container(
-      height: 160,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(isLiteMode ? 1.0 : 0.8),
-        borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: Colors.white, width: 2),
-        boxShadow: isLiteMode ? null : [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          )
-        ],
-      ),
-      clipBehavior: Clip.hardEdge,
-      child: Stack(
-        children: [
-          if (isTank)
-            Positioned.fill(
-              child: WaterWave(value: level, color: color.withOpacity(0.15)),
-            ),
-          
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(icon, color: color, size: 20),
-                ),
-                const Spacer(),
-                    TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0, end: 1.0),
-                  duration: const Duration(seconds: 1),
-                  builder: (context, val, child) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (isFault)
-                          Tooltip(
-                            message: "Maintenance Required",
-                            child: Row(
-                              children: [
-                                const Icon(Icons.build_rounded, color: Colors.orange, size: 32),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'FAULT',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 22,
-                                    color: Colors.orange,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        else
-                          RichText(
-                            text: TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: value,
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w900,
-                                    color: const Color(0xFF0F2027),
-                                  ),
-                                ),
-                                if (unit != null && unit.isNotEmpty)
-                                  TextSpan(
-                                    text: " $unit",
-                                    style: GoogleFonts.outfit(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: const Color(0xFF4A6164),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        const SizedBox(height: 2),
-                        Text(label,
-                            style: GoogleFonts.outfit(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.0,
-                                color: const Color(0xFF4A6164).withOpacity(0.8))),
-                      ],
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSystemOverviewCard(BuildContext context, sensorData) {
     final isHealthy = sensorData.isHealthy;
-    final statusColor = isHealthy ? const Color(0xFF2BCC71) : Colors.redAccent;
+    final isOffline = sensorData.isOffline;
+    
+    final statusColor = isOffline ? Colors.grey : (isHealthy ? const Color(0xFF2BCC71) : Colors.redAccent);
+    final bgColor = isOffline ? Colors.grey.shade100 : (isHealthy ? const Color(0xFFE8F5E9) : const Color(0xFFFFEBEE));
+    final titleColor = isOffline ? Colors.grey.shade800 : (isHealthy ? const Color(0xFF1B8E4F) : Colors.redAccent);
 
     return GestureDetector(
       onTap: () {
@@ -541,48 +592,80 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
       },
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(isLiteMode ? 1.0 : 0.8),
-          borderRadius: BorderRadius.circular(28),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withOpacity(isLiteMode ? 1.0 : 0.95),
+              const Color(0xFFE0ECE9).withOpacity(isLiteMode ? 1.0 : 0.85),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.white, width: 2),
+          boxShadow: isLiteMode ? null : [
+            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))
+          ],
         ),
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("System\nHealth",
+            Text("System Health",
                 style: GoogleFonts.outfit(
-                  fontSize: 20,
+                  fontSize: 16,
                   fontWeight: FontWeight.w800,
                   color: const Color(0xFF0F2027),
-                  height: 1.1,
                 )),
-          const Spacer(),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: statusColor,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(color: statusColor.withOpacity(0.4), blurRadius: 8, spreadRadius: 2)
-                  ]
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 4, right: 8),
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isOffline ? "System Offline" : (isHealthy ? "All Systems Go" : "Issues Detected"),
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: titleColor),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          isOffline ? "Controller disconnected." : (isHealthy ? "Operating normally." : "One or more sensors are offline."),
+                          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 10, color: titleColor.withOpacity(0.8)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Icon(
+                  isOffline ? Icons.wifi_off_rounded : (isHealthy ? Icons.check_circle_rounded : Icons.warning_amber_rounded),
+                  color: statusColor, size: 20,
                 ),
-              ),
-              Icon(
-                isHealthy ? Icons.verified_rounded : Icons.report_problem_rounded,
-                color: statusColor,
-                size: 24,
-              ),
-            ],
-          )
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildStatusOverlay({required IconData icon, required String title, required String subtitle, required Color color}) {
     final content = Container(

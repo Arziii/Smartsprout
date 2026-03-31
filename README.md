@@ -56,7 +56,7 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
     *   **Normally Closed (NC) Safety**: All valves are NC, ensuring they fail-safe to a closed position during power or software failures.
     *   **Pump Watchdog**: A dedicated GPIO-level Python daemon forces the water pump OFF if it runs longer than 120 seconds, preventing floods.
 *   **Hardware-Aware Maintenance Mode**: Gracefully handles I2C disconnects (Errno 5) and BME280 sensor faults. The UI displays a "Maintenance Required" wrench icon and hard-locks auto-watering for affected zones.
-*   **Integrated Environment Module**: Groups Temperature, Humidity, and Pressure into a unified real-time dashboard card.
+*   **Eco-Mode & Differential Sync**: The backend separates physical hardware polling (every 3 seconds) from Firebase cloud pushes (every 30 minutes). However, if extreme environmental changes are detected (Δ>3% Moisture or Δ>1.5°C Temp), the system instantly pushes a "Differential Sync" to save bandwidth while staying real-time.
 *   **Physical Factory Reset**: A dedicated hardware button (BCM 24) with LED feedback (BCM 18) for secure persistence resets.
 
 ---
@@ -130,7 +130,8 @@ Smartsprout/
 ├── README.md                   # This overview
 ├── HARDWARE_SETUP.md           # Detailed physical wiring & sensor specs
 ├── RASPBERRY_PI_GUIDE.md       # OS, Kiosk, and VNC setup guide
-├── Smart Sprout Flutter.md     # Comprehensive architectural thesis
+├── Smart Sprout Flutter.md     # Comprehensive architectural thesis for the Mobile App
+├── DefensePreparation.md       # ⚠️ CRITICAL: Read for deep-dive Firebase operations, diagrams, and defense Q&A
 │
 ├── smartsprout/                # Flutter UI (Mobile & Kiosk)
 │   ├── lib/
