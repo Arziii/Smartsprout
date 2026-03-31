@@ -54,13 +54,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   @override
   Widget build(BuildContext context) {
     final sensorData = ref.watch(sensorDataProvider);
+    final triggers   = ref.watch(triggerSettingsProvider);
 
-    final rawSoil = sensorData.soilMoistureRaw;
-    final offsets = sensorData.soilOffsets;
-    final targets = sensorData.targetMoisture;
-    final tankLevelStr = sensorData.tankLevel;
-    final temperature = sensorData.temperature;
-    final humidity = sensorData.humidity;
+    final rawSoil         = sensorData.soilMoistureRaw;
+    final startThresholds = triggers.startThreshold;   // locally persisted — updates immediately on SET
+    final targets         = triggers.targetMoisture;   // locally persisted
+    final tankLevelStr    = sensorData.tankLevel;
+    final temperature     = sensorData.temperature;
+    final humidity        = sensorData.humidity;
     // On Linux (Pi), never show as offline — the Pi IS the system.
     final isOffline = Platform.isLinux ? false : sensorData.isOffline;
     final hasFault = sensorData.hasSensorFault;
@@ -120,9 +121,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             child: Platform.isWindows
                 ? Scrollbar(
                     thumbVisibility: true,
-                    child: _buildMainList(tankLevelStr, temperature, humidity, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, isEnvFault, sensorData),
+                    child: _buildMainList(tankLevelStr, temperature, humidity, rawSoil, startThresholds, targets, isOffline, isTankLow, hasFault, isEnvFault, sensorData),
                   )
-                : _buildMainList(tankLevelStr, temperature, humidity, rawSoil, offsets, targets, isOffline, isTankLow, hasFault, isEnvFault, sensorData),
+                : _buildMainList(tankLevelStr, temperature, humidity, rawSoil, startThresholds, targets, isOffline, isTankLow, hasFault, isEnvFault, sensorData),
           ),
 
           // ── Status Overlays ──
@@ -181,7 +182,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
   }
 
-  Widget _buildMainList(String tankLevelStr, double temperature, double humidity, List<double> rawSoil, List<double> offsets, List<double> targets, bool isOffline, bool isTankLow, bool hasFault, bool isEnvFault, dynamic sensorData) {
+  Widget _buildMainList(String tankLevelStr, double temperature, double humidity, List<double> rawSoil, List<double> startThresholds, List<double> targets, bool isOffline, bool isTankLow, bool hasFault, bool isEnvFault, dynamic sensorData) {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       children: [
@@ -209,7 +210,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               zoneId: '1',
               zoneName: "Zone 1 (Left)",
               rawMoisture: rawSoil.isNotEmpty ? rawSoil[0].toInt() : 0,
-              calibratedValue: offsets.isNotEmpty ? offsets[0] : 0.0,
+              calibratedValue: startThresholds.isNotEmpty ? startThresholds[0] : 0.0,
               targetMoisture: targets.isNotEmpty ? targets[0] : 65.0,
               temp: temperature.toInt(),
               pulseAnim: _pulseController,
@@ -219,7 +220,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               zoneId: '2',
               zoneName: "Zone 2 (Center)",
               rawMoisture: rawSoil.length > 1 ? rawSoil[1].toInt() : 0,
-              calibratedValue: offsets.length > 1 ? offsets[1] : 0.0,
+              calibratedValue: startThresholds.length > 1 ? startThresholds[1] : 0.0,
               targetMoisture: targets.length > 1 ? targets[1] : 65.0,
               temp: temperature.toInt(),
               pulseAnim: _pulseController,
@@ -229,7 +230,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               zoneId: '3',
               zoneName: "Zone 3 (Right)",
               rawMoisture: rawSoil.length > 2 ? rawSoil[2].toInt() : 0,
-              calibratedValue: offsets.length > 2 ? offsets[2] : 0.0,
+              calibratedValue: startThresholds.length > 2 ? startThresholds[2] : 0.0,
               targetMoisture: targets.length > 2 ? targets[2] : 65.0,
               temp: temperature.toInt(),
               pulseAnim: _pulseController,

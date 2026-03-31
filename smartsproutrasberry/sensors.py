@@ -67,8 +67,15 @@ def load_calibration():
 
 def save_calibration():
     if _calibration_data is not None:
-        with open(CALIBRATION_FILE, 'w') as f:
-            json.dump(_calibration_data, f, indent=4)
+        temp_file = CALIBRATION_FILE + '.tmp'
+        try:
+            # Write to a safe temporary file first
+            with open(temp_file, 'w') as f:
+                json.dump(_calibration_data, f, indent=4)
+            # Instantly overwrite the real file (Atomic operation)
+            os.replace(temp_file, CALIBRATION_FILE)
+        except Exception as e:
+            print(f"[ERROR] Failed to save calibration atomically: {e}")
 
 # ADS1115 Register addresses
 _ADS_CONVERSION_REG = 0x00
@@ -433,12 +440,27 @@ def activate_zone(zone: int):
     print(f"[RELAY] Zone {zone} ACTIVATED (Pump ON, Valve {zone} OPEN)")
 
 
+def deactivate_zone(zone: int):
+    """
+    Close the solenoid valve for the specified zone (1-3) only.
+    Does NOT affect the main pump or any other active zones.
+    Call deactivate_all() for a full emergency stop.
+    """
+    valve_map = {1: config.RELAY_VALVE_1, 2: config.RELAY_VALVE_2, 3: config.RELAY_VALVE_3}
+    if zone not in valve_map:
+        print(f"[ERROR] deactivate_zone: Invalid zone: {zone}")
+        return
+    set_relay(valve_map[zone], False)  # Close valve only
+    print(f"[RELAY] Zone {zone} valve CLOSED (pump state unchanged)")
+
+
 def deactivate_all():
     """Emergency stop: turn off pump and all valves."""
     for pin in config.ALL_RELAY_PINS:
         set_relay(pin, False)
     print("[RELAY] ALL ZONES DEACTIVATED")
 
+    
 
 def cleanup():
     """Release GPIO resources on shutdown."""
@@ -454,7 +476,7 @@ def cleanup():
 class SensorManager:
     """
     SensorManager object wrapper prioritizing encapsulation for main.py.
-    Provides initialization logic for ADS1115 (A0, A1, A2) and DHT22 (GPIO 4)
+    Provides initialization logic for ADS1115 (A0, A1, A2) and BME280 (I2C)
     per architectural requirements, and proxies commands to the module-level functions.
     """
     def __init__(self):
@@ -483,8 +505,12 @@ class SensorManager:
         """Map relays to GPIO 17, 27, 22, 23 (Pump on 17, Zones on 27,22,23)."""
         setup_relays()
 
-    def activate_zone(self, zone):
+    def activate_zone(self, zone: int):
         activate_zone(zone)
+
+    def deactivate_zone(self, zone: int):
+        """Close only the specified zone's valve — does not stop the pump."""
+        deactivate_zone(zone)
 
     def deactivate_all(self):
         deactivate_all()

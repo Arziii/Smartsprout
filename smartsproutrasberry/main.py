@@ -67,6 +67,7 @@ def _force_water_task(zone: int, duration: int, target_moisture: float = 0.0):
     global _pump_running
     try:
         _pump_running = True
+        firebase_manager.update_pump_status(zone, True)   # ← Optimistic UI ACK
         sensor_manager.activate_zone(zone)
         start_time = time.time()
 
@@ -106,11 +107,13 @@ def _force_water_task(zone: int, duration: int, target_moisture: float = 0.0):
             time.sleep(duration)
 
         sensor_manager.deactivate_all()
+        firebase_manager.update_pump_status(zone, False)  # ← Pump done
         _pump_running = False
         print(f"[CMD] Force water zone {zone} completed ({time.time() - start_time:.0f}s)")
     except Exception as e:
         print(f"[ERROR] Force water task failed: {e}")
         sensor_manager.deactivate_all()
+        firebase_manager.update_pump_status(zone, False)  # ← Pump error
         _pump_running = False
 
 
@@ -134,6 +137,8 @@ def _manual_heartbeat_monitor(zone: int):
                 sensor_manager.deactivate_all()
                 _manual_pump_active = False
                 _pump_running = False
+                # Notify UI that pump went off via Firestore
+                firebase_manager.update_pump_status(zone, False)
                 # Push alert to Firestore
                 try:
                     firebase_manager.push_telemetry({
@@ -182,6 +187,9 @@ def handle_firebase_command(payload: dict):
         _manual_pump_active = False  # Stop heartbeat monitor
         sensor_manager.deactivate_all()
         _pump_running = False
+        # Clear all per-zone pump status flags so UI reverts cleanly
+        for z in [1, 2, 3]:
+            firebase_manager.update_pump_status(z, False)
         print("[CMD] Emergency stop — all zones deactivated")
     elif command == "calibrate":
         print("[SETTINGS] Starting calibration routine from Firebase...")
@@ -226,6 +234,22 @@ def handle_firebase_command(payload: dict):
         _auto_timer_hour = payload.get("timer_hour", 8)
         _auto_timer_minute = payload.get("timer_minute", 0)
         print(f"[SETTINGS] Switched to {_current_mode.upper()} mode, Strategy: {_auto_strategy}, Time: {_auto_timer_hour:02d}:{_auto_timer_minute:02d}")
+    elif command == "set_triggers":
+        zone = payload.get("zone", 1)
+        start = float(payload.get("start_threshold", 50))
+        target = float(payload.get("target_saturation", 65))
+        timeout = int(payload.get("safety_timeout", 30))
+        print(f"[SETTINGS] Setting triggers for zone {zone}: start={start}%, target={target}%, timeout={timeout}s")
+        
+        cal_data = sensor_manager.load_calibration()
+        zone_key = f"zone_{zone}"
+        if zone_key not in cal_data:
+            cal_data[zone_key] = {}
+        cal_data[zone_key]["start_threshold"] = start
+        cal_data[zone_key]["target_moisture"] = target
+        cal_data[zone_key]["max_pump_runtime"] = timeout
+        sensor_manager.save_calibration()
+        _force_sync = True
     elif command == "RESTART_APP":
         import os
         print("[MAINTENANCE] Kiosk application restart requested. Killing Flutter UI...")
@@ -296,19 +320,27 @@ def collect_telemetry(interval: float) -> dict:
         # Note: If tank == "FAULT", alerts/system_status is now handled by the safety logic above.
         pass
 
-    # Read current offsets from calibration data
+    # Read current offsets and triggers from calibration data
     cal_data = sensor_manager.load_calibration()
-    soil_offsets = {
-        "bed1": cal_data.get("zone_1", {}).get("manual_offset_pct", 0),
-        "bed2": cal_data.get("zone_2", {}).get("manual_offset_pct", 0),
-        "bed3": cal_data.get("zone_3", {}).get("manual_offset_pct", 0),
-    }
+    soil_offsets = {}
+    start_threshold = {}
+    target_moisture = {}
+    max_pump_runtime = {}
+    for i in range(1, 4):
+        zone_data = cal_data.get(f"zone_{i}", {})
+        soil_offsets[f"bed{i}"] = zone_data.get("manual_offset_pct", 0)
+        start_threshold[f"bed{i}"] = zone_data.get("start_threshold", config.DEFAULT_TARGET_MOISTURE - 15)
+        target_moisture[f"bed{i}"] = zone_data.get("target_moisture", config.DEFAULT_TARGET_MOISTURE)
+        max_pump_runtime[f"bed{i}"] = zone_data.get("max_pump_runtime", config.DEFAULT_MAX_PUMP_RUNTIME)
 
     telemetry = {
         "timestamp": int(time.time()),
         "soil_moisture": soil,
         "soil_moisture_raw": soil_raw,
         "soil_offsets": soil_offsets,
+        "start_threshold": start_threshold,
+        "target_moisture": target_moisture,
+        "max_pump_runtime": max_pump_runtime,
         "temperature": env["temperature"],
         "humidity": env["humidity"],
         "pressure": env["pressure"],

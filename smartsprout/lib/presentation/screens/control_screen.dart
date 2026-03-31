@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/sensor_provider.dart';
+import '../../data/models/sensor_model.dart';
 import '../../data/services/data_service.dart';
 
 enum IrrigationStrategy { sensor, timer, none }
@@ -26,6 +27,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
 
   // Track which zones are actively watering
   final Map<int, bool> _wateringActive = {1: false, 2: false, 3: false};
+
+  // Optimistic UI: per-zone timeout timers (5-second Pi confirmation window)
+  final Map<int, Timer?> _pumpTimeoutTimers = {1: null, 2: null, 3: null};
 
   // Dead-Man's Switch: heartbeat timer for manual watering safety
   Timer? _manualHeartbeatTimer;
@@ -54,6 +58,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     for (var t in _zoneUiTimers.values) {
       t?.cancel();
     }
+    for (var t in _pumpTimeoutTimers.values) {
+      t?.cancel();
+    }
     _entranceController.dispose();
     super.dispose();
   }
@@ -75,45 +82,131 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     _manualHeartbeatTimer = null;
   }
 
+  // ═══════════════════════════════════════════════════════
+  // Optimistic UI: Start 5-second Pi confirmation window
+  // ═══════════════════════════════════════════════════════
+
+  /// Starts the 5-second window waiting for the Pi to confirm zone [zone] is ON.
+  /// If `sensorData.pumpStatus[zone-1]` turns true before timeout, [_onPumpConfirmed]
+  /// is called. Otherwise [_onPumpTimeout] reverts the UI.
+  void _startPumpConfirmationTimer(int zone) {
+    _pumpTimeoutTimers[zone]?.cancel();
+    _pumpTimeoutTimers[zone] = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      // Check if Pi confirmed in time
+      final sensorData = ref.read(sensorDataProvider);
+      final zoneIdx = zone - 1;
+      final confirmed =
+          zoneIdx < sensorData.pumpStatus.length && sensorData.pumpStatus[zoneIdx];
+      if (!confirmed) {
+        _onPumpTimeout(zone);
+      }
+    });
+  }
+
+  /// Called when the Pi confirmed pump activation (stream update).
+  void _onPumpConfirmed(int zone) {
+    _pumpTimeoutTimers[zone]?.cancel();
+    _pumpTimeoutTimers[zone] = null;
+    ref.read(pumpLoadingProvider(zone).notifier).setLoading(false);
+    if (!mounted) return;
+    setState(() => _wateringActive[zone] = true);
+  }
+
+  /// Called when 5 seconds pass with no Pi confirmation — revert everything.
+  void _onPumpTimeout(int zone) {
+    _pumpTimeoutTimers[zone]?.cancel();
+    _pumpTimeoutTimers[zone] = null;
+    ref.read(pumpLoadingProvider(zone).notifier).setLoading(false);
+    // Also send a stop just in case a delayed response arrives later
+    ref.read(sensorDataProvider.notifier).emergencyStop();
+    if (!mounted) return;
+    setState(() {
+      _wateringActive[zone] = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Zone $zone: Hardware did not respond. Check your connection.',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // Toggle watering for a specific zone
+  // ═══════════════════════════════════════════════════════
+
   /// Toggle watering for a specific zone
   void _toggleWatering(int zone, {int duration = 600}) {
     final isActive = _wateringActive[zone] ?? false;
+    final isLoading = ref.read(pumpLoadingProvider(zone));
     final notifier = ref.read(sensorDataProvider.notifier);
 
+    // If already loading, ignore double-tap
+    if (isLoading) return;
+
     if (isActive) {
-      // STOP watering this zone
+      // ── STOP watering this zone ──
       HapticFeedback.heavyImpact();
       notifier.emergencyStop();
       _stopManualHeartbeat();
       _zoneUiTimers[zone]?.cancel();
       _zoneUiTimers[zone] = null;
+      // Clear any pending confirmation timers
+      for (int z = 1; z <= 3; z++) {
+        _pumpTimeoutTimers[z]?.cancel();
+        ref.read(pumpLoadingProvider(z).notifier).setLoading(false);
+      }
       setState(() {
         _wateringActive[1] = false;
         _wateringActive[2] = false;
         _wateringActive[3] = false;
       });
     } else {
-      // START watering this zone
+      // ── START watering this zone (Optimistic UI) ──
       HapticFeedback.lightImpact();
-      notifier.forceWater(zone, durationSeconds: duration);
-      
-      if (duration >= 60) {
-        _startManualHeartbeat(); // Only continuous Flow gets the heartbeat monitor
-      }
-      
-      setState(() {
-        _zoneUiTimers[1]?.cancel();
-        _zoneUiTimers[2]?.cancel();
-        _zoneUiTimers[3]?.cancel();
 
-        // Only one zone can water at a time for safety
+      // 1. Cancel all other zones' state & timers
+      for (int z = 1; z <= 3; z++) {
+        _zoneUiTimers[z]?.cancel();
+        _pumpTimeoutTimers[z]?.cancel();
+        ref.read(pumpLoadingProvider(z).notifier).setLoading(false);
+      }
+      setState(() {
         _wateringActive[1] = false;
         _wateringActive[2] = false;
         _wateringActive[3] = false;
-        _wateringActive[zone] = true;
+        // Zone stays false — it's in loading, not yet confirmed active
       });
 
-      // Auto-reset UI state if this is a short burst/soak duration
+      // 2. Set this zone to LOADING state
+      ref.read(pumpLoadingProvider(zone).notifier).setLoading(true);
+
+      // 3. Send command to Firestore
+      notifier.forceWater(zone, durationSeconds: duration);
+
+      if (duration >= 60) {
+        _startManualHeartbeat();
+      }
+
+      // 4. Start 5-second confirmation window
+      _startPumpConfirmationTimer(zone);
+
+      // 5. For short bursts, set an auto-reset UI timer too
       if (duration < 60) {
         _zoneUiTimers[zone] = Timer(Duration(seconds: duration), () {
           if (mounted && _wateringActive[zone] == true) {
@@ -127,10 +220,28 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   @override
   Widget build(BuildContext context) {
     final sensorData = ref.watch(sensorDataProvider);
+
+    // ── Optimistic UI: Listen for per-zone pump status confirmation from Pi ──
+    for (int zone = 1; zone <= 3; zone++) {
+      final zoneIdx = zone - 1;
+      ref.listen<SensorData>(sensorDataProvider, (prev, next) {
+        final wasActive = prev != null &&
+            zoneIdx < prev.pumpStatus.length &&
+            prev.pumpStatus[zoneIdx];
+        final isNowActive =
+            zoneIdx < next.pumpStatus.length && next.pumpStatus[zoneIdx];
+        final isLoading = ref.read(pumpLoadingProvider(zone));
+        if (!wasActive && isNowActive && isLoading) {
+          _onPumpConfirmed(zone);
+        }
+      });
+    }
+
     final notifier = ref.read(sensorDataProvider.notifier);
     final isConnected = Platform.isLinux || !sensorData.isOffline;
     final pumpLocked = sensorData.pumpLocked;
     final tankLevel = sensorData.tankLevel;
+
     
     // TEMPORARY BYPASS FOR UI TESTING WITHOUT SENSORS:
     final isTankLow = false; // normally: tankLevel < 10;
@@ -598,6 +709,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     required bool isActive,
     bool disabled = false,
   }) {
+    // Read loading state for this specific zone
+    final isLoading = ref.watch(pumpLoadingProvider(zone));
+
     final isFault = moisture < 0;
     final isSaturated = moisture >= 100 && !isFault;
     final isLocked = disabled || isSaturated;
@@ -611,7 +725,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       lockReason = 'Locked';
     }
 
-    // Colors based on state
+    // Colors based on state (loading → amber; active → blue; idle → green)
     final Color bgColor;
     final Color borderColor;
     final Color iconBgColor;
@@ -629,8 +743,17 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       toggleBgColor = Colors.grey.shade200;
       toggleIconColor = Colors.grey.shade400;
       toggleLabel = lockReason ?? 'Locked';
+    } else if (isLoading) {
+      // Optimistic loading — waiting for Pi confirmation
+      bgColor = Colors.orange.withOpacity(0.06);
+      borderColor = Colors.orange.withOpacity(0.5);
+      iconBgColor = Colors.orange.withOpacity(0.15);
+      iconColor = Colors.orange.shade700;
+      toggleBgColor = Colors.orange.shade700;
+      toggleIconColor = Colors.white;
+      toggleLabel = 'Sending...';
     } else if (isActive) {
-      // Actively watering — vivid blue/green pulse
+      // Confirmed active by Pi — vivid blue
       bgColor = const Color(0xFF29B6F6).withOpacity(0.08);
       borderColor = const Color(0xFF29B6F6).withOpacity(0.5);
       iconBgColor = const Color(0xFF29B6F6).withOpacity(0.2);
@@ -705,6 +828,23 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500)),
                         ),
+                        if (isLoading) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text('PENDING',
+                                style: GoogleFonts.outfit(
+                                    color: Colors.orange.shade800,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.5)),
+                          ),
+                        ],
                         if (isActive) ...[
                           const SizedBox(width: 8),
                           Container(
@@ -747,8 +887,46 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
               
               const SizedBox(width: 8),
 
-              // Stop / Locked Button (Top Right)
-              if (isActive || isLocked)
+              // ── Right Action: Spinner / Stop / Lock ──
+              if (isLoading)
+                // LOADING: Spinner while waiting for Pi ACK
+                Flexible(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade700,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.orange.withOpacity(0.35),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        )
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text('Sending...',
+                            style: GoogleFonts.outfit(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                )
+              else if (isActive || isLocked)
                 Flexible(
                   child: GestureDetector(
                     onTap: isLocked ? null : () => _toggleWatering(zone),
@@ -795,8 +973,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
             ],
           ),
 
-          // 3-Button Manual Controls (when Idle)
-          if (!isActive && !isLocked) ...[
+          // 3-Button Manual Controls (when Idle and NOT loading)
+          if (!isActive && !isLoading && !isLocked) ...[
             const SizedBox(height: 16),
             Row(
               children: [

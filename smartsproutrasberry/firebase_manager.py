@@ -67,6 +67,10 @@ def push_telemetry(telemetry_data):
             'humidity': telemetry_data.get('humidity', 0.0),
             'flow_rate': telemetry_data.get('flow_rate', 0.0),
             'alerts': telemetry_data.get('alerts', []),
+            'soil_offsets': telemetry_data.get('soil_offsets', [0.0, 0.0, 0.0]),
+            'start_threshold': telemetry_data.get('start_threshold', {}),
+            'target_moisture': telemetry_data.get('target_moisture', {}),
+            'max_pump_runtime': telemetry_data.get('max_pump_runtime', {}),
         }, merge=True)
         
         # 2. Add historical reading to subcollection
@@ -253,6 +257,24 @@ def get_manual_heartbeat() -> float:
     except Exception as e:
         print(f"[FIREBASE_ERROR] get_manual_heartbeat: {e}")
         return 999.0
+
+
+def update_pump_status(zone: int, is_active: bool):
+    """
+    Immediately patches pump_status_zoneN on the device document.
+    This is a fast, dedicated write so the Flutter UI can confirm
+    activation in ~1-2 seconds without waiting for a full telemetry push.
+    """
+    if not _db:
+        return
+    field_key = f"pump_status_zone{zone}"
+    try:
+        doc_ref = _db.collection('devices').document(config.DEVICE_ID)
+        doc_ref.set({field_key: is_active}, merge=True)
+        state = "ON" if is_active else "OFF"
+        print(f"[PUMP_STATUS] Zone {zone} -> {state} ({field_key}={is_active})")
+    except Exception as e:
+        print(f"[FIREBASE_ERROR] update_pump_status zone {zone}: {e}")
 
 
 def cleanup():

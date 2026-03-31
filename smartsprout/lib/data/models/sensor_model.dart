@@ -4,13 +4,15 @@ class SensorData {
   final List<double> soilMoisture;    // 3 zones (calibrated = raw + offset)
   final List<double> soilMoistureRaw; // 3 zones (raw sensor, before offset)
   final List<double> soilOffsets;     // 3 zone offsets
-  final List<double> targetMoisture;  // 3 zone saturation targets
+  final List<double> startThreshold;  // 3 zone start thresholds (start pump)
+  final List<double> targetMoisture;  // 3 zone saturation targets (stop pump)
   final List<int> maxPumpRuntime;     // 3 zone safety timeouts (seconds)
   final double temperature;
   final double humidity;
   final String tankLevel;
   final double flowRate;
   final bool pumpLocked;
+  final List<bool> pumpStatus;   // Per-zone pump active state confirmed by Pi
   final String systemStatus; // 'ok', 'sensor_fault', 'tank_low', 'offline'
   final Map<String, String> hardwareStatus; // explicit fault flags e.g. {'bed1': 'ok', 'environment': 'fault'}
   final List<String> alerts;
@@ -21,6 +23,7 @@ class SensorData {
     this.soilMoisture = const [0.0, 0.0, 0.0],
     this.soilMoistureRaw = const [0.0, 0.0, 0.0],
     this.soilOffsets = const [0.0, 0.0, 0.0],
+    this.startThreshold = const [50.0, 50.0, 50.0],
     this.targetMoisture = const [65.0, 65.0, 65.0],
     this.maxPumpRuntime = const [30, 30, 30],
     this.temperature = 0.0,
@@ -28,6 +31,7 @@ class SensorData {
     this.tankLevel = 'FAULT',
     this.flowRate = 0.0,
     this.pumpLocked = false,
+    this.pumpStatus = const [false, false, false],
     this.systemStatus = 'offline',
     this.hardwareStatus = const {},
     this.alerts = const [],
@@ -49,16 +53,16 @@ class SensorData {
       ];
     }
 
-    // Parse raw sensor moisture (before offsets)
+    // Parse raw sensor moisture — preserve -1 sentinel (disconnected sensor)
     final soilRawJson = json['soil_moisture_raw'];
-    List<double> rawSoil = [0.0, 0.0, 0.0];
+    List<double> rawSoil = [-1.0, -1.0, -1.0];
     if (soilRawJson is List) {
       rawSoil = soilRawJson.map<double>((e) => (e as num).toDouble()).toList();
     } else if (soilRawJson is Map) {
       rawSoil = [
-        (soilRawJson['bed1'] as num?)?.toDouble() ?? 0.0,
-        (soilRawJson['bed2'] as num?)?.toDouble() ?? 0.0,
-        (soilRawJson['bed3'] as num?)?.toDouble() ?? 0.0,
+        (soilRawJson['bed1'] as num?)?.toDouble() ?? -1.0,
+        (soilRawJson['bed2'] as num?)?.toDouble() ?? -1.0,
+        (soilRawJson['bed3'] as num?)?.toDouble() ?? -1.0,
       ];
     }
 
@@ -124,18 +128,34 @@ class SensorData {
         (runtimeJson['bed3'] as num?)?.toInt() ?? 30,
       ];
     }
+    // Parse start thresholds per zone
+    final startJson = json['start_threshold'];
+    List<double> starts = [targets[0] - 15.0, targets[1] - 15.0, targets[2] - 15.0];
+    if (startJson is Map) {
+      starts = [
+        (startJson['bed1'] as num?)?.toDouble() ?? (targets[0] - 15.0),
+        (startJson['bed2'] as num?)?.toDouble() ?? (targets[1] - 15.0),
+        (startJson['bed3'] as num?)?.toDouble() ?? (targets[2] - 15.0),
+      ];
+    }
 
     return SensorData(
       soilMoisture: soil,
-      soilMoistureRaw: rawSoil,
-      soilOffsets: offsets,
-      targetMoisture: targets,
-      maxPumpRuntime: runtimes,
+      soilMoistureRaw: List.from(rawSoil),
+      soilOffsets: List.from(offsets),
+      startThreshold: List.from(starts),
+      targetMoisture: List.from(targets),
+      maxPumpRuntime: List.from(runtimes),
       temperature: (json['temperature'] as num?)?.toDouble() ?? -1.0,
       humidity: (json['humidity'] as num?)?.toDouble() ?? -1.0,
       tankLevel: json['tank_level']?.toString() ?? 'FAULT',
       flowRate: (json['flow_rate'] as num?)?.toDouble() ?? 0.0,
       pumpLocked: json['pump_locked'] as bool? ?? false,
+      pumpStatus: [
+        json['pump_status_zone1'] as bool? ?? false,
+        json['pump_status_zone2'] as bool? ?? false,
+        json['pump_status_zone3'] as bool? ?? false,
+      ],
       systemStatus: json['system_status'] as String? ?? 'offline',
       hardwareStatus: hwStatus,
       alerts: alerts,
@@ -150,7 +170,13 @@ class SensorData {
   bool get isHealthy => !hasSensorFault && !isTankLow && !isOffline;
   
   bool get isEnvFault => hardwareStatus['environment'] == 'fault';
-  bool hasBedFault(int index) => hardwareStatus['bed${index + 1}'] == 'fault';
+  /// Returns true if the bed has a hardware fault flag OR its raw sensor reads
+  /// the -1 sentinel (disconnected / open-circuit sensor).
+  bool hasBedFault(int index) {
+    final hwFault = hardwareStatus['bed${index + 1}'] == 'fault';
+    final rawFault = index < soilMoistureRaw.length && soilMoistureRaw[index] < 0;
+    return hwFault || rawFault;
+  }
   bool get isTankFault => hardwareStatus['tank'] == 'fault';
   
   bool get isControllerDisconnected {
@@ -162,6 +188,7 @@ class SensorData {
     List<double>? soilMoisture,
     List<double>? soilMoistureRaw,
     List<double>? soilOffsets,
+    List<double>? startThreshold,
     List<double>? targetMoisture,
     List<int>? maxPumpRuntime,
     double? temperature,
@@ -169,6 +196,7 @@ class SensorData {
     String? tankLevel,
     double? flowRate,
     bool? pumpLocked,
+    List<bool>? pumpStatus,
     String? systemStatus,
     Map<String, String>? hardwareStatus,
     List<String>? alerts,
@@ -179,6 +207,7 @@ class SensorData {
       soilMoisture: soilMoisture ?? this.soilMoisture,
       soilMoistureRaw: soilMoistureRaw ?? this.soilMoistureRaw,
       soilOffsets: soilOffsets ?? this.soilOffsets,
+      startThreshold: startThreshold ?? this.startThreshold,
       targetMoisture: targetMoisture ?? this.targetMoisture,
       maxPumpRuntime: maxPumpRuntime ?? this.maxPumpRuntime,
       temperature: temperature ?? this.temperature,
@@ -186,6 +215,7 @@ class SensorData {
       tankLevel: tankLevel ?? this.tankLevel,
       flowRate: flowRate ?? this.flowRate,
       pumpLocked: pumpLocked ?? this.pumpLocked,
+      pumpStatus: pumpStatus ?? this.pumpStatus,
       systemStatus: systemStatus ?? this.systemStatus,
       hardwareStatus: hardwareStatus ?? this.hardwareStatus,
       alerts: alerts ?? this.alerts,

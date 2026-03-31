@@ -172,7 +172,7 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                     Text(
                       isTempFault ? '--°C' : '${widget.temp}°C',
                       style: TextStyle(
-                        color: Colors.grey.shade400,
+                        color: Colors.grey.shade700,
                         fontSize: 11,
                         fontWeight: FontWeight.w400,
                       ),
@@ -181,38 +181,90 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                 ),
               ),
 
-              // ── TOP-RIGHT: Calibrated threshold (user-set auto-water level) ──
+              // ── TOP-RIGHT: Start Threshold + (fault) Target Moisture badges ──
               Positioned(
                 top: 16,
                 right: 16,
-                child: hasThreshold
-                    ? Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF29B6F6).withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                              color:
-                                  const Color(0xFF29B6F6).withOpacity(0.3)),
-                        ),
-                        child: Text(
-                          '${widget.calibratedValue.toStringAsFixed(0)}%',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 11,
-                            color: Color(0xFF0277BD),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Start Threshold badge (always shown)
+                    Tooltip(
+                      message: 'Start Threshold (pump ON)',
+                      child: hasThreshold
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF29B6F6).withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                    color: const Color(0xFF29B6F6).withOpacity(0.3)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.water_damage_outlined,
+                                      size: 10, color: Color(0xFF0277BD)),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '${widget.calibratedValue.toStringAsFixed(0)}%',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 11,
+                                      color: Color(0xFF0277BD),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : Text(
+                              'No set',
+                              style: TextStyle(
+                                color: Colors.grey.shade300,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                    ),
+
+                    // Target Moisture badge — only shown when sensor is at fault
+                    if ((widget.isFault || widget.rawMoisture < 0) &&
+                        widget.targetMoisture > 0) ...[
+                      const SizedBox(height: 5),
+                      Tooltip(
+                        message: 'Target Saturation (pump OFF)',
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2BCC71).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                                color: const Color(0xFF2BCC71).withOpacity(0.35)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.flag_rounded,
+                                  size: 10, color: Color(0xFF1B8E4F)),
+                              const SizedBox(width: 3),
+                              Text(
+                                '${widget.targetMoisture.toStringAsFixed(0)}%',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 11,
+                                  color: Color(0xFF1B8E4F),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      )
-                    : Text(
-                        'No set',
-                        style: TextStyle(
-                          color: Colors.grey.shade300,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                        ),
                       ),
+                    ],
+                  ],
+                ),
               ),
 
               // ── BOTTOM-LEFT: Raw Sensor Value + Ghost Target ──
@@ -225,22 +277,57 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                     Icon(Icons.water_drop, size: 16, color: statusColor),
                     const SizedBox(width: 5),
                     if (widget.isFault || widget.rawMoisture < 0)
-                      Tooltip(
-                        message: "Maintenance Required",
-                        child: Row(
-                          children: [
-                            const Icon(Icons.build_rounded, color: Colors.orange, size: 28),
-                            const SizedBox(width: 4),
-                            Text(
-                              'FAULT',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 18,
-                                color: Colors.orange,
-                                letterSpacing: 0.5,
+                      FadeTransition(
+                        opacity: widget.pulseAnim,
+                        child: Tooltip(
+                          message: "Sensor disconnected — Maintenance Required",
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.orange.withOpacity(0.4)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.sensors_off_rounded,
+                                        color: Colors.orange, size: 16),
+                                    const SizedBox(width: 5),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Text(
+                                          'FAULT',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 15,
+                                            color: Colors.orange,
+                                            letterSpacing: 0.5,
+                                            height: 1.1,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Sensor disconnected',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 9,
+                                            color: Colors.orange.shade700,
+                                            letterSpacing: 0.2,
+                                            height: 1.1,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       )
                     else
@@ -257,8 +344,9 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                           ),
                         ),
                       ),
-                    // Ghost target label
-                    if (!widget.isFault && widget.targetMoisture > 0)
+                    // Ghost target label (hidden in fault state)
+                    if (!widget.isFault && widget.rawMoisture >= 0 && widget.targetMoisture > 0)
+
                       Padding(
                         padding: const EdgeInsets.only(left: 6, bottom: 2),
                         child: Text(
@@ -266,7 +354,7 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 12,
-                            color: Colors.grey.shade400,
+                            color: Colors.grey.shade700,
                             letterSpacing: -0.3,
                             height: 1.0,
                           ),
