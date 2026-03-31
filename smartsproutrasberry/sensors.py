@@ -116,39 +116,38 @@ def read_soil_moisture() -> tuple[dict, dict, bool]:
         return fault_results, fault_results, True
 
     try:
-        bus = SMBus(config.ADS1115_I2C_BUS)
         cal_results = {}
         raw_results = {}
-        for ch in range(3):
-            zone_key = f"zone_{ch+1}"
-            dry_raw = cal_data[zone_key].get("dry_raw", config.SOIL_DRY)
-            wet_raw = cal_data[zone_key].get("wet_raw", config.SOIL_WET)
-            offset = cal_data[zone_key].get("manual_offset_pct", 0)
+        with SMBus(config.ADS1115_I2C_BUS) as bus:  # Context manager guarantees fd release on any exception
+            for ch in range(3):
+                zone_key = f"zone_{ch+1}"
+                dry_raw = cal_data[zone_key].get("dry_raw", config.SOIL_DRY)
+                wet_raw = cal_data[zone_key].get("wet_raw", config.SOIL_WET)
+                offset = cal_data[zone_key].get("manual_offset_pct", 0)
 
-            raw = _read_ads1115_channel(bus, ch)
-            
-            # Fault detection for physically disconnected probes
-            # A 3.3V sensor on a ±4.096V scale shouldn't read below 1000 or near 32767.
-            if raw < 1000 or raw > 30000:
-                raw_results[f"bed{ch+1}"] = -1.0
-                cal_results[f"bed{ch+1}"] = -1.0
-                continue
-            
-            # Avoid division by zero
-            if dry_raw == wet_raw:
-               pct = 0.0
-            else:
-               # Invert: capacitive sensors read HIGH when dry
-               pct = (dry_raw - raw) / (dry_raw - wet_raw) * 100.0
-            
-            # Raw sensor percentage (before offset), clamped
-            raw_pct = max(0.0, min(100.0, pct))
-            raw_results[f"bed{ch+1}"] = round(raw_pct, 1)
+                raw = _read_ads1115_channel(bus, ch)
 
-            # Calibrated = raw + offset, clamped
-            cal_pct = max(0.0, min(100.0, pct + offset))
-            cal_results[f"bed{ch+1}"] = round(cal_pct, 1)
-        bus.close()
+                # Fault detection for physically disconnected probes
+                # A 3.3V sensor on a ±4.096V scale shouldn't read below 1000 or near 32767.
+                if raw < 1000 or raw > 30000:
+                    raw_results[f"bed{ch+1}"] = -1.0
+                    cal_results[f"bed{ch+1}"] = -1.0
+                    continue
+
+                # Avoid division by zero
+                if dry_raw == wet_raw:
+                    pct = 0.0
+                else:
+                    # Invert: capacitive sensors read HIGH when dry
+                    pct = (dry_raw - raw) / (dry_raw - wet_raw) * 100.0
+
+                # Raw sensor percentage (before offset), clamped
+                raw_pct = max(0.0, min(100.0, pct))
+                raw_results[f"bed{ch+1}"] = round(raw_pct, 1)
+
+                # Calibrated = raw + offset, clamped
+                cal_pct = max(0.0, min(100.0, pct + offset))
+                cal_results[f"bed{ch+1}"] = round(cal_pct, 1)
         return cal_results, raw_results, False
     except (IOError, OSError) as e:
         print(f"[WARN] I2C soil read failed (no hardware?): {e} — returning mock data.")
@@ -168,22 +167,19 @@ def run_dry_calibration(target_zone=None) -> dict:
         return {"status": "error", "message": "Simulation mode, hardware not available."}
         
     try:
-        bus = SMBus(config.ADS1115_I2C_BUS)
         zones_to_test = [target_zone - 1] if target_zone in (1, 2, 3) else [0, 1, 2]
-        
-        for ch in zones_to_test:
-            readings = []
-            for _ in range(10):
-                readings.append(_read_ads1115_channel(bus, ch))
-                time.sleep(0.02)
-            avg_raw = int(sum(readings) / len(readings))
-            
-            zone_key = f"zone_{ch+1}"
-            cal_data[zone_key]["dry_raw"] = avg_raw
-            cal_data[zone_key]["manual_offset_pct"] = 0 # Reset manual offset on recalibration
-            results["updates"][zone_key] = avg_raw
-            
-        bus.close()
+        with SMBus(config.ADS1115_I2C_BUS) as bus:  # Context manager guarantees fd release on any exception
+            for ch in zones_to_test:
+                readings = []
+                for _ in range(10):
+                    readings.append(_read_ads1115_channel(bus, ch))
+                    time.sleep(0.02)
+                avg_raw = int(sum(readings) / len(readings))
+
+                zone_key = f"zone_{ch+1}"
+                cal_data[zone_key]["dry_raw"] = avg_raw
+                cal_data[zone_key]["manual_offset_pct"] = 0  # Reset manual offset on recalibration
+                results["updates"][zone_key] = avg_raw
         save_calibration()
         return results
     except (IOError, OSError) as e:
@@ -361,16 +357,14 @@ def run_calibration() -> dict:
     # Soil calibration (average of 10 reads per channel)
     if _SMBUS_AVAILABLE:
         try:
-            bus = SMBus(config.ADS1115_I2C_BUS)
-            for ch in range(3):
-                readings = []
-                for _ in range(10):
-                    readings.append(_read_ads1115_channel(bus, ch))
-                    time.sleep(0.02)
-                avg = sum(readings) / len(readings)
-                results["soil_raw"].append(round(avg, 1))
-
-            bus.close()
+            with SMBus(config.ADS1115_I2C_BUS) as bus:  # Context manager guarantees fd release on any exception
+                for ch in range(3):
+                    readings = []
+                    for _ in range(10):
+                        readings.append(_read_ads1115_channel(bus, ch))
+                        time.sleep(0.02)
+                    avg = sum(readings) / len(readings)
+                    results["soil_raw"].append(round(avg, 1))
         except (IOError, OSError) as e:
             print(f"[ERROR] Calibration soil read failed: {e}")
             results["soil_raw"] = [-1, -1, -1]
@@ -481,18 +475,19 @@ class SensorManager:
     """
     def __init__(self):
         print("[INIT] Initializing SensorManager...")
-        # Check and initialize ADS1115 via I2C SMBus
+        # Verify the ADS1115 is reachable on the I2C bus at startup.
+        # A short-lived probe is used intentionally — the context manager ensures
+        # the fd is released immediately after the check, preventing a persistent
+        # leak. All subsequent reads open their own short-lived bus handles.
         if _SMBUS_AVAILABLE:
             try:
-                # Early instantiation to ensure it's ready for polling
-                self.i2c_bus = SMBus(config.ADS1115_I2C_BUS)
-                print("[INIT] ADS1115 ADC initialized on I2C bus.")
+                with SMBus(config.ADS1115_I2C_BUS) as probe_bus:
+                    # Attempt a dummy read to confirm the device is present
+                    probe_bus.read_byte(config.ADS1115_I2C_ADDRESS)
+                print("[INIT] ADS1115 ADC verified on I2C bus.")
             except Exception as e:
-                print(f"[ERROR] Failed to initialize ADS1115: {e}")
-                self.i2c_bus = None
-        else:
-            self.i2c_bus = None
-
+                print(f"[WARN] ADS1115 not detected at startup: {e}")
+        
         # Confirm BME280 configuration
         if _BME_AVAILABLE:
             print(f"[INIT] BME280 initialized on I2C (Address {hex(config.BME280_I2C_ADDRESS)}).")
@@ -539,9 +534,5 @@ class SensorManager:
         return read_tank_level()
         
     def cleanup(self):
-        if hasattr(self, 'i2c_bus') and self.i2c_bus:
-            try:
-                self.i2c_bus.close()
-            except Exception:
-                pass
+        # No persistent i2c_bus fd to close — all handles are short-lived context managers.
         cleanup()

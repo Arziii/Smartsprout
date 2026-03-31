@@ -53,8 +53,9 @@ ADS1115_I2C_ADDRESS = int(os.getenv("ADS1115_I2C_ADDRESS", "0x48"), 16)
 BME280_I2C_ADDRESS = int(os.getenv("BME280_I2C_ADDRESS", "0x76"), 16)
 
 # ── Digital Sensors ──
+# XKC-Y26-V is a binary non-contact sensor: output is HIGH, LOW, or FAULT (string).
+# No percentage threshold applies — do NOT add TANK_LOW_THRESHOLD here.
 XKC_LEVEL_PIN = int(os.getenv("XKC_LEVEL_PIN", "5"))
-TANK_LOW_THRESHOLD = float(os.getenv("TANK_LOW_THRESHOLD", "15.0"))
 
 # ── Relay Module (Active LOW) ──
 RELAY_PUMP = int(os.getenv("RELAY_PUMP_PIN", "17"))

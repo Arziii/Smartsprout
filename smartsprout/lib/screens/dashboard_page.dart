@@ -24,9 +24,12 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
 
   bool _showConnectionOverlay = false;
   bool _wasOffline = false;
-  
+
   bool _showTankLowOverlay = false;
   bool _wasTankLow = false;
+
+  bool _showFaultOverlay = false;
+  bool _wasFault = false;
 
   @override
   void initState() {
@@ -82,7 +85,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
 
     if (isTankLow && !_wasTankLow) {
       _showTankLowOverlay = true;
-      Future.delayed(const Duration(seconds: 3), () {
+      Future.delayed(const Duration(seconds: 4), () {
         if (mounted) setState(() => _showTankLowOverlay = false);
       });
     }
@@ -90,6 +93,17 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
       _showTankLowOverlay = false;
     }
     _wasTankLow = isTankLow;
+
+    if (hasFault && !_wasFault) {
+      _showFaultOverlay = true;
+      Future.delayed(const Duration(seconds: 4), () {
+        if (mounted) setState(() => _showFaultOverlay = false);
+      });
+    }
+    if (!hasFault && _wasFault) {
+      _showFaultOverlay = false;
+    }
+    _wasFault = hasFault;
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
@@ -138,9 +152,21 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           if (_showTankLowOverlay && !isOffline)
             _buildStatusOverlay(
               icon: Icons.water_drop_rounded,
-              title: "Low Water Level",
-              subtitle: "Water reservoir is below 10%.\nPump protection active.",
+              title: tankLevelStr == 'FAULT'
+                  ? "Tank Sensor Fault"
+                  : "Water Level LOW",
+              subtitle: tankLevelStr == 'FAULT'
+                  ? "The water level sensor is not responding.\nPump is locked until sensor is restored."
+                  : "Water reservoir is LOW.\nPump is locked — refill the tank to resume irrigation.",
               color: Colors.redAccent,
+            ),
+
+          if (_showFaultOverlay && !isOffline && !_showTankLowOverlay)
+            _buildStatusOverlay(
+              icon: Icons.warning_amber_rounded,
+              title: "Issues Detected",
+              subtitle: "One or more sensors are reporting errors.\nCheck the System Health page for verification and details.",
+              color: Colors.orange,
             ),
 
           // ── Heartbeat Disconnected Warning ──

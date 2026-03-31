@@ -18,7 +18,7 @@ from sensors import SensorManager
 # Global State
 # ═══════════════════════════════════════════════════════
 _running = True
-_pump_locked = False  # True when tank is critically low
+_pump_locked = False  # True when XKC tank sensor reads LOW or FAULT (binary sensor, no percentage)
 sensor_manager = None
 _current_mode = "manual"
 _auto_strategy = "sensor"

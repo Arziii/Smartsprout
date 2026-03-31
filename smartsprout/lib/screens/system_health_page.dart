@@ -64,13 +64,23 @@ class SystemHealthPage extends ConsumerWidget {
               _buildDetailCard(
                 title: "Water Reservoir",
                 icon: Icons.water_drop_rounded,
-                statusText: isOffline ? "Unknown" : (sensorData.isTankLow ? "Low Water" : "Sufficient"),
-                statusColor: isOffline ? Colors.grey : (sensorData.isTankLow ? Colors.redAccent : const Color(0xFF2BCC71)),
-                description: isOffline 
+                statusText: isOffline
+                    ? "Unknown"
+                    : sensorData.isTankFault
+                        ? "Sensor Fault"
+                        : (sensorData.isTankLow ? "Low Water" : "Sufficient"),
+                statusColor: isOffline
+                    ? Colors.grey
+                    : sensorData.isTankFault
+                        ? Colors.orange
+                        : (sensorData.isTankLow ? Colors.redAccent : const Color(0xFF2BCC71)),
+                description: isOffline
                     ? "Reservoir level unavailable while disconnected."
-                    : (sensorData.isTankLow 
-                        ? "Water level is deeply critical (${sensorData.tankLevel}). Pump protection is active."
-                        : "Water level is at ${sensorData.tankLevel}."),
+                    : sensorData.isTankFault
+                        ? "The XKC non-contact water level sensor is not responding. Check wiring on GPIO pin and verify sensor power. Pump is locked for safety."
+                        : (sensorData.isTankLow
+                            ? "The XKC sensor reports the reservoir is LOW. Refill the water tank to restore automatic irrigation. Pump is locked until water is detected."
+                            : "The XKC sensor reports the reservoir is at a sufficient level (HIGH). Irrigation is permitted."),
               ),
               const SizedBox(height: 16),
 
@@ -262,8 +272,6 @@ class SystemHealthPage extends ConsumerWidget {
 
   Widget _buildZoneRow(String title, sensorData, int index) {
     double moisture = sensorData.soilMoisture.length > index ? sensorData.soilMoisture[index] : 0.0;
-    double target = sensorData.soilOffsets.length > index ? sensorData.soilOffsets[index] : 0.0;
-    bool hasTarget = target > 0.0;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -286,24 +294,6 @@ class SystemHealthPage extends ConsumerWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            if (hasTarget && !sensorData.isOffline) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF29B6F6).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  "Target: ${target.toStringAsFixed(0)}%",
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0277BD),
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ],
