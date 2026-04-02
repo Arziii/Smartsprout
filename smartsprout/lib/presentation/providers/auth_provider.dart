@@ -47,12 +47,16 @@ class SavedDevice {
 class AuthState {
   final bool isLoading;
   final String? deviceId;
+  /// Human-friendly display name stored as a field inside the Firestore doc.
+  /// Different from [deviceId] which is the permanent, immutable document ID.
+  final String? deviceName;
   final String? error;
   final List<SavedDevice> savedDevices;
 
   AuthState({
     this.isLoading = false,
     this.deviceId,
+    this.deviceName,
     this.error,
     this.savedDevices = const [],
   });
@@ -60,6 +64,7 @@ class AuthState {
   AuthState copyWith({
     bool? isLoading,
     String? deviceId,
+    String? deviceName,
     String? error,
     bool clearError = false,
     List<SavedDevice>? savedDevices,
@@ -67,6 +72,7 @@ class AuthState {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
       deviceId: deviceId ?? this.deviceId,
+      deviceName: deviceName ?? this.deviceName,
       error: clearError ? null : (error ?? this.error),
       savedDevices: savedDevices ?? this.savedDevices,
     );
@@ -74,61 +80,63 @@ class AuthState {
 }
 
 class AuthNotifier extends Notifier<AuthState> {
-  // Use lazy initialization so these instances are NEVER evaluated on Linux Kiosk.
-  // Using `late final` ensures they are only created if actually accessed.
   late final FirebaseAuth _auth = FirebaseAuth.instance;
   late final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   AuthState build() {
-    // Start the asynchronous initialization without blocking build.
     Future.microtask(_init);
     return AuthState();
   }
 
   Future<void> _init() async {
     state = state.copyWith(isLoading: true);
-    
+
     // Auto-login bypass for Raspberry Pi Kiosk (Linux)
     if (Platform.isLinux) {
-      state = AuthState(isLoading: false, deviceId: 'SPROUT_A1B2');
+      state = AuthState(isLoading: false, deviceId: 'SPROUT_A1B2', deviceName: 'Smart Sprout Kiosk');
       return;
     }
 
     final prefs = await SharedPreferences.getInstance();
     final savedDeviceId = prefs.getString('device_id');
-    
+    final savedDeviceName = prefs.getString('device_name');
+
     // Load saved devices list
     final savedDevicesJson = prefs.getString('saved_devices');
     List<SavedDevice> loadedDevices = [];
     if (savedDevicesJson != null) {
       final List decoded = jsonDecode(savedDevicesJson);
       loadedDevices = decoded.map((e) => SavedDevice.fromJson(e)).toList();
-      // Sort by last used (newest first)
       loadedDevices.sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
     }
-    
-    // Check if Firebase Auth has an anonymous session and we have a saved device
+
     if (savedDeviceId != null && _auth.currentUser != null) {
-      state = AuthState(isLoading: false, deviceId: savedDeviceId, savedDevices: loadedDevices);
+      state = AuthState(
+        isLoading: false,
+        deviceId: savedDeviceId,
+        deviceName: savedDeviceName ?? savedDeviceId,
+        savedDevices: loadedDevices,
+      );
     } else {
       state = AuthState(savedDevices: loadedDevices);
     }
   }
 
   Future<bool> login(String deviceId, String pin) async {
-    if (Platform.isLinux) return true; // Bypass on local Pi
+    if (Platform.isLinux) return true;
 
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      // 1. Sign in anonymously FIRST to get Firestore read permission
       if (_auth.currentUser == null) {
         await _auth.signInAnonymously();
       }
 
-      // 2. Fetch device document from Firestore (force server read to bypass emulator cache)
-      final doc = await _firestore.collection('devices').doc(deviceId).get(const GetOptions(source: Source.server));
-      
+      final doc = await _firestore
+          .collection('devices')
+          .doc(deviceId)
+          .get(const GetOptions(source: Source.server));
+
       if (!doc.exists) {
         await _auth.signOut();
         state = state.copyWith(isLoading: false, error: 'Device not found.');
@@ -139,34 +147,49 @@ class AuthNotifier extends Notifier<AuthState> {
       final storedPin = data['hashed_pin'] as String?;
 
       if (storedPin == pin) {
-        // PIN valid — save device ID locally
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('device_id', deviceId);
+        // Read the human-friendly display name from cloud; allow it to be null
+        final cloudDeviceName = (data['device_name'] as String?)?.isNotEmpty == true
+            ? data['device_name'] as String
+            : null;
 
-        // Update saved devices list
         List<SavedDevice> updatedDevices = List.from(state.savedDevices);
         final existingIndex = updatedDevices.indexWhere((d) => d.deviceId == deviceId);
-        
+
+        String finalNickname;
         if (existingIndex != -1) {
-          updatedDevices[existingIndex] = updatedDevices[existingIndex].copyWith(lastUsed: DateTime.now());
+          finalNickname = cloudDeviceName ?? updatedDevices[existingIndex].nickname;
+          updatedDevices[existingIndex] = updatedDevices[existingIndex].copyWith(
+            nickname: finalNickname,
+            lastUsed: DateTime.now(),
+          );
         } else {
+          finalNickname = cloudDeviceName ?? deviceId;
           updatedDevices.add(SavedDevice(
             deviceId: deviceId,
-            nickname: deviceId, // default nickname
+            nickname: finalNickname,
             pin: pin,
             lastUsed: DateTime.now(),
           ));
         }
-        
-        // Ensure max 5 devices
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('device_id', deviceId);
+        await prefs.setString('device_name', finalNickname);
+
         updatedDevices.sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
         if (updatedDevices.length > 5) {
           updatedDevices = updatedDevices.take(5).toList();
         }
-        
-        await prefs.setString('saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
 
-        state = AuthState(isLoading: false, deviceId: deviceId, savedDevices: updatedDevices);
+        await prefs.setString(
+            'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+
+        state = AuthState(
+          isLoading: false,
+          deviceId: deviceId,
+          deviceName: finalNickname,
+          savedDevices: updatedDevices,
+        );
         return true;
       } else {
         await _auth.signOut();
@@ -174,25 +197,35 @@ class AuthNotifier extends Notifier<AuthState> {
         return false;
       }
     } catch (e) {
-      try { await _auth.signOut(); } catch (_) {}
+      try {
+        await _auth.signOut();
+      } catch (_) {}
       state = state.copyWith(isLoading: false, error: e.toString());
       return false;
     }
   }
 
   Future<bool> quickSwitch(String deviceId) async {
-    final dev = state.savedDevices.firstWhere((d) => d.deviceId == deviceId, orElse: () => throw Exception('Device not found'));
+    final dev = state.savedDevices.firstWhere(
+      (d) => d.deviceId == deviceId,
+      orElse: () => throw Exception('Device not found'),
+    );
     return await login(dev.deviceId, dev.pin);
+  }
+
+  void clearError() {
+    state = state.copyWith(clearError: true);
   }
 
   Future<void> updateDeviceNickname(String deviceId, String newNickname) async {
     final prefs = await SharedPreferences.getInstance();
     List<SavedDevice> updatedDevices = List.from(state.savedDevices);
     final existingIndex = updatedDevices.indexWhere((d) => d.deviceId == deviceId);
-    
+
     if (existingIndex != -1) {
       updatedDevices[existingIndex] = updatedDevices[existingIndex].copyWith(nickname: newNickname);
-      await prefs.setString('saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+      await prefs.setString(
+          'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
       state = state.copyWith(savedDevices: updatedDevices);
     }
   }
@@ -201,21 +234,20 @@ class AuthNotifier extends Notifier<AuthState> {
     final prefs = await SharedPreferences.getInstance();
     List<SavedDevice> updatedDevices = List.from(state.savedDevices);
     updatedDevices.removeWhere((d) => d.deviceId == deviceId);
-    await prefs.setString('saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
-    
+    await prefs.setString(
+        'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+
     final currentDevice = state.deviceId;
     state = state.copyWith(savedDevices: updatedDevices);
-    
-    // If the user removed the actively logged in device
+
     if (currentDevice == deviceId) {
-       await logout();
+      await logout();
     }
   }
 
   Future<bool> changePin(String newPin) async {
     final currentDevice = state.deviceId;
     if (currentDevice == null) return false;
-
     if (Platform.isLinux) return false;
 
     try {
@@ -223,7 +255,23 @@ class AuthNotifier extends Notifier<AuthState> {
       await _firestore.collection('devices').doc(currentDevice).update({
         'hashed_pin': newPin,
       });
-      state = state.copyWith(isLoading: false);
+
+      // Also update the saved device's pin in local storage
+      final prefs = await SharedPreferences.getInstance();
+      List<SavedDevice> updatedDevices = List.from(state.savedDevices);
+      final idx = updatedDevices.indexWhere((d) => d.deviceId == currentDevice);
+      if (idx != -1) {
+        updatedDevices[idx] = SavedDevice(
+          deviceId: updatedDevices[idx].deviceId,
+          nickname: updatedDevices[idx].nickname,
+          pin: newPin,
+          lastUsed: updatedDevices[idx].lastUsed,
+        );
+        await prefs.setString(
+            'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+      }
+
+      state = state.copyWith(isLoading: false, savedDevices: updatedDevices);
       return true;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: 'Failed to update PIN: $e');
@@ -231,57 +279,52 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
-  /// Renames the device: copies Firestore data to new doc, sends SYNC_CONFIG to Pi, updates local state.
-  /// Requires current PIN for safety.
-  Future<String?> renameDevice(String currentPin, String newDeviceId) async {
+  /// Renames the device by updating the [device_name] field directly in Firestore.
+  /// The document ID (hardware identifier) remains permanent and unchanged.
+  /// Requires current PIN for security verification.
+  Future<String?> renameDevice(String currentPin, String newDeviceName) async {
     if (Platform.isLinux) return 'Not available on Kiosk';
 
-    final oldDeviceId = state.deviceId;
-    if (oldDeviceId == null) return 'Not logged in';
+    final currentDeviceId = state.deviceId;
+    if (currentDeviceId == null) return 'Not logged in';
 
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       // 1. Verify current PIN
-      final oldDoc = await _firestore.collection('devices').doc(oldDeviceId).get();
-      if (!oldDoc.exists) {
+      final doc = await _firestore.collection('devices').doc(currentDeviceId).get();
+      if (!doc.exists) {
         state = state.copyWith(isLoading: false, error: 'Device not found');
         return 'Device not found';
       }
-      final storedPin = oldDoc.data()?['hashed_pin'] as String?;
+      final storedPin = doc.data()?['hashed_pin'] as String?;
       if (storedPin != currentPin) {
         state = state.copyWith(isLoading: false, error: 'Incorrect PIN');
         return 'Incorrect PIN';
       }
 
-      // 2. Check that new ID doesn't already exist
-      final newDoc = await _firestore.collection('devices').doc(newDeviceId).get();
-      if (newDoc.exists) {
-        state = state.copyWith(isLoading: false, error: 'Device ID already taken');
-        return 'Device ID already taken';
-      }
-
-      // 3. Copy essential data to new document
-      final oldData = oldDoc.data()!;
-      await _firestore.collection('devices').doc(newDeviceId).set(oldData);
-
-      // 4. Send SYNC_CONFIG command to the OLD doc so the Pi picks it up
-      await _firestore
-          .collection('devices')
-          .doc(oldDeviceId)
-          .collection('commands')
-          .add({
-        'command': 'SYNC_CONFIG',
-        'new_device_id': newDeviceId,
-        'processed': false,
-        'timestamp': FieldValue.serverTimestamp(),
+      // 2. Update the device_name field in-place — no copying, no orphan documents
+      await _firestore.collection('devices').doc(currentDeviceId).update({
+        'device_name': newDeviceName,
       });
 
-      // 5. Update local SharedPreferences
+      // 3. Update local storage
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('device_id', newDeviceId);
+      await prefs.setString('device_name', newDeviceName);
 
-      // 6. Update auth state
-      state = AuthState(isLoading: false, deviceId: newDeviceId);
+      // 4. Update saved devices list nickname
+      List<SavedDevice> updatedDevices = List.from(state.savedDevices);
+      final idx = updatedDevices.indexWhere((d) => d.deviceId == currentDeviceId);
+      if (idx != -1) {
+        updatedDevices[idx] = updatedDevices[idx].copyWith(nickname: newDeviceName);
+        await prefs.setString(
+            'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+      }
+
+      state = state.copyWith(
+        isLoading: false,
+        deviceName: newDeviceName,
+        savedDevices: updatedDevices,
+      );
       return null; // success
     } catch (e) {
       state = state.copyWith(isLoading: false, error: 'Rename failed: $e');
@@ -294,9 +337,9 @@ class AuthNotifier extends Notifier<AuthState> {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('device_id');
+    await prefs.remove('device_name');
     await _auth.signOut();
-    // Keep saved devices when logging out
-    state = AuthState(savedDevices: state.savedDevices); 
+    state = AuthState(savedDevices: state.savedDevices);
   }
 }
 

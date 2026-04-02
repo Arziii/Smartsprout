@@ -16,8 +16,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
 
-  // ── Optimization for Pi 3B removed for Pi 4 (4GB RAM) ──
-
   if (!Platform.isLinux) {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,

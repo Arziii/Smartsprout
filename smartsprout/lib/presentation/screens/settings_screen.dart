@@ -118,7 +118,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   )),
                   _buildAnimatedItem(5, _buildSettingsCard(
                     title: 'Rename Device',
-                    subtitle: 'Change your device ID (requires PIN)',
+                    subtitle: 'Change your device display name \n(requires PIN)',
                     icon: Icons.drive_file_rename_outline_rounded,
                     color: const Color(0xFF7E57C2),
                     onTap: () => _showRenameDeviceDialog(),
@@ -341,7 +341,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
 
   void _showRenameDeviceDialog() {
     final pinController = TextEditingController();
-    final idController = TextEditingController();
+    final nameController = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -367,10 +367,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: idController,
-              textCapitalization: TextCapitalization.characters,
+              controller: nameController,
+              textCapitalization: TextCapitalization.words,
               decoration: InputDecoration(
-                hintText: 'New Device ID (e.g. SPROUT_GARDEN)',
+                hintText: 'New Device Name (e.g. My Garden)',
                 prefixIcon: const Icon(Icons.drive_file_rename_outline_rounded),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -382,15 +382,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           ElevatedButton(
             onPressed: () async {
               final pin = pinController.text.trim();
-              final newId = idController.text.trim().toUpperCase();
-              if (pin.isEmpty || newId.isEmpty) return;
+              final newName = nameController.text.trim();
+              if (pin.isEmpty || newName.isEmpty) return;
               Navigator.pop(ctx);
-              final error = await ref.read(authProvider.notifier).renameDevice(pin, newId);
+              final error = await ref.read(authProvider.notifier).renameDevice(pin, newName);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      error == null ? 'Device renamed to $newId!' : error,
+                      error == null ? 'Device renamed to "$newName"!' : error,
                       style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
                     ),
                     backgroundColor: error == null ? const Color(0xFF2BCC71) : Colors.redAccent,
