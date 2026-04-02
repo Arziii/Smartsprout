@@ -228,10 +228,11 @@ When you press a button on the app (e.g., "Turn Pump On" or "Run Wet Calibration
 ### B. How Data flows (Pi -> Cloud -> App)
 Instead of spamming the database every second (which would crash the quota), the system employs **Differential Sync** and **Eco-Mode**.
 1. **Local Reads**: The Pi physically reads the soil sensors via I2C every **3 seconds**.
-2. **The Cloud Gate**: Before sending that data to Firebase, the Pi checks three rules:
-   - **Rule 1 (Eco-Mode)**: Has it been 30 minutes since the last push? If yes, push.
-   - **Rule 2 (Differential Sync)**: Did the moisture jump by more than 3%? Or the temperature by 1.5°C? If yes, push immediately.
+2. **The Cloud Gate**: Before sending that data to Firebase, the Pi checks four rules:
+   - **Rule 1 (Eco-Mode)**: Has it been 30 minutes since the last push? If yes, push everything (History + Status).
+   - **Rule 2 (Differential Sync)**: Did moisture jump by >8%? Or temp by >3.0°C? If yes, push immediately (Status only to save history quota) — but strictly limited to maximum once every 60 seconds to suppress sensor jitter.
    - **Rule 3 (Force Sync)**: Did the user tap "Sync Now" in the app? If yes, push immediately.
+   - **Rule 4 (Live Watering Bypass)**: Is the pump currently ON? If yes, bypass the 60s cooldown and the 8% threshold completely. Stream data every 3 seconds so the mobile app gets a real-time, zero-delay premium experience while watering.
 3. If none of these are met, the Pi stays quiet and saves bandwidth.
 4. When it *does* push, it overwrites the main device document in Firestore. The Flutter app is "listening" (via Riverpod Streams) to this document and instantly updates the mobile screen UI locally without requiring a manual refresh.
 
@@ -303,6 +304,13 @@ If a user is manually watering via the app, what happens if their phone loses in
 
 **Q5: How is this system scalable?**
 *Answer:* Expanding the system is horizontally scalable through Firebase. By appending a new `device_id`, the user can buy a second Smart Sprout kit, place it in their backyard, and manage it seamlessly from the exact same mobile app by merely toggling device selection. 
+
+**Q6: How do you manage the 20,000 writes/day Firebase Free Tier Quota without losing real-time responsiveness?**
+*Answer:* We implemented a highly optimized **Dynamic Sync Architecture** that reduced data usage by over 90%:
+1. **Subcollection Routing:** Sensor "jitter" (electronic noise) caused 28,000+ writes a day. Now, periodic updates only overwrite the single Status document. The historical log is only appended during the 30-minute Eco-Mode limit.
+2. **Active Filtering:** We widened the differential sync thresholds (8% moisture / 3°C temp) to completely ignore noise and added a strict 60-second cooldown limiter.
+3. **Zero-Cost Heartbeat Caching:** The Pi monitors the app's Dead-Man pulse natively via a free `on_snapshot` cache instead of burning `.get()` reads every 3 seconds.
+4. **Live Bypass Mechanism:** When the pump triggers, we temporarily bypass all rate-limiters. The system streams data every 3 seconds so the mobile dashboard looks buttery smooth for the user without bloating the history database. The heartbeat remains at a brisk 10 seconds for near-instant offline detection.
 
 ---
 

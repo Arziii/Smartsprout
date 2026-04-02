@@ -145,12 +145,13 @@ A. How Commands Turn On Pumps (App -> Cloud -> Pi)
 4. The Pi detects the new command within ~250ms, parses it, triggers the physical GPIO relay for the 12V pump, and strictly updates the cloud document to `{"processed": true}` so it isn't run twice.
 
 B. How Telemetry Reaches the Screen (Pi -> Cloud -> App)
-Real-time streaming is expensive and drains database quotas (creating "Quota Exceeded 429" errors). To solve this, the Pi separates local reading operations from cloud writing operations:
+Real-time streaming is expensive and drains database quotas (creating "Quota Exceeded 429" errors). To solve this, the Pi separates local reading operations from cloud writing operations using a Dynamic Sync Architecture:
 1. Local Hardware: The Pi reads the soil and environment I2C sensors every 3 seconds locally.
-2. The Database Gate: The Pi refuses to upload this data to Firebase unless one of three rules is passed:
-   - Rule 1 (Eco-Mode): 30 minutes have elapsed since the last push.
-   - Rule 2 (Differential Sync): The soil moisture suddenly changed by >3% or temp by >1.5°C since the last baseline push.
-   - Rule 3 (Force Sync): The user pressed "Sync Now" on the mobile app, triggering an immediate bypass.
+2. The Database Gate: The Pi refuses to upload this data to Firebase unless one of four dynamic rules is passed:
+   - Rule 1 (Eco-Mode): 30 minutes have elapsed since the last push (saves historical telemetry).
+   - Rule 2 (Differential Sync): The soil moisture suddenly changed by >8% or temp by >3.0°C. This pushes to the status document *only* and enforces a rigid 60-second cooldown to mathematically prevent sensor jitter from exhausting the 20,000/day write quota.
+   - Rule 3 (Force Sync): The user pressed "Sync Now" on the mobile app.
+   - Rule 4 (Live Watering Bypass): If the pump is currently active, all cooldowns and thresholds are bypassed, streaming live data every 3 seconds to ensure real-time mobile UX without bloating the database history.
 3. Mobile Consumption: The Flutter UI uses Riverpod (`StreamProvider`) to listen to the `devices/{deviceID}` document. When the Pi finally pushes the data based on the rules above, the Mobile screen automatically updates its visual gauges instantly.
 
 
@@ -431,10 +432,11 @@ PHASE 4.16: RELIABILITY WATCHDOG [COMPLETED]
 ☑ Cloud Heartbeat: Pi writes `last_heartbeat` to Firestore every 60 seconds via daemon thread.
 ☑ Flutter Disconnected Warning: Orange pill badge on dashboard if heartbeat > 2 min stale.
 
-PHASE 4.17: DIFFERENTIAL SYNC (ECO-MODE 2.0) [COMPLETED]
-☑ Threshold Logic: Immediate cloud push if Temp Δ>1.5°C, Soil Δ>3%, or Tank Δ>5%.
-☑ `_last_sent_telemetry` tracks baseline; `_should_differential_push()` checks deltas.
-☑ Preserves 30-min Eco-Mode timer for normal conditions while catching critical changes.
+PHASE 4.17: DYNAMIC SYNC ARCHITECTURE 3.0 [COMPLETED]
+☑ Anti-Jitter Thresholds: Widened trigger margins (Temp Δ>3.0°C, Soil Δ>8%) to completely ignore hardware ADC sensor noise.
+☑ Cooldown Limiter: Enforces a strict 60-second minimum gap between differential pushes to shield Firestore quotas.
+☑ Live Watering Bypass: Automatically suspends thresholds and streams data every 3 seconds exclusively when the pump is active for a premium UX.
+☑ Routing Segregation: Differential updates only overwrite the main device status document, leaving historical subcollections to be updated only during the 30-minute Eco-Mode cycles.
 
 PHASE 4.18: HARDWARE SAFETY & LED FEEDBACK [COMPLETED]
 ☑ Reset LED (GPIO 18): Rapid blink during 5s hold, solid ON on trigger, OFF on cancel.

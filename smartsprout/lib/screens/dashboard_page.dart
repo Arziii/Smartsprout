@@ -559,7 +559,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.water_drop_rounded, color: Color(0xFF1B8E4F), size: 14),
+                          const Icon(Icons.air_rounded, color: Color(0xFF1B8E4F), size: 14),
                           const SizedBox(width: 4),
                           Text(
                             isEnvFault ? "--%" : "${systemHum.toInt()}%",

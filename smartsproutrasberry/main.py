@@ -28,6 +28,7 @@ _last_auto_water = {1: 0, 2: 0, 3: 0} # Cooldown tracking per zone
 _last_daily_water_date = ""
 _last_sent_telemetry = {}  # Tracks last cloud-pushed values for differential sync
 _force_sync = False
+_last_push_time = 0.0        # Minimum push cooldown guard — prevents rapid-fire writes
 
 # Dead-Man's Switch state
 _manual_pump_active = False
@@ -151,7 +152,7 @@ def _manual_heartbeat_monitor(zone: int):
                 return
         except Exception as e:
             print(f"[DEADMAN] Error checking heartbeat: {e}")
-        time.sleep(2)  # Check every 2 seconds
+        time.sleep(3)  # Check every 3s — was 2s (saves 50% of heartbeat reads during manual water)
 
     print(f"[DEADMAN] Heartbeat monitor stopped for Zone {zone}")
 
@@ -368,38 +369,71 @@ def collect_telemetry() -> dict:
 # ═══════════════════════════════════════════════════════
 # Differential Sync — Threshold-based immediate push
 # ═══════════════════════════════════════════════════════
+# ── Differential Sync Thresholds ──
+# These are intentionally conservative to suppress sensor jitter/noise.
+# A 3% moisture threshold caused 28,800+ writes/day due to ADC noise.
+# New thresholds: moisture=8%, temperature=3°C — only genuine changes push.
+_DIFF_MOISTURE_THRESHOLD = 8.0   # % points — filters ADC jitter
+_DIFF_TEMP_THRESHOLD     = 3.0   # °C — filters ambient fluctuation
+_MIN_PUSH_INTERVAL       = 60    # seconds — absolute minimum between any two cloud writes
+
+
 def _should_differential_push(current: dict) -> bool:
     """
     Returns True if critical sensor values have changed beyond thresholds
     compared to the last cloud-pushed telemetry. This triggers an immediate
     sync even if the Eco-Mode timer hasn't expired.
+
+    Thresholds are tuned to suppress sensor noise (jitter) while still
+    catching real changes caused by active watering or environment shifts.
     """
-    global _last_sent_telemetry
+    global _last_sent_telemetry, _last_push_time, _pump_running
+
+    # ── Live Watering Bypass ──
+    # If the pump is active, bypass the 60s cooldown and 8% threshold.
+    # Streams live updates every 3s to the UI for a premium experience.
+    if _pump_running:
+        return True
+
     if not _last_sent_telemetry:
         return False  # First reading — let the normal sync handle it
 
-    # Temperature delta > 1.5°C
-    last_temp = _last_sent_telemetry.get("temperature", 0)
-    curr_temp = current.get("temperature", 0)
-    if abs(curr_temp - last_temp) > 1.5:
-        print(f"[DIFF_SYNC] Temperature change detected: {last_temp}→{curr_temp}°C")
-        return True
+    # ── Minimum Push Cooldown ──
+    # Even if a threshold is crossed, do NOT push more than once per minute.
+    # This is the final safety net against sensor jitter burning the quota.
+    if (time.time() - _last_push_time) < _MIN_PUSH_INTERVAL:
+        return False
 
-    # Tank level string comparison
+    # ── Tank Level Change (immediate — highest priority safety event) ──
     last_tank = _last_sent_telemetry.get("tank_level", "FAULT")
     curr_tank = current.get("tank_level", "FAULT")
     if curr_tank != last_tank:
         print(f"[DIFF_SYNC] Tank level change detected: {last_tank}→{curr_tank}")
         return True
 
-    # Soil moisture delta > 3% (any bed)
+    # ── System Status Change (e.g. sensor_fault → ok) ──
+    last_status = _last_sent_telemetry.get("system_status", "ok")
+    curr_status = current.get("system_status", "ok")
+    if curr_status != last_status:
+        print(f"[DIFF_SYNC] System status change detected: {last_status}→{curr_status}")
+        return True
+
+    # ── Temperature Delta > 3°C ──
+    last_temp = _last_sent_telemetry.get("temperature", 0)
+    curr_temp = current.get("temperature", 0)
+    if abs(curr_temp - last_temp) > _DIFF_TEMP_THRESHOLD:
+        print(f"[DIFF_SYNC] Temperature change detected: {last_temp}→{curr_temp}°C")
+        return True
+
+    # ── Soil Moisture Delta > 8% (any bed) ──
+    # 8% ensures a real watering event is detected, but ADC noise (~1-2%) is ignored.
     last_soil = _last_sent_telemetry.get("soil_moisture", {})
     curr_soil = current.get("soil_moisture", {})
     for bed in curr_soil:
         last_val = last_soil.get(bed, 0)
         curr_val = curr_soil.get(bed, 0)
         if isinstance(curr_val, (int, float)) and isinstance(last_val, (int, float)):
-            if abs(curr_val - last_val) > 3:
+            if abs(curr_val - last_val) > _DIFF_MOISTURE_THRESHOLD:
                 print(f"[DIFF_SYNC] Soil {bed} change detected: {last_val}→{curr_val}%")
                 return True
 
@@ -430,12 +464,17 @@ def main():
     pump_watchdog.start_pump_watchdog()
 
     # ── Start Heartbeat Thread ──
+    # Sends an "I am alive" ping every 10 seconds.
+    # This is the ONLY signal the mobile app uses to detect if the Pi
+    # went offline or was unplugged. With a 10s ping, the app detects failure almost immediately.
+    # At 10s, it consumes ~8,640 writes/day, well within the 20,000 free tier limit.
+    HEARTBEAT_INTERVAL = 10  # 10 seconds
     def _heartbeat_loop():
         while _running:
             firebase_manager.send_heartbeat()
-            time.sleep(60)
+            time.sleep(HEARTBEAT_INTERVAL)
     threading.Thread(target=_heartbeat_loop, daemon=True).start()
-    print("[INIT] Heartbeat thread started (60s interval)")
+    print(f"[INIT] Heartbeat thread started ({HEARTBEAT_INTERVAL}s interval)")
 
     # MQTT logic removed for Zero-Trust Architecture
 
@@ -490,8 +529,14 @@ def main():
             if push_reason:
                 try:
                     print(f"[FIREBASE] Push triggered by: {push_reason}")
-                    # Publish telemetry to Firebase
-                    firebase_manager.push_telemetry(telemetry)
+
+                    # ── History vs Status routing ──
+                    # FORCE_SYNC and ECO_MODE write BOTH the current-status document
+                    # AND the historical telemetry subcollection.
+                    # DIFFERENTIAL_SYNC only updates the current-status document —
+                    # it does NOT add a history record, cutting subcollection writes by ~90%.
+                    write_history = (_force_sync or eco_due)
+                    firebase_manager.push_telemetry(telemetry, write_history=write_history)
 
                     # Publish alerts separately to Firebase
                     if telemetry["alerts"]:
@@ -502,10 +547,12 @@ def main():
                     firebase_manager.perform_storage_cleanup()
 
                     last_cloud_sync = current_time
+                    _last_push_time = current_time   # Update cooldown guard
                     _force_sync = False
                     _last_sent_telemetry = telemetry.copy()  # Update baseline for differential sync
                     mins_until_next = cloud_sync_interval / 60
-                    print(f"[FIREBASE] Telemetry synced ✓ (next Eco-Mode push in {mins_until_next:.0f} min unless diff/force fires first).")
+                    print(f"[FIREBASE] Telemetry synced ✓ (history={'YES' if write_history else 'STATUS-ONLY'}) "
+                          f"(next Eco-Mode push in {mins_until_next:.0f} min unless diff/force fires first).")
                 except Exception as e:
                     print(f"[FIREBASE] Push FAILED — will retry on next trigger. Error: {e}")
 

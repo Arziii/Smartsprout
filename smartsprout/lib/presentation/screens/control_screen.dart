@@ -396,6 +396,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                             zone: 1,
                             label: "Zone 1 (Left)",
                             moisture: rawSoil.isNotEmpty ? rawSoil[0] : 0,
+                            target: sensorData.targetMoisture.isNotEmpty ? sensorData.targetMoisture[0] : 65.0,
                             isActive: _wateringActive[1] ?? false,
                             disabled: isPumpLockedSafe || !isConnected || isTankLow,
                           ),
@@ -404,6 +405,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                             zone: 2,
                             label: "Zone 2 (Center)",
                             moisture: rawSoil.length > 1 ? rawSoil[1] : 0,
+                            target: sensorData.targetMoisture.length > 1 ? sensorData.targetMoisture[1] : 65.0,
                             isActive: _wateringActive[2] ?? false,
                             disabled: isPumpLockedSafe || !isConnected || isTankLow,
                           ),
@@ -412,6 +414,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                             zone: 3,
                             label: "Zone 3 (Right)",
                             moisture: rawSoil.length > 2 ? rawSoil[2] : 0,
+                            target: sensorData.targetMoisture.length > 2 ? sensorData.targetMoisture[2] : 65.0,
                             isActive: _wateringActive[3] ?? false,
                             disabled: isPumpLockedSafe || !isConnected || isTankLow,
                           ),
@@ -706,6 +709,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     required int zone,
     required String label,
     required double moisture,
+    required double target,
     required bool isActive,
     bool disabled = false,
   }) {
@@ -1006,8 +1010,22 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                   ),
                 ),
               ],
-            )
-          ]
+            ),
+          ],
+          // ── Live Moisture Expansion Panel (visible when actively watering) ──
+          AnimatedCrossFade(
+            crossFadeState: isActive
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 400),
+            sizeCurve: Curves.easeInOut,
+            firstChild: const SizedBox.shrink(),
+            secondChild: _LiveMoisturePanel(
+              moisture: moisture,
+              target: target,
+              isFault: isFault,
+            ),
+          ),
         ],
       ),
     );
@@ -1230,6 +1248,268 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
           ),
         );
       },
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// Live Moisture Panel — expands inside zone card when watering
+// ═══════════════════════════════════════════════════════
+class _LiveMoisturePanel extends StatefulWidget {
+  final double moisture;
+  final double target;
+  final bool isFault;
+
+  const _LiveMoisturePanel({
+    required this.moisture,
+    required this.target,
+    required this.isFault,
+  });
+
+  @override
+  State<_LiveMoisturePanel> createState() => _LiveMoisturePanelState();
+}
+
+class _LiveMoisturePanelState extends State<_LiveMoisturePanel>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.2, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  String _statusLabel(double moisture, double target) {
+    final gap = target - moisture;
+    if (gap <= 0) return '✅ Target reached — tap Stop';
+    if (gap <= 5) return 'Almost there — ${gap.toStringAsFixed(0)}% to target';
+    if (gap <= 20) return 'Soil absorbing water...';
+    return 'Watering in progress';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final moisture = widget.moisture;
+    final target = widget.target;
+    final isFault = widget.isFault;
+    final safeTarget = target > 0 ? target : 65.0;
+    final progress = (moisture / safeTarget).clamp(0.0, 1.0);
+    final targetFraction = (safeTarget / 100.0).clamp(0.0, 1.0);
+    final moistureStr = isFault ? '--' : '${moisture.toStringAsFixed(0)}%';
+    final nearTarget = !isFault && (safeTarget - moisture) <= 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 24, color: Color(0x2029B6F6)),
+
+        // ── Header: label + pulsing live indicator ──
+        Row(
+          children: [
+            Text(
+              'LIVE MOISTURE',
+              style: GoogleFonts.outfit(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF4A6164),
+                letterSpacing: 1.2,
+              ),
+            ),
+            const Spacer(),
+            AnimatedBuilder(
+              animation: _pulseAnim,
+              builder: (_, __) => Opacity(
+                opacity: _pulseAnim.value,
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: isFault ? Colors.redAccent : const Color(0xFF29B6F6),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'LIVE',
+              style: GoogleFonts.outfit(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: isFault ? Colors.redAccent : const Color(0xFF29B6F6),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // ── Big moisture number + target ──
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              moistureStr,
+              style: GoogleFonts.outfit(
+                fontSize: 38,
+                fontWeight: FontWeight.w900,
+                color: isFault
+                    ? Colors.grey.shade400
+                    : nearTarget
+                        ? const Color(0xFF2BCC71)
+                        : const Color(0xFF29B6F6),
+                height: 1.0,
+              ),
+            ),
+            const SizedBox(width: 14),
+            if (!isFault)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Target',
+                      style: GoogleFonts.outfit(
+                        fontSize: 10,
+                        color: const Color(0xFF4A6164),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      '${safeTarget.toStringAsFixed(0)}%',
+                      style: GoogleFonts.outfit(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF2BCC71),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        // ── Progress bar with target tick ──
+        if (!isFault) ...[
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final barWidth = constraints.maxWidth;
+              final tickX = (targetFraction * barWidth).clamp(0.0, barWidth - 4);
+              return SizedBox(
+                height: 10,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // Background track
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF29B6F6).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    // Animated fill
+                    AnimatedFractionallySizedBox(
+                      duration: const Duration(milliseconds: 600),
+                      curve: Curves.easeOut,
+                      widthFactor: progress,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: nearTarget
+                                ? [const Color(0xFF2BCC71), const Color(0xFF1BA85D)]
+                                : [const Color(0xFF29B6F6), const Color(0xFF0277BD)],
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                    // Target tick marker (glowing green line)
+                    Positioned(
+                      left: tickX,
+                      top: -3,
+                      bottom: -3,
+                      child: Container(
+                        width: 3,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2BCC71),
+                          borderRadius: BorderRadius.circular(2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF2BCC71).withOpacity(0.6),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('0%',
+                  style: GoogleFonts.outfit(
+                      fontSize: 9,
+                      color: const Color(0xFF4A6164),
+                      fontWeight: FontWeight.w500)),
+              Text('100%',
+                  style: GoogleFonts.outfit(
+                      fontSize: 9,
+                      color: const Color(0xFF4A6164),
+                      fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ] else ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.redAccent.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
+            ),
+            child: Text(
+              'Sensor fault — moisture reading unavailable',
+              style: GoogleFonts.outfit(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.redAccent),
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+
+        // ── Contextual status label ──
+        if (!isFault)
+          Text(
+            _statusLabel(moisture, safeTarget),
+            style: GoogleFonts.outfit(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: nearTarget
+                  ? const Color(0xFF2BCC71)
+                  : const Color(0xFF4A6164),
+            ),
+          ),
+      ],
     );
   }
 }

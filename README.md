@@ -56,7 +56,10 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
     *   **Normally Closed (NC) Safety**: All valves are NC, ensuring they fail-safe to a closed position during power or software failures.
     *   **Pump Watchdog**: A dedicated GPIO-level Python daemon forces the water pump OFF if it runs longer than 120 seconds, preventing floods.
 *   **Hardware-Aware Maintenance Mode**: Gracefully handles I2C disconnects (Errno 5) and BME280 sensor faults. The UI displays a "Maintenance Required" wrench icon and hard-locks auto-watering for affected zones.
-*   **Eco-Mode & Differential Sync**: The backend separates physical hardware polling (every 3 seconds) from Firebase cloud pushes (every 30 minutes). However, if extreme environmental changes are detected (Δ>3% Moisture or Δ>1.5°C Temp), the system instantly pushes a "Differential Sync" to save bandwidth while staying real-time.
+*   **Eco-Mode & Dynamic Sync Architecture**: The backend separates physical hardware polling (every 3 seconds) from Firebase cloud pushes (every 30 minutes). To protect Cloud Quotas (staying under the 20,000 writes/day free tier), the system uses a highly optimized Dynamic Sync:
+    *   **Differential Sync**: If significant environmental changes are detected (Δ>8% Moisture or Δ>3.0°C Temp), the system instantly pushes an update. It uses a strict 60-second cooldown to suppress electronic sensor jitter.
+    *   **Live Watering Bypass**: When manual watering is active, the system bypasses the cooldowns to stream real-time data every 3 seconds to the mobile app for a premium, zero-delay UX without bloating the historical database.
+    *   **Zero-Cost Heartbeating**: A Dead-Man's Switch monitors the mobile app's connection natively via a free `on_snapshot` cache (updating every 10s), ensuring the pump kills itself instantly if the user's internet is lost during manual watering.
 *   **Physical Factory Reset**: A dedicated hardware button (BCM 24) with LED feedback (BCM 18) for secure persistence resets.
 
 ---

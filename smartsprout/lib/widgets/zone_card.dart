@@ -163,30 +163,24 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                 ),
               ],
 
-              // ── TOP-LEFT: Zone Name + Temperature ──
+              // ── TOP-LEFT: Zone Name ──
               Positioned(
                 top: 16,
-                left: 18,
-                right: 70,
+                left: 14,
+                right: 90,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.zoneName,
+                      widget.zoneName.replaceFirst(' (', '\n('),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Color(0xFF0F2027),
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.3,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      isTempFault ? '-- °C' : '${widget.temp} °C',
-                      style: const TextStyle(
-                        color: Color(0xFF0F2027),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        height: 1.25,
                       ),
                     ),
                   ],
