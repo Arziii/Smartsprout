@@ -11,6 +11,7 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
 - [Core Features](#-core-features)
 - [Hardware Pin Mapping](#-hardware-pin-mapping)
 - [Quick Start Guide](#-quick-start-guide)
+- [Scaling & Deployment](#-scaling--deployment)
 - [Repository Structure](#-repository-structure)
 - [License & Academic Context](#-license--academic-context)
 
@@ -60,6 +61,11 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
     *   **Differential Sync**: If significant environmental changes are detected (Δ>8% Moisture or Δ>3.0°C Temp), the system instantly pushes an update. It uses a strict 60-second cooldown to suppress electronic sensor jitter.
     *   **Live Watering Bypass**: When manual watering is active, the system bypasses the cooldowns to stream real-time data every 3 seconds to the mobile app for a premium, zero-delay UX without bloating the historical database.
     *   **Zero-Cost Heartbeating**: A Dead-Man's Switch monitors the mobile app's connection natively via a free `on_snapshot` cache (updating every 10s), ensuring the pump kills itself instantly if the user's internet is lost during manual watering.
+*   **Advanced Device Management (v2.0)**:
+    *   **In-App Account Switching**: Facebook-style account switcher allows users to manage multiple devices (e.g., Garden 1, Garden 2) and switch between them instantly without disconnecting.
+    *   **In-App Device Provisioning**: Add new hardware units directly from the settings menu via a secure modal without leaving the app.
+    *   **Secure Renaming**: Devices map to permanent hardware IDs, but users can assign custom nicknames (e.g., "Front Porch") which persist across all logged-in sessions.
+    *   **Remote PIN Management**: Security-first PIN changes require verifying the current PIN before authorizing an update, preventing unauthorized access if a phone is left unlocked.
 *   **Physical Factory Reset**: A dedicated hardware button (BCM 24) with LED feedback (BCM 18) for secure persistence resets.
 
 ---
@@ -123,6 +129,28 @@ flutter pub get
 # 2. Run on your target device (iOS/Android)
 flutter run
 ```
+
+---
+
+## 🚀 Scaling & Deployment
+
+The system is designed for **Zero-Touch Scaling**. To deploy multiple units (e.g., selling 10+ devices), you do NOT need to modify the source code or create separate app builds.
+
+### 1. Unified App Architecture
+The Flutter app is a **Universal Client**. It acts as a shell that connects to any hardware ID registered in your Firebase project. One APK/IPA works for all your customers.
+
+### 2. The One-Line Config (Raspberry Pi)
+When preparing a new hardware unit for a customer:
+1.  **Clone** the `smartsproutrasberry` folder to the new Pi.
+2.  **Change exactly one line** in the `.env` file:
+    ```bash
+    # On Unit 2:
+    DEVICE_ID="SPROUT_002"
+    ```
+3.  **Register** `SPROUT_002` as a new document in your Firebase `devices` collection.
+
+### 3. Customer Experience
+The customer simply enters the **Device ID** and **Default PIN** provided with their hardware. The app automatically pulls the correct telemetry specifically for that hardware unit.
 
 ---
 

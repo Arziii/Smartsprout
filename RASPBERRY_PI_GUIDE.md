@@ -167,6 +167,55 @@ To make the dashboard launch automatically when the Pi turns on:
 
 ---
 
+## 🚀 Scaling to Multiple Units (Unit 2, Unit 3, etc.)
+
+If you are deploying this system for multiple customers, you do **not** need to change the Python code logic. Each unit is differentiated by its unique identity.
+
+### 1. The One-Line Config
+For every new Raspberry Pi, modify only the `.env` file:
+```bash
+# In /home/pi/smartsproutrasberry/.env
+DEVICE_ID="SPROUT_001" # Change this for every new hardware unit (e.g., SPROUT_002)
+DEVICE_PIN="1234"      # Set the initial default PIN for this customer
+```
+
+### 2. Firebase Registration
+1.  Open your **Firebase Console** -> **Firestore Database**.
+2.  In the `devices` collection, click **Add Document**.
+3.  Set the **Document ID** to match your new `DEVICE_ID` (e.g., `SPROUT_002`).
+4.  Add the following fields:
+    *   `device_name`: "New Garden" (String)
+    *   `hashed_pin`: "1234" (String)
+    *   `telemetry_v2`: (Map) -> `humidity`: 0, `temperature`: 0, etc.
+
+### 3. Verification
+Once the Pi 2 starts, it will automatically begin sending data to the `SPROUT_002` document. The same Flutter app you built for Pi 1 will now be able to log into Pi 2 using these new credentials.
+
+---
+
+## 🔐 Production Deployment & Security (Unit 10+)
+
+When transitioning from the prototype to a commercial product for multiple users, follow this security checklist to protect your **Intellectual Property (IP)**:
+
+### 1. Protect the Source Code
+*   **Compile to Binary**: Use tools like `PyInstaller` or `Cython` to convert your `.py` files into a single binary executable.
+*   **Why?** Users will not be able to read or edit your code; the logic is hidden in machine language.
+
+### 2. Physical & OS Hardening
+*   **Disable SSH/VNC**: Remove all remote access protocols on the customer unit so they cannot login to the Pi terminal.
+*   **Kernel Lockdown**: Disable keyboard shortcuts (Ctrl+C, Alt+F4) during boot to prevent users from exiting your Smart Sprout Kiosk.
+*   **SD Card Encryption**: Use LUKS to encrypt the storage, so even if the SD card is removed, the data cannot be read.
+
+### 3. Zero-Touch Scaling
+Recall that your system is designed for **Horizontal Scaling**:
+1.  **Uniform Firmware**: One Python binary and one Flutter app build for all 100 units.
+2.  **Environment Variables**: Only the `.env` file changes (the Device ID).
+3.  **Firebase Registry**: All units are managed as unique documents in a single Firebase project.
+
+---
+
+---
+
 ## 📺 Recommended Resources
 *   [RealVNC Official: Transferring Files](https://help.realvnc.com/hc/en-us/articles/360002251297-Transferring-Files-between-Computers)
 *   [YouTube: Setting up a Headless Raspberry Pi](https://www.youtube.com/watch?v=FqE99HjR6Y0)

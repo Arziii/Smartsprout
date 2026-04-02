@@ -10,6 +10,7 @@
 7. [Testing & Limitations](#7-testing--limitations)
 8. [Defense Q&A Preparation](#8-defense-qa-preparation)
 9. [Future Recommendations](#9-future-recommendations)
+10. [Intellectual Property & Anti-Tamper Strategies](#10-intellectual-property--anti-tamper-strategies)
 
 ---
 

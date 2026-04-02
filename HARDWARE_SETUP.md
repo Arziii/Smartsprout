@@ -120,6 +120,20 @@ When a sensor is in "FAULT" state, the backend **automatically disables (Hard-lo
 
 ---
 
-## 9. Versioning Note
+---
 
-> **Note:** Running the install commands multiple times is perfectly safe. The package managers (`apt` and `pip`) will automatically detect if the dependencies are already present and will not duplicate files or break your environment.
+## 9. Scaling & Security (Unit 10+)
+
+The hardware architecture is designed for **Commercial Scale**. To deploy multiple units, follow these physical security protocols:
+
+### 1. The One-Line Flash
+When preparing a new unit, the same `main.py` code is used. The only difference is the `.env` file containing the `DEVICE_ID`. Each Pi is a "Cloned Appliance" that points to a different row in the Firebase database.
+
+### 2. Tamper-Proofing the Hardware
+*   **Encrypted SD Partition**: Use LUKS to ensure that even if the SD card is stolen, the code cannot be read on a PC.
+*   **Physical Kiosk Hardening**: Disable USB ports and external peripherals (like keyboards) so that the user is stuck "inside" the Smart Sprout UI and cannot break the system.
+
+### 3. Binary Shielding
+All Python code is compiled into a **Binary Executable** before deployment. This prevents the user from seeing your logic or modifying the watering thresholds manually.
+
+---

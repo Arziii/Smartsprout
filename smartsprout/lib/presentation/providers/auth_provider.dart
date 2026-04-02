@@ -245,18 +245,32 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
-  Future<bool> changePin(String newPin) async {
+  Future<bool> changePin(String currentPin, String newPin) async {
     final currentDevice = state.deviceId;
     if (currentDevice == null) return false;
     if (Platform.isLinux) return false;
 
     try {
       state = state.copyWith(isLoading: true, clearError: true);
+
+      // 1. Verify current PIN against Firestore
+      final doc = await _firestore.collection('devices').doc(currentDevice).get();
+      if (!doc.exists) {
+        state = state.copyWith(isLoading: false, error: 'Device not found.');
+        return false;
+      }
+      final storedPin = doc.data()?['hashed_pin']?.toString() ?? '';
+      if (storedPin != currentPin) {
+        state = state.copyWith(isLoading: false, error: 'Incorrect current PIN.');
+        return false;
+      }
+
+      // 2. Update to new PIN
       await _firestore.collection('devices').doc(currentDevice).update({
         'hashed_pin': newPin,
       });
 
-      // Also update the saved device's pin in local storage
+      // 3. Update the saved device's pin in local storage
       final prefs = await SharedPreferences.getInstance();
       List<SavedDevice> updatedDevices = List.from(state.savedDevices);
       final idx = updatedDevices.indexWhere((d) => d.deviceId == currentDevice);

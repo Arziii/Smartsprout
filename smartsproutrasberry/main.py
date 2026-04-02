@@ -476,6 +476,13 @@ def main():
     threading.Thread(target=_heartbeat_loop, daemon=True).start()
     print(f"[INIT] Heartbeat thread started ({HEARTBEAT_INTERVAL}s interval)")
 
+    # ── Start Wi-Fi Bridge (Linux Kiosk only) ──
+    # Runs a lightweight HTTP server on port 7788 so the Flutter UI can
+    # scan/connect/forget Wi-Fi networks via nmcli without needing a plugin.
+    import wifi_bridge
+    threading.Thread(target=wifi_bridge.start_bridge, daemon=True).start()
+    print("[INIT] Wi-Fi bridge started on http://127.0.0.1:7788")
+
     # MQTT logic removed for Zero-Trust Architecture
 
     # ── Connect Firebase ──

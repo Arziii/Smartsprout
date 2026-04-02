@@ -11,6 +11,7 @@ import '../../data/services/data_service.dart';
 import '../../widgets/system_settings_dialog.dart';
 import '../widgets/account_switch_sheet.dart';
 import '../../core/utils/platform_utils.dart';
+import 'network_settings_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -106,6 +107,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                     isLoading: _isSyncing,
                     onTap: _isSyncing ? null : () => _handleForceSync(),
                   )),
+                // ── Network (Linux Kiosk Only) ──────────────────────────
+                if (Platform.isLinux) ...[
+                  const SizedBox(height: 25),
+                  _buildAnimatedItem(3, _buildSectionHeader('Network')),
+                  _buildAnimatedItem(4, _buildSettingsCard(
+                    title: 'Network Configuration',
+                    subtitle: 'Connect or switch Wi-Fi networks',
+                    icon: Icons.wifi_rounded,
+                    color: const Color(0xFF29B6F6),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const NetworkSettingsScreen(),
+                      ),
+                    ),
+                  )),
+                ],
                 const SizedBox(height: 25),
                 _buildAnimatedItem(3, _buildSectionHeader('Account')),
                 if (!Platform.isLinux) ...[
@@ -121,7 +138,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                     subtitle: 'Change your device display name \n(requires PIN)',
                     icon: Icons.drive_file_rename_outline_rounded,
                     color: const Color(0xFF7E57C2),
-                    onTap: () => _showRenameDeviceDialog(),
+                    onTap: () => _showRenameDeviceSheet(),
                   )),
                 ],
                 _buildAnimatedItem(6, _buildSettingsCard(
@@ -129,7 +146,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   subtitle: 'Update your hardware access PIN',
                   icon: Icons.lock_outline_rounded,
                   color: const Color(0xFF78909C),
-                  onTap: () => _showChangePinDialog(),
+                  onTap: () => _showChangePinSheet(),
                 )),
                 _buildAnimatedItem(7, _buildSettingsCard(
                   title: 'Disconnect Device',
@@ -316,98 +333,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   }
 
 
-  void _showChangePinDialog() {
-    final pinController = TextEditingController();
-    final confirmController = TextEditingController();
-    showDialog(
+  void _showChangePinSheet() {
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => _buildAwesomeInputDialog(
-        ctx,
-        title: 'Change PIN',
-        subtitle: 'Update your system security PIN',
-        controller: pinController,
-        controller2: confirmController,
-        hint: 'New PIN',
-        hint2: 'Confirm PIN',
-        isPin: true,
-        onConfirm: () async {
-          if (pinController.text == confirmController.text) {
-            await ref.read(authProvider.notifier).changePin(pinController.text.trim());
-          }
-        },
-      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => const _ChangePinSheet(),
     );
   }
 
-  void _showRenameDeviceDialog() {
-    final pinController = TextEditingController();
-    final nameController = TextEditingController();
-    showDialog(
+  void _showRenameDeviceSheet() {
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Rename Device', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
-            Text('Enter your current PIN for security', style: GoogleFonts.outfit(fontSize: 13, color: Colors.grey)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: pinController,
-              obscureText: true,
-              decoration: InputDecoration(
-                hintText: 'Current PIN',
-                prefixIcon: const Icon(Icons.lock_outline_rounded),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: nameController,
-              textCapitalization: TextCapitalization.words,
-              decoration: InputDecoration(
-                hintText: 'New Device Name (e.g. My Garden)',
-                prefixIcon: const Icon(Icons.drive_file_rename_outline_rounded),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              final pin = pinController.text.trim();
-              final newName = nameController.text.trim();
-              if (pin.isEmpty || newName.isEmpty) return;
-              Navigator.pop(ctx);
-              final error = await ref.read(authProvider.notifier).renameDevice(pin, newName);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      error == null ? 'Device renamed to "$newName"!' : error,
-                      style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
-                    ),
-                    backgroundColor: error == null ? const Color(0xFF2BCC71) : Colors.redAccent,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0F2027),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: Text('Rename', style: GoogleFonts.outfit(color: Colors.white)),
-          ),
-        ],
-      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => const _RenameDeviceSheet(),
     );
   }
 
@@ -431,40 +371,337 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       ],
     );
   }
+}
 
-  Widget _buildAwesomeInputDialog(BuildContext dialogCtx, {
-    required String title,
-    required String subtitle,
-    required TextEditingController controller,
-    TextEditingController? controller2,
-    required String hint,
-    String? hint2,
-    bool isPin = false,
-    required VoidCallback onConfirm,
-  }) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
-          Text(subtitle, style: GoogleFonts.outfit(fontSize: 13, color: Colors.grey)),
-        ],
+// ─────────────────────────────────────────────────────────────────────────────
+// Rename Device Sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _RenameDeviceSheet extends ConsumerStatefulWidget {
+  const _RenameDeviceSheet();
+  @override
+  ConsumerState<_RenameDeviceSheet> createState() => _RenameDeviceSheetState();
+}
+
+class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet> with SingleTickerProviderStateMixin {
+  final _formKey = GlobalKey<FormState>();
+  final _pinController = TextEditingController();
+  final _nameController = TextEditingController();
+  late final AnimationController _fadeController;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..forward();
+    Future.microtask(() => ref.read(authProvider.notifier).clearError());
+  }
+
+  @override
+  void dispose() {
+    _pinController.dispose();
+    _nameController.dispose();
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _isLoading = true);
+
+    final error = await ref.read(authProvider.notifier).renameDevice(_pinController.text.trim(), _nameController.text.trim());
+    if (mounted) {
+      setState(() => _isLoading = false);
+      if (error == null) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Device renamed to "${_nameController.text.trim()}"!', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+            backgroundColor: const Color(0xFF2BCC71),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
+    return AnimatedPadding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)]),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            child: FadeTransition(
+              opacity: _fadeController,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(28, 20, 28, MediaQuery.of(context).padding.bottom + 100),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), borderRadius: BorderRadius.circular(10))),
+                    Row(
+                      children: [
+                        GestureDetector(onTap: () => Navigator.of(context).pop(), child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5)), child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: Color(0xFF0F2027)))),
+                        const Spacer(),
+                        Text('Rename Device', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: const Color(0xFF0F2027), letterSpacing: -0.5)),
+                        const Spacer(),
+                        const SizedBox(width: 38), 
+                      ],
+                    ),
+                    const SizedBox(height: 32),
+                    Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white.withOpacity(0.4), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: const Icon(Icons.drive_file_rename_outline_rounded, size: 40, color: Color(0xFF7E57C2))),
+                    const SizedBox(height: 16),
+                    Text('Change Display Name', style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900, color: const Color(0xFF0F2027), letterSpacing: -0.5)),
+                    const SizedBox(height: 4),
+                    Text('Enter your current PIN & new name', style: GoogleFonts.outfit(fontSize: 14, color: const Color(0xFF4A6164), fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 32),
+                    Container(
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.7), borderRadius: BorderRadius.circular(28), border: Border.all(color: Colors.white, width: 2), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))]),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(28),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(28),
+                            child: Form(
+                              key: _formKey,
+                              child: Column(
+                                children: [
+                                  if (authState.error != null) ...[
+                                    _buildErrorBanner(authState.error!),
+                                    const SizedBox(height: 16),
+                                  ],
+                                  _buildField(controller: _pinController, label: 'Current PIN', icon: Icons.lock_outline_rounded, hint: '••••', obscure: true),
+                                  const SizedBox(height: 18),
+                                  _buildField(controller: _nameController, label: 'New Name', icon: Icons.text_fields_rounded, hint: 'e.g. My Garden', textCapitalization: TextCapitalization.words),
+                                  const SizedBox(height: 28),
+                                  SizedBox(
+                                    width: double.infinity, height: 58,
+                                    child: ElevatedButton(
+                                      onPressed: _isLoading ? null : _submit,
+                                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F2027), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)), elevation: 0),
+                                      child: _isLoading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('RENAME DEVICE', style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(controller: controller, obscureText: true, decoration: InputDecoration(hintText: hint)),
-          if (controller2 != null) ...[
-            const SizedBox(height: 10),
-            TextField(controller: controller2, obscureText: true, decoration: InputDecoration(hintText: hint2)),
-          ],
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
-        ElevatedButton(onPressed: () { onConfirm(); Navigator.pop(dialogCtx); }, child: const Text('Confirm')),
+    );
+  }
+
+  Widget _buildField({required TextEditingController controller, required String label, required IconData icon, required String hint, bool obscure = false, TextCapitalization textCapitalization = TextCapitalization.none}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label.toUpperCase(), style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: const Color(0xFF0F2027))),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller, obscureText: obscure, textCapitalization: textCapitalization,
+          style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: const Color(0xFF0F2027)),
+          decoration: InputDecoration(hintText: hint, hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5)), prefixIcon: Icon(icon, color: const Color(0xFF7E57C2), size: 20), filled: true, fillColor: Colors.white.withOpacity(0.5), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.white.withOpacity(0.5))), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF7E57C2), width: 1.5)), contentPadding: const EdgeInsets.symmetric(vertical: 18)),
+          validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+        ),
       ],
+    );
+  }
+
+  Widget _buildErrorBanner(String message) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.redAccent.withOpacity(0.2))),
+      child: Row(children: [const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20), const SizedBox(width: 10), Expanded(child: Text(message, style: GoogleFonts.outfit(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w600)))]),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Change PIN Sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ChangePinSheet extends ConsumerStatefulWidget {
+  const _ChangePinSheet();
+  @override
+  ConsumerState<_ChangePinSheet> createState() => _ChangePinSheetState();
+}
+
+class _ChangePinSheetState extends ConsumerState<_ChangePinSheet> with SingleTickerProviderStateMixin {
+  final _formKey = GlobalKey<FormState>();
+  final _currentPinController = TextEditingController();
+  final _pinController = TextEditingController();
+  final _confirmController = TextEditingController();
+  late final AnimationController _fadeController;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..forward();
+    Future.microtask(() => ref.read(authProvider.notifier).clearError());
+  }
+
+  @override
+  void dispose() {
+    _currentPinController.dispose();
+    _pinController.dispose();
+    _confirmController.dispose();
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_pinController.text != _confirmController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('PINs do not match'), backgroundColor: Colors.redAccent, behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() => _isLoading = true);
+
+    final success = await ref.read(authProvider.notifier).changePin(
+      _currentPinController.text.trim(),
+      _pinController.text.trim(),
+    );
+    if (mounted) {
+      setState(() => _isLoading = false);
+      if (success) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PIN Successfully Changed!', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)), backgroundColor: const Color(0xFF2BCC71), behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
+    return AnimatedPadding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)]),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            child: FadeTransition(
+              opacity: _fadeController,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(28, 20, 28, MediaQuery.of(context).padding.bottom + 100),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), borderRadius: BorderRadius.circular(10))),
+                    Row(
+                      children: [
+                        GestureDetector(onTap: () => Navigator.of(context).pop(), child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5)), child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: Color(0xFF0F2027)))),
+                        const Spacer(),
+                        Text('Change PIN', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: const Color(0xFF0F2027), letterSpacing: -0.5)),
+                        const Spacer(),
+                        const SizedBox(width: 38), 
+                      ],
+                    ),
+                    const SizedBox(height: 32),
+                    Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white.withOpacity(0.4), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: const Icon(Icons.lock_rounded, size: 40, color: Color(0xFF78909C))),
+                    const SizedBox(height: 16),
+                    Text('Update Security PIN', style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900, color: const Color(0xFF0F2027), letterSpacing: -0.5)),
+                    const SizedBox(height: 4),
+                    Text('Set a new numeric PIN', style: GoogleFonts.outfit(fontSize: 14, color: const Color(0xFF4A6164), fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 32),
+                    Container(
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.7), borderRadius: BorderRadius.circular(28), border: Border.all(color: Colors.white, width: 2), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))]),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(28),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(28),
+                            child: Form(
+                              key: _formKey,
+                              child: Column(
+                                children: [
+                                  if (authState.error != null) ...[
+                                    _buildErrorBanner(authState.error!),
+                                    const SizedBox(height: 16),
+                                  ],
+                                  _buildField(controller: _currentPinController, label: 'Current PIN', icon: Icons.lock_rounded, hint: '••••', obscure: true),
+                                  const SizedBox(height: 18),
+                                  _buildField(controller: _pinController, label: 'New PIN', icon: Icons.lock_outline_rounded, hint: '••••', obscure: true),
+                                  const SizedBox(height: 18),
+                                  _buildField(controller: _confirmController, label: 'Confirm New PIN', icon: Icons.check_circle_outline_rounded, hint: '••••', obscure: true),
+                                  const SizedBox(height: 28),
+                                  SizedBox(
+                                    width: double.infinity, height: 58,
+                                    child: ElevatedButton(
+                                      onPressed: _isLoading ? null : _submit,
+                                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F2027), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)), elevation: 0),
+                                      child: _isLoading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('UPDATE PIN', style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildField({required TextEditingController controller, required String label, required IconData icon, required String hint, bool obscure = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label.toUpperCase(), style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: const Color(0xFF0F2027))),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller, obscureText: obscure,
+          style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: const Color(0xFF0F2027)),
+          decoration: InputDecoration(hintText: hint, hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5)), prefixIcon: Icon(icon, color: const Color(0xFF78909C), size: 20), filled: true, fillColor: Colors.white.withOpacity(0.5), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.white.withOpacity(0.5))), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF78909C), width: 1.5)), contentPadding: const EdgeInsets.symmetric(vertical: 18)),
+          validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorBanner(String message) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.redAccent.withOpacity(0.2))),
+      child: Row(children: [const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20), const SizedBox(width: 10), Expanded(child: Text(message, style: GoogleFonts.outfit(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w600)))]),
     );
   }
 }
