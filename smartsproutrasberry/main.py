@@ -39,6 +39,7 @@ _manual_pump_zone = 0
 # External Hydration Detection
 _prev_moisture = {}  # {"bed1": 42.0, "bed2": 55.0, ...}
 _pump_running = False  # True when any pump/valve is active
+_last_hydration_alert = {} # Track last alert time per zone
 
 
 def _signal_handler(sig, frame):
@@ -497,6 +498,10 @@ def main():
     interval = config.TELEMETRY_INTERVAL          # Local sensor read cadence (3 s)
     cloud_sync_interval = config.CLOUD_SYNC_INTERVAL  # Eco-Mode ceiling (1800 s = 30 min)
 
+    # Safety bounds to prevent quota spam
+    interval = max(interval, 3.0)
+    cloud_sync_interval = max(cloud_sync_interval, 1800.0)
+
     # ── Seed the clock and diff baseline BEFORE entering the loop ──
     # Initialising to time.time() (not 0) prevents an immediate Firebase write
     # on the very first iteration. The first real push will happen once one of
@@ -520,135 +525,149 @@ def main():
     try:
         while _running:
             global _force_sync
-            current_time = time.time()
-            telemetry = collect_telemetry()
+            try:
+                current_time = time.time()
+                telemetry = collect_telemetry()
 
-            # ── Cloud Push Gate ── (Eco-Mode + Differential Sync + FORCE_SYNC)
-            # Local sensor reads happen every 3 s (TELEMETRY_INTERVAL).
-            # Firebase writes are rate-limited to avoid 429 Quota Exceeded errors.
-            # A push is allowed ONLY when one of the three conditions below is met.
-            eco_due     = (current_time - last_cloud_sync) >= cloud_sync_interval
-            diff_push   = _should_differential_push(telemetry)
-            push_reason = None
+                # ── Cloud Push Gate ── (Eco-Mode + Differential Sync + FORCE_SYNC)
+                # Local sensor reads happen every 3 s (TELEMETRY_INTERVAL).
+                # Firebase writes are rate-limited to avoid 429 Quota Exceeded errors.
+                # A push is allowed ONLY when one of the three conditions below is met.
+                eco_due     = (current_time - last_cloud_sync) >= cloud_sync_interval
+                diff_push   = _should_differential_push(telemetry)
+                push_reason = None
 
-            if _force_sync:
-                push_reason = "FORCE_SYNC (mobile command)"
-            elif diff_push:
-                push_reason = "DIFFERENTIAL_SYNC (sensor value threshold crossed)"
-            elif eco_due:
-                push_reason = f"ECO_MODE (30-min interval elapsed)"
+                if _force_sync:
+                    push_reason = "FORCE_SYNC (mobile command)"
+                elif diff_push:
+                    push_reason = "DIFFERENTIAL_SYNC (sensor value threshold crossed)"
+                elif eco_due:
+                    push_reason = f"ECO_MODE (30-min interval elapsed)"
 
-            if push_reason:
-                try:
-                    print(f"[FIREBASE] Push triggered by: {push_reason}")
+                if push_reason:
+                    try:
+                        print(f"[FIREBASE] Push triggered by: {push_reason}")
 
-                    # ── History vs Status routing ──
-                    # FORCE_SYNC and ECO_MODE write BOTH the current-status document
-                    # AND the historical telemetry subcollection.
-                    # DIFFERENTIAL_SYNC only updates the current-status document —
-                    # it does NOT add a history record, cutting subcollection writes by ~90%.
-                    write_history = (_force_sync or eco_due)
-                    firebase_manager.push_telemetry(telemetry, write_history=write_history)
+                        # ── History vs Status routing ──
+                        # FORCE_SYNC and ECO_MODE write BOTH the current-status document
+                        # AND the historical telemetry subcollection.
+                        # DIFFERENTIAL_SYNC only updates the current-status document —
+                        # it does NOT add a history record, cutting subcollection writes by ~90%.
+                        write_history = (_force_sync or eco_due)
+                        firebase_manager.push_telemetry(telemetry, write_history=write_history)
 
-                    # Publish alerts separately to Firebase
-                    if telemetry["alerts"]:
-                        firebase_manager.push_alerts(telemetry["alerts"])
+                        # Publish alerts separately to Firebase
+                        if telemetry["alerts"]:
+                            firebase_manager.push_alerts(telemetry["alerts"])
 
-                    # ── Storage Management ──
-                    # Cleanup old data (older than 30 days by default)
-                    firebase_manager.perform_storage_cleanup()
+                        # ── Storage Management ──
+                        # Cleanup old data (older than 30 days by default)
+                        firebase_manager.perform_storage_cleanup()
 
-                    last_cloud_sync = current_time
-                    _last_push_time = current_time   # Update cooldown guard
-                    _force_sync = False
-                    _last_sent_telemetry = telemetry.copy()  # Update baseline for differential sync
-                    mins_until_next = cloud_sync_interval / 60
-                    print(f"[FIREBASE] Telemetry synced ✓ (history={'YES' if write_history else 'STATUS-ONLY'}) "
-                          f"(next Eco-Mode push in {mins_until_next:.0f} min unless diff/force fires first).")
-                except Exception as e:
-                    print(f"[FIREBASE] Push FAILED — will retry on next trigger. Error: {e}")
+                        last_cloud_sync = current_time
+                        _last_push_time = current_time   # Update cooldown guard
+                        _force_sync = False
+                        _last_sent_telemetry = telemetry.copy()  # Update baseline for differential sync
+                        mins_until_next = cloud_sync_interval / 60
+                        print(f"[FIREBASE] Telemetry synced ✓ (history={'YES' if write_history else 'STATUS-ONLY'}) "
+                              f"(next Eco-Mode push in {mins_until_next:.0f} min unless diff/force fires first).")
+                    except Exception as e:
+                        print(f"[FIREBASE] Push FAILED — will retry on next trigger. Error: {e}")
 
-            print(
-                f"[TEL] Soil={telemetry['soil_moisture']} | "
-                f"Tank={telemetry['tank_level']} | "
-                f"Temp={telemetry['temperature']}°C | "
-                f"Status={telemetry['system_status']}"
-            )
+                print(
+                    f"[TEL] Soil={telemetry['soil_moisture']} | "
+                    f"Tank={telemetry['tank_level']} | "
+                    f"Temp={telemetry['temperature']}°C | "
+                    f"Status={telemetry['system_status']}"
+                )
 
-            # ── External Hydration Detection ──
-            if not _pump_running:
-                raw_moisture = telemetry.get("soil_moisture_raw", {})
-                for bed_key, val in raw_moisture.items():
-                    if val < 0:  # Skip fault readings
-                        continue
-                    prev_val = _prev_moisture.get(bed_key, val)
-                    delta = val - prev_val
-                    if delta > 10:
-                        zone_num = bed_key.replace("bed", "")
-                        alert_msg = f"MANUAL_WATERING_DETECTED: Zone {zone_num} moisture rose +{delta:.1f}% while pump OFF."
-                        print(f"[HYDRATION] ⚡ {alert_msg}")
-                        try:
-                            firebase_manager.push_alerts([alert_msg])
-                        except Exception:
-                            pass
-                # Update previous moisture
-                for bed_key, val in raw_moisture.items():
-                    if val >= 0:
-                        _prev_moisture[bed_key] = val
-
-            # ── Auto Watering AI ──
-            if _current_mode == "auto" and telemetry["system_status"] != "tank_low":
-                if _auto_strategy == "sensor":
-                    # Precision Saturation: fetch per-zone targets from Firestore
-                    zone_targets = firebase_manager.get_zone_targets()
-                    cal_data = sensor_manager.load_calibration()
-                    for key, raw_moisture in telemetry["soil_moisture_raw"].items():
-                        if raw_moisture < 0:  # Skip fault readings
+                # ── External Hydration Detection ──
+                if not _pump_running:
+                    raw_moisture = telemetry.get("soil_moisture_raw", {})
+                    for bed_key, val in raw_moisture.items():
+                        if val < 0:  # Skip fault readings
                             continue
-                        try:
-                            z_num = int(key.replace("bed", ""))
-                            zone_key = f"zone_{z_num}"
-                            threshold = cal_data.get(zone_key, {}).get("manual_offset_pct", 0)
-                            if threshold <= 0:  # No threshold set by user
-                                continue
-                            if raw_moisture < threshold:
-                                if current_time - _last_auto_water.get(z_num, 0) > 3600:  # 1 hour cooldown
-                                    zt = zone_targets.get(z_num, {})
-                                    target = zt.get("target", config.DEFAULT_TARGET_MOISTURE)
-                                    timeout = zt.get("timeout", config.DEFAULT_MAX_PUMP_RUNTIME)
-                                    print(f"[AUTO-SENSOR] Triggering Zone {z_num} "
-                                          f"(Raw: {raw_moisture}% < Threshold: {threshold}%) "
-                                          f"→ Target: {target}%, Timeout: {timeout}s")
-                                    _last_auto_water[z_num] = current_time
-                                    threading.Thread(
-                                        target=_force_water_task,
-                                        args=(z_num, timeout, target),
-                                        daemon=True,
-                                    ).start()
-                        except ValueError:
-                            pass
-                
-                elif _auto_strategy == "timer":
-                    import datetime
-                    now = datetime.datetime.now()
-                    today_str = now.strftime("%Y-%m-%d")
-                    global _last_daily_water_date
-                    
-                    if now.hour == _auto_timer_hour and now.minute == _auto_timer_minute:
-                        if _last_daily_water_date != today_str:
-                            print(f"[AUTO-TIMER] Triggering daily schedule for all zones at {now.strftime('%H:%M')}")
-                            def _water_all_sequential():
-                                hstatus = telemetry.get("hardware_status", {})
-                                for z in [1, 2, 3]:
-                                    if hstatus.get(f"bed{z}") == "fault":
-                                        print(f"[AUTO-TIMER] Skipping Zone {z} due to hardware fault (hardlocked safety).")
-                                        continue
-                                    _force_water_task(z, 10)
-                                    time.sleep(1) # brief pause
-                            threading.Thread(target=_water_all_sequential, daemon=True).start()
-                            _last_daily_water_date = today_str
+                        prev_val = _prev_moisture.get(bed_key, val)
+                        delta = val - prev_val
+                        if delta > 10:
+                            zone_num = bed_key.replace("bed", "")
+                            try:
+                                z_int = int(zone_num)
+                            except ValueError:
+                                z_int = 0
+                                
+                            # 5-minute cooldown per zone to prevent quota burn from ADC noise
+                            if current_time - _last_hydration_alert.get(z_int, 0) > 300:
+                                alert_msg = f"MANUAL_WATERING_DETECTED: Zone {zone_num} moisture rose +{delta:.1f}% while pump OFF."
+                                print(f"[HYDRATION] ⚡ {alert_msg}")
+                                try:
+                                    firebase_manager.push_alerts([alert_msg])
+                                except Exception:
+                                    pass
+                                _last_hydration_alert[z_int] = current_time
+                                
+                    # Update previous moisture
+                    for bed_key, val in raw_moisture.items():
+                        if val >= 0:
+                            _prev_moisture[bed_key] = val
 
-            time.sleep(interval)
+                # ── Auto Watering AI ──
+                if _current_mode == "auto" and telemetry["system_status"] != "tank_low":
+                    if _auto_strategy == "sensor":
+                        # Precision Saturation: fetch per-zone targets from Firestore
+                        zone_targets = firebase_manager.get_zone_targets()
+                        cal_data = sensor_manager.load_calibration()
+                        for key, raw_moisture in telemetry["soil_moisture_raw"].items():
+                            if raw_moisture < 0:  # Skip fault readings
+                                continue
+                            try:
+                                z_num = int(key.replace("bed", ""))
+                                zone_key = f"zone_{z_num}"
+                                threshold = cal_data.get(zone_key, {}).get("manual_offset_pct", 0)
+                                if threshold <= 0:  # No threshold set by user
+                                    continue
+                                if raw_moisture < threshold:
+                                    if current_time - _last_auto_water.get(z_num, 0) > 3600:  # 1 hour cooldown
+                                        zt = zone_targets.get(z_num, {})
+                                        target = zt.get("target", config.DEFAULT_TARGET_MOISTURE)
+                                        timeout = zt.get("timeout", config.DEFAULT_MAX_PUMP_RUNTIME)
+                                        print(f"[AUTO-SENSOR] Triggering Zone {z_num} "
+                                              f"(Raw: {raw_moisture}% < Threshold: {threshold}%) "
+                                              f"→ Target: {target}%, Timeout: {timeout}s")
+                                        _last_auto_water[z_num] = current_time
+                                        threading.Thread(
+                                            target=_force_water_task,
+                                            args=(z_num, timeout, target),
+                                            daemon=True,
+                                        ).start()
+                            except ValueError:
+                                pass
+                    
+                    elif _auto_strategy == "timer":
+                        import datetime
+                        now = datetime.datetime.now()
+                        today_str = now.strftime("%Y-%m-%d")
+                        global _last_daily_water_date
+                        
+                        if now.hour == _auto_timer_hour and now.minute == _auto_timer_minute:
+                            if _last_daily_water_date != today_str:
+                                print(f"[AUTO-TIMER] Triggering daily schedule for all zones at {now.strftime('%H:%M')}")
+                                def _water_all_sequential():
+                                    hstatus = telemetry.get("hardware_status", {})
+                                    for z in [1, 2, 3]:
+                                        if hstatus.get(f"bed{z}") == "fault":
+                                            print(f"[AUTO-TIMER] Skipping Zone {z} due to hardware fault (hardlocked safety).")
+                                            continue
+                                        _force_water_task(z, 10)
+                                        time.sleep(1) # brief pause
+                                threading.Thread(target=_water_all_sequential, daemon=True).start()
+                                _last_daily_water_date = today_str
+            except Exception as loop_e:
+                print(f"[MAIN] Error in main loop: {loop_e}")
+
+            # Throttle loop to avoid CPU spike and limit sensor reads
+            time.sleep(max(3.0, interval))
+
 
     except KeyboardInterrupt:
         pass

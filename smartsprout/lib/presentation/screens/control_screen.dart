@@ -239,13 +239,11 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
 
     final notifier = ref.read(sensorDataProvider.notifier);
     final isConnected = Platform.isLinux || !sensorData.isOffline;
-    final pumpLocked = sensorData.pumpLocked;
-    final tankLevel = sensorData.tankLevel;
 
     
     // TEMPORARY BYPASS FOR UI TESTING WITHOUT SENSORS:
-    final isTankLow = false; // normally: tankLevel < 10;
-    final isPumpLockedSafe = false; // normally: pumpLocked;
+    const isTankLow = false; // normally: tankLevel < 10;
+    const isPumpLockedSafe = false; // normally: pumpLocked;
 
     // Auto-lock watering if tank is low, pump locked, or MASTER LOCKDOWN active
     if (isTankLow || isPumpLockedSafe || _masterLockdown) {
@@ -286,8 +284,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
               ),
             ),
           ),
-          _buildBlob(top: -50, right: -100, size: 300, color: const Color(0xFF2BCC71).withOpacity(0.15)),
-          _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withOpacity(0.1)),
+          _buildBlob(top: -50, right: -100, size: 300, color: const Color(0xFF2BCC71).withValues(alpha: 0.15)),
+          _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withValues(alpha: 0.1)),
 
           // ── Content ──
           SafeArea(
@@ -299,7 +297,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                   _buildAnimatedItem(0, Container(
                     padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                     decoration: BoxDecoration(
-                      color: isConnected ? const Color(0xFF2BCC71).withOpacity(0.1) : Colors.redAccent.withOpacity(0.1),
+                      color: isConnected ? const Color(0xFF2BCC71).withValues(alpha: 0.1) : Colors.redAccent.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -333,7 +331,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                           width: double.infinity,
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.5),
+                            color: Colors.white.withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: SegmentedButton<String>(
@@ -382,15 +380,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                   fontSize: 13, fontWeight: FontWeight.w500, color: const Color(0xFF4A6164))),
                           const SizedBox(height: 16),
 
-                          // Safety warnings
-                          if (isPumpLockedSafe || isTankLow)
-                            _buildWarningBanner(
-                              icon: Icons.lock_rounded,
-                              text: tankLevel == 'FAULT'
-                                  ? "Pump LOCKED — tank sensor fault."
-                                  : "Pump LOCKED — tank level critically low.",
-                              color: Colors.redAccent,
-                            ),
+                          // Safety warnings (currently bypassed by UI testing flags)
 
                           _buildZoneToggle(
                             zone: 1,
@@ -435,7 +425,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                           const SizedBox(height: 16),
                           Container(
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.5),
+                              color: Colors.white.withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(16),
                             ),
                             padding: const EdgeInsets.all(4),
@@ -473,7 +463,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                children: [
                                  Container(
                                    padding: const EdgeInsets.all(12),
-                                   decoration: BoxDecoration(color: const Color(0xFF29B6F6).withOpacity(0.15), shape: BoxShape.circle),
+                                   decoration: BoxDecoration(color: const Color(0xFF29B6F6).withValues(alpha: 0.15), shape: BoxShape.circle),
                                    child: const Icon(Icons.water_drop_rounded, color: Color(0xFF29B6F6)),
                                  ),
                                  const SizedBox(width: 16),
@@ -493,7 +483,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                children: [
                                  Container(
                                    padding: const EdgeInsets.all(12),
-                                   decoration: BoxDecoration(color: const Color(0xFF29B6F6).withOpacity(0.15), shape: BoxShape.circle),
+                                   decoration: BoxDecoration(color: const Color(0xFF29B6F6).withValues(alpha: 0.15), shape: BoxShape.circle),
                                    child: const Icon(Icons.access_time_filled_rounded, color: Color(0xFF29B6F6)),
                                  ),
                                  const SizedBox(width: 16),
@@ -518,9 +508,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                child: Container(
                                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
                                  decoration: BoxDecoration(
-                                   color: Colors.white.withOpacity(0.8),
+                                   color: Colors.white.withValues(alpha: 0.8),
                                    borderRadius: BorderRadius.circular(12),
-                                   border: Border.all(color: const Color(0xFF29B6F6).withOpacity(0.3)),
+                                   border: Border.all(color: const Color(0xFF29B6F6).withValues(alpha: 0.3)),
                                  ),
                                  child: Row(
                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -533,16 +523,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                              )
                           ],
 
-                          // Safety warning for auto mode too
-                          if (isPumpLockedSafe || isTankLow) ...[                            const SizedBox(height: 16),
-                            _buildWarningBanner(
-                              icon: Icons.lock_rounded,
-                              text: tankLevel == 'FAULT'
-                                  ? "Auto mode disabled — tank sensor fault."
-                                  : "Auto mode disabled — tank level critically low.",
-                              color: Colors.redAccent,
-                            ),
-                          ],
+                          // Safety warning for auto mode (currently bypassed by UI testing flags)
+
 
                           const SizedBox(height: 24),
                           // ── Auto Mode Toggle Switch ──
@@ -574,6 +556,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                         style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
                                     backgroundColor: const Color(0xFF2BCC71),
                                     behavior: SnackBarBehavior.floating,
+                                    duration: const Duration(seconds: 2),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                   ),
                                 );
@@ -585,6 +568,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                         style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
                                     backgroundColor: const Color(0xFF0F2027),
                                     behavior: SnackBarBehavior.floating,
+                                    duration: const Duration(seconds: 2),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                   ),
                                 );
@@ -602,16 +586,16 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                     duration: const Duration(milliseconds: 300),
                     padding: _masterLockdown ? const EdgeInsets.all(16) : EdgeInsets.zero,
                     decoration: BoxDecoration(
-                      color: _masterLockdown ? Colors.redAccent.withOpacity(0.1) : Colors.transparent,
+                      color: _masterLockdown ? Colors.redAccent.withValues(alpha: 0.1) : Colors.transparent,
                       borderRadius: BorderRadius.circular(24),
                       border: _masterLockdown 
-                          ? Border.all(color: Colors.redAccent.withOpacity(0.3), width: 2)
+                          ? Border.all(color: Colors.redAccent.withValues(alpha: 0.3), width: 2)
                           : null,
                       boxShadow: [
                         BoxShadow(
                           color: _masterLockdown 
-                             ? Colors.redAccent.withOpacity(0.1)
-                             : Colors.redAccent.withOpacity(0.3),
+                             ? Colors.redAccent.withValues(alpha: 0.1)
+                             : Colors.redAccent.withValues(alpha: 0.3),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         )
@@ -637,7 +621,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                             letterSpacing: 0.5)),
                                     Text("All watering disabled for safety.",
                                         style: GoogleFonts.outfit(
-                                            color: Colors.redAccent.withOpacity(0.7),
+                                            color: Colors.redAccent.withValues(alpha: 0.7),
                                             fontWeight: FontWeight.w600,
                                             fontSize: 11)),
                                   ],
@@ -749,27 +733,27 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       toggleLabel = lockReason ?? 'Locked';
     } else if (isLoading) {
       // Optimistic loading — waiting for Pi confirmation
-      bgColor = Colors.orange.withOpacity(0.06);
-      borderColor = Colors.orange.withOpacity(0.5);
-      iconBgColor = Colors.orange.withOpacity(0.15);
+      bgColor = Colors.orange.withValues(alpha: 0.06);
+      borderColor = Colors.orange.withValues(alpha: 0.5);
+      iconBgColor = Colors.orange.withValues(alpha: 0.15);
       iconColor = Colors.orange.shade700;
       toggleBgColor = Colors.orange.shade700;
       toggleIconColor = Colors.white;
       toggleLabel = 'Sending...';
     } else if (isActive) {
       // Confirmed active by Pi — vivid blue
-      bgColor = const Color(0xFF29B6F6).withOpacity(0.08);
-      borderColor = const Color(0xFF29B6F6).withOpacity(0.5);
-      iconBgColor = const Color(0xFF29B6F6).withOpacity(0.2);
+      bgColor = const Color(0xFF29B6F6).withValues(alpha: 0.08);
+      borderColor = const Color(0xFF29B6F6).withValues(alpha: 0.5);
+      iconBgColor = const Color(0xFF29B6F6).withValues(alpha: 0.2);
       iconColor = const Color(0xFF0277BD);
       toggleBgColor = Colors.redAccent;
       toggleIconColor = Colors.white;
       toggleLabel = 'Stop';
     } else {
       // Idle state — ready to start
-      bgColor = Colors.white.withOpacity(0.5);
+      bgColor = Colors.white.withValues(alpha: 0.5);
       borderColor = Colors.white;
-      iconBgColor = const Color(0xFF2BCC71).withOpacity(0.1);
+      iconBgColor = const Color(0xFF2BCC71).withValues(alpha: 0.1);
       iconColor = const Color(0xFF2BCC71);
       toggleBgColor = const Color(0xFF2BCC71);
       toggleIconColor = Colors.white;
@@ -838,7 +822,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.2),
+                              color: Colors.orange.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text('PENDING',
@@ -855,7 +839,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF29B6F6).withOpacity(0.2),
+                              color: const Color(0xFF29B6F6).withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text('WATERING',
@@ -872,7 +856,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.15),
+                              color: Colors.orange.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text('SATURATED',
@@ -903,7 +887,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                       borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.orange.withOpacity(0.35),
+                          color: Colors.orange.withValues(alpha: 0.35),
                           blurRadius: 8,
                           offset: const Offset(0, 3),
                         )
@@ -912,7 +896,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(
+                        const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
@@ -943,7 +927,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                         boxShadow: isActive
                             ? [
                                 BoxShadow(
-                                  color: Colors.redAccent.withOpacity(0.3),
+                                  color: Colors.redAccent.withValues(alpha: 0.3),
                                   blurRadius: 8,
                                   offset: const Offset(0, 3),
                                 )
@@ -1044,11 +1028,11 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: isFilled ? color : color.withOpacity(0.1),
+          color: isFilled ? color : color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
-          border: isFilled ? null : Border.all(color: color.withOpacity(0.3)),
+          border: isFilled ? null : Border.all(color: color.withValues(alpha: 0.3)),
           boxShadow: isFilled
-              ? [BoxShadow(color: color.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))]
+              ? [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 2))]
               : null,
         ),
         alignment: Alignment.center,
@@ -1064,6 +1048,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     );
   }
 
+  // ignore: unused_element — retained for when UI testing bypass is removed
   Widget _buildWarningBanner(
       {required IconData icon,
       required String text,
@@ -1072,9 +1057,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
@@ -1116,15 +1101,15 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       label = 'Locked';
       subtitle = 'Cannot activate — tank level too low';
     } else if (isActive) {
-      bgColor = const Color(0xFF2BCC71).withOpacity(0.1);
-      borderColor = const Color(0xFF2BCC71).withOpacity(0.5);
+      bgColor = const Color(0xFF2BCC71).withValues(alpha: 0.1);
+      borderColor = const Color(0xFF2BCC71).withValues(alpha: 0.5);
       textColor = const Color(0xFF15803D);
       icon = Icons.toggle_on_rounded;
       label = 'Auto Mode ON';
       subtitle = 'Tap to deactivate';
     } else {
-      bgColor = Colors.white.withOpacity(0.5);
-      borderColor = const Color(0xFF0F2027).withOpacity(0.15);
+      bgColor = Colors.white.withValues(alpha: 0.5);
+      borderColor = const Color(0xFF0F2027).withValues(alpha: 0.15);
       textColor = const Color(0xFF0F2027);
       icon = Icons.toggle_off_rounded;
       label = 'Auto Mode OFF';
@@ -1160,7 +1145,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                       style: GoogleFonts.outfit(
                           fontWeight: FontWeight.w500,
                           fontSize: 12,
-                          color: textColor.withOpacity(0.6))),
+                          color: textColor.withValues(alpha: 0.6))),
                 ],
               ),
             ),
@@ -1169,7 +1154,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2BCC71).withOpacity(0.2),
+                  color: const Color(0xFF2BCC71).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text('ACTIVE',
@@ -1189,12 +1174,12 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   Widget _buildGlassCard({required Widget child}) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.7),
+        color: Colors.white.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -1418,7 +1403,7 @@ class _LiveMoisturePanelState extends State<_LiveMoisturePanel>
                     // Background track
                     Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFF29B6F6).withOpacity(0.12),
+                        color: const Color(0xFF29B6F6).withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
@@ -1450,7 +1435,7 @@ class _LiveMoisturePanelState extends State<_LiveMoisturePanel>
                           borderRadius: BorderRadius.circular(2),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF2BCC71).withOpacity(0.6),
+                              color: const Color(0xFF2BCC71).withValues(alpha: 0.6),
                               blurRadius: 4,
                             ),
                           ],
@@ -1482,9 +1467,9 @@ class _LiveMoisturePanelState extends State<_LiveMoisturePanel>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.redAccent.withOpacity(0.08),
+              color: Colors.redAccent.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
+              border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
             ),
             child: Text(
               'Sensor fault — moisture reading unavailable',

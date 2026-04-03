@@ -153,9 +153,13 @@ class DataService {
         final result = <String, dynamic>{};
         mapFields.forEach((k, v) {
           if (v is Map) {
-            if (v.containsKey('doubleValue')) result[k] = v['doubleValue'];
-            else if (v.containsKey('integerValue')) result[k] = double.tryParse(v['integerValue'].toString()) ?? 0.0;
-            else if (v.containsKey('stringValue')) result[k] = v['stringValue'];
+            if (v.containsKey('doubleValue')) {
+              result[k] = v['doubleValue'];
+            } else if (v.containsKey('integerValue')) {
+              result[k] = double.tryParse(v['integerValue'].toString()) ?? 0.0;
+            } else if (v.containsKey('stringValue')) {
+              result[k] = v['stringValue'];
+            }
           }
         });
         return result;
@@ -235,10 +239,15 @@ class DataService {
   Map<String, dynamic> _mapToRestFields(Map<String, dynamic> data) {
     Map<String, dynamic> result = {};
     data.forEach((key, value) {
-      if (value is String) result[key] = {'stringValue': value};
-      else if (value is int) result[key] = {'integerValue': value.toString()};
-      else if (value is double) result[key] = {'doubleValue': value};
-      else if (value is bool) result[key] = {'booleanValue': value};
+      if (value is String) {
+        result[key] = {'stringValue': value};
+      } else if (value is int) {
+        result[key] = {'integerValue': value.toString()};
+      } else if (value is double) {
+        result[key] = {'doubleValue': value};
+      } else if (value is bool) {
+        result[key] = {'booleanValue': value};
+      }
     });
     return result;
   }

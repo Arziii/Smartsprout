@@ -277,13 +277,13 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
                         color: _statusSuccess
-                            ? const Color(0xFF2BCC71).withOpacity(0.15)
-                            : Colors.redAccent.withOpacity(0.15),
+                            ? const Color(0xFF2BCC71).withValues(alpha: 0.15)
+                            : Colors.redAccent.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: _statusSuccess
-                              ? const Color(0xFF2BCC71).withOpacity(0.4)
-                              : Colors.redAccent.withOpacity(0.4),
+                              ? const Color(0xFF2BCC71).withValues(alpha: 0.4)
+                              : Colors.redAccent.withValues(alpha: 0.4),
                         ),
                       ),
                       child: Row(
@@ -345,12 +345,12 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.wifi_off_rounded, size: 60,
-                                  color: const Color(0xFF4A6164).withOpacity(0.3)),
+                                  color: const Color(0xFF4A6164).withValues(alpha: 0.3)),
                               const SizedBox(height: 12),
                               Text('No networks found.\nPress Scan to search.',
                                   textAlign: TextAlign.center,
                                   style: GoogleFonts.outfit(
-                                      color: const Color(0xFF4A6164).withOpacity(0.5),
+                                      color: const Color(0xFF4A6164).withValues(alpha: 0.5),
                                       fontSize: 14)),
                             ],
                           ),
@@ -376,13 +376,13 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: connected
-            ? const Color(0xFF2BCC71).withOpacity(0.12)
-            : Colors.orange.withOpacity(0.12),
+            ? const Color(0xFF2BCC71).withValues(alpha: 0.12)
+            : Colors.orange.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: connected
-              ? const Color(0xFF2BCC71).withOpacity(0.4)
-              : Colors.orange.withOpacity(0.4),
+              ? const Color(0xFF2BCC71).withValues(alpha: 0.4)
+              : Colors.orange.withValues(alpha: 0.4),
         ),
       ),
       child: Row(
@@ -417,14 +417,14 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
     final isConnected = net.ssid == _connectedSsid;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.8),
+        color: Colors.white.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(16),
         border: isConnected
             ? Border.all(color: const Color(0xFF2BCC71), width: 1.5)
             : null,
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 8,
               offset: const Offset(0, 2)),
         ],
@@ -435,7 +435,7 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
         leading: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: _signalColor(net.strength).withOpacity(0.1),
+            color: _signalColor(net.strength).withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(_signalIcon(net.strength),
@@ -454,7 +454,7 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2BCC71).withOpacity(0.15),
+                  color: const Color(0xFF2BCC71).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text('Connected',
@@ -470,18 +470,18 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
             Icon(
               net.secured ? Icons.lock_rounded : Icons.lock_open_rounded,
               size: 12,
-              color: const Color(0xFF4A6164).withOpacity(0.6),
+              color: const Color(0xFF4A6164).withValues(alpha: 0.6),
             ),
             const SizedBox(width: 4),
             Text(net.secured ? 'Secured' : 'Open',
                 style: GoogleFonts.outfit(
                     fontSize: 12,
-                    color: const Color(0xFF4A6164).withOpacity(0.6))),
+                    color: const Color(0xFF4A6164).withValues(alpha: 0.6))),
           ],
         ),
         trailing: IconButton(
           icon: Icon(Icons.delete_outline_rounded,
-              color: Colors.redAccent.withOpacity(0.7), size: 20),
+              color: Colors.redAccent.withValues(alpha: 0.7), size: 20),
           tooltip: 'Forget network',
           onPressed: () => _forget(net.ssid),
         ),
@@ -582,7 +582,7 @@ class _PasswordSheetState extends State<_PasswordSheet> {
               hintText: 'Wi-Fi Password',
               hintStyle: GoogleFonts.outfit(color: Colors.white38),
               filled: true,
-              fillColor: Colors.white.withOpacity(0.08),
+              fillColor: Colors.white.withValues(alpha: 0.08),
               contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),

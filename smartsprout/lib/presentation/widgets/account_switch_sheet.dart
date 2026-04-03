@@ -29,7 +29,7 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
         context.go('/dashboard');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to switch device.')),
+          const SnackBar(duration: Duration(seconds: 2), content: Text('Failed to switch device.')),
         );
       }
     }
@@ -108,7 +108,7 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         boxShadow: const [
           BoxShadow(color: Colors.black26, blurRadius: 40, offset: Offset(0, -10))
@@ -195,7 +195,7 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
                           margin: const EdgeInsets.only(bottom: 12),
                           decoration: BoxDecoration(
                             color: isActive
-                                ? const Color(0xFF2BCC71).withOpacity(0.1)
+                                ? const Color(0xFF2BCC71).withValues(alpha: 0.1)
                                 : Colors.white,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
@@ -274,10 +274,10 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: const Color(0xFF2BCC71).withOpacity(0.12),
+            color: const Color(0xFF2BCC71).withValues(alpha: 0.12),
             shape: BoxShape.circle,
             border: Border.all(
-              color: const Color(0xFF2BCC71).withOpacity(0.4),
+              color: const Color(0xFF2BCC71).withValues(alpha: 0.4),
               width: 1.5,
             ),
           ),
@@ -365,6 +365,7 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
             ),
             backgroundColor: const Color(0xFF2BCC71),
             behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
@@ -410,7 +411,7 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
                       height: 5,
                       margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.white.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
@@ -423,10 +424,10 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
                           child: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.5),
+                              color: Colors.white.withValues(alpha: 0.5),
                               shape: BoxShape.circle,
                               border: Border.all(
-                                  color: Colors.white.withOpacity(0.8), width: 1.5),
+                                  color: Colors.white.withValues(alpha: 0.8), width: 1.5),
                             ),
                             child: const Icon(
                               Icons.arrow_back_ios_new_rounded,
@@ -455,7 +456,7 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.4),
+                        color: Colors.white.withValues(alpha: 0.4),
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2),
                       ),
@@ -489,12 +490,12 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
                     // ── Login Form Card ──
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                         borderRadius: BorderRadius.circular(28),
                         border: Border.all(color: Colors.white, width: 2),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
+                            color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 20,
                             offset: const Offset(0, 10),
                           ),
@@ -574,17 +575,17 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
               fontWeight: FontWeight.w600, color: const Color(0xFF0F2027)),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5)),
+            hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5)),
             prefixIcon: Icon(icon, color: const Color(0xFF2BCC71), size: 20),
             filled: true,
-            fillColor: Colors.white.withOpacity(0.5),
+            fillColor: Colors.white.withValues(alpha: 0.5),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide.none,
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.5)),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
@@ -636,9 +637,9 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.redAccent.withOpacity(0.1),
+        color: Colors.redAccent.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.redAccent.withOpacity(0.2)),
+        border: Border.all(color: Colors.redAccent.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [

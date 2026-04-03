@@ -57,7 +57,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state, child) {
           final location = GoRouterState.of(context).matchedLocation;
           final showNavBar = location != '/pairing' && location != '/login';
-          return ScaffoldWithNavBar(child: child, showNavBar: showNavBar);
+          return ScaffoldWithNavBar(showNavBar: showNavBar, child: child);
         },
         routes: [
           GoRoute(
@@ -142,7 +142,7 @@ class ScaffoldWithNavBar extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-// _FrostedNavBar — glassmorphism bottom nav
+// _FrostedNavBar — glassmorphism Tab Menu
 // ─────────────────────────────────────────────
 class _FrostedNavBar extends StatelessWidget {
   final List<_NavItemData> items;
@@ -159,60 +159,108 @@ class _FrostedNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
 
-    final navContent = Container(
-      decoration: BoxDecoration(
-        // Lite: fully opaque  |  Premium: 60% frosted glass
-        color: Colors.white.withOpacity(isLiteMode ? 1.0 : 0.60),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border(
-          top: BorderSide(
-            color: Colors.white.withOpacity(0.50),
-            width: 1.0,
-          ),
-        ),
-        boxShadow: isLiteMode
-            ? null
-            : [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.10),
-                  blurRadius: 24,
-                  offset: const Offset(0, -4),
+    return SafeArea(
+      top: false,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final tabWidth = constraints.maxWidth / items.length;
+          const circleSize = 56.0;
+          final leftOffset = (tabWidth * selectedIndex) + (tabWidth - circleSize) / 2;
+
+          final background = Container(
+            height: 68,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.60),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border(
+                top: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.50),
+                  width: 1.0,
+                ),
+              ),
+            ),
+          );
+
+          return SizedBox(
+            height: 88, // 68 bar + 20 float space
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // 1. Frosted Bar Background
+                Positioned(
+                  left: 0, right: 0, bottom: 0, height: 68,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                      boxShadow: isLiteMode ? null : [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.10),
+                          blurRadius: 24,
+                          offset: const Offset(0, -4),
+                        ),
+                      ],
+                    ),
+                    child: isPremiumMode ? ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                        child: background,
+                      ),
+                    ) : background,
+                  ),
+                ),
+
+                // 2. Animated Floating Circle
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOutBack,
+                  top: 0, // Top of the 88px container
+                  left: leftOffset,
+                  child: Container(
+                    width: circleSize,
+                    height: circleSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: primary,
+                      boxShadow: [
+                        BoxShadow(
+                          color: primary.withValues(alpha: 0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // 3. Foreground Icons & Labels
+                Positioned.fill(
+                  child: Row(
+                    children: List.generate(items.length, (i) {
+                      return SizedBox(
+                        width: tabWidth,
+                        height: 88,
+                        child: _NavButton(
+                          data: items[i],
+                          isSelected: i == selectedIndex,
+                          activeColor: primary,
+                          onTap: () => onTap(items[i].path),
+                        ),
+                      );
+                    }),
+                  ),
                 ),
               ],
+            ),
+          );
+        },
       ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 68,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: List.generate(items.length, (i) {
-              return _NavButton(
-                data: items[i],
-                isSelected: i == selectedIndex,
-                activeColor: primary,
-                onTap: () => onTap(items[i].path),
-              );
-            }),
-          ),
-        ),
-      ),
-    );
-
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: isPremiumMode
-          ? BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: navContent,
-            )
-          : navContent,
     );
   }
 }
 
 // ─────────────────────────────────────────────
-// _NavButton — animated button with ripple, glow, and gradient pill
+// _NavButton — handles popping icon up and showing text
 // ─────────────────────────────────────────────
 class _NavButton extends StatefulWidget {
   final _NavItemData data;
@@ -231,19 +279,15 @@ class _NavButton extends StatefulWidget {
   State<_NavButton> createState() => _NavButtonState();
 }
 
-class _NavButtonState extends State<_NavButton>
-    with SingleTickerProviderStateMixin {
+class _NavButtonState extends State<_NavButton> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    );
-    _scale = Tween<double>(begin: 1.0, end: 0.88).animate(
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 150));
+    _scale = Tween<double>(begin: 1.0, end: 0.9).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
     );
   }
@@ -251,11 +295,8 @@ class _NavButtonState extends State<_NavButton>
   @override
   void didUpdateWidget(_NavButton old) {
     super.didUpdateWidget(old);
-    if (widget.isSelected) {
-      _ctrl.forward();
-    } else {
-      _ctrl.reverse();
-    }
+    // Scale animation not strictly needed for selection anymore, 
+    // but kept for tap down/up feedback
   }
 
   @override
@@ -266,9 +307,7 @@ class _NavButtonState extends State<_NavButton>
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.isSelected
-        ? widget.activeColor
-        : Colors.grey.shade500; // ≥4.5:1 contrast on white — WCAG AA ✓
+    final unselectedColor = Colors.grey.shade500;
 
     return Semantics(
       label: widget.data.label,
@@ -286,66 +325,43 @@ class _NavButtonState extends State<_NavButton>
           animation: _ctrl,
           builder: (context, _) {
             return Transform.scale(
-              scale: widget.isSelected
-                  ? 1.0 // selected: no squish
-                  : _scale.value, // unselected: squish on press
-              child: SizedBox(
-                width: 76,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // ── Animated pill indicator ──
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOutCubic,
-                      height: 36,
-                      width: widget.isSelected ? 56 : 44,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        gradient: widget.isSelected
-                            ? LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  widget.activeColor.withOpacity(0.90),
-                                  widget.activeColor.withOpacity(0.65),
-                                ],
-                              )
-                            : null,
-                        color: widget.isSelected ? null : Colors.transparent,
-                        boxShadow: widget.isSelected
-                            ? [
-                                BoxShadow(
-                                  color: widget.activeColor.withOpacity(0.35),
-                                  blurRadius: 12,
-                                  spreadRadius: 1,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ]
-                            : [],
-                      ),
-                      child: Icon(
-                        widget.data.icon,
-                        size: 22,
-                        color: widget.isSelected ? Colors.white : color,
+              scale: _scale.value, // squish on press
+              child: Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.none,
+                children: [
+                  // Label — slides up and fades in
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeOutCubic,
+                    bottom: widget.isSelected ? 14.0 : -20.0,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 250),
+                      opacity: widget.isSelected ? 1.0 : 0.0,
+                      child: Text(
+                        widget.data.label,
+                        style: TextStyle(
+                          color: widget.activeColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    // ── Label ──
-                    AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 200),
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 10,
-                        fontWeight: widget.isSelected
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                        letterSpacing: 0.2,
-                      ),
-                      child: Text(widget.data.label),
+                  ),
+
+                  // Icon — slides up into the floating circle
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeOutBack,
+                    bottom: widget.isSelected ? 48.0 : 22.0,
+                    child: Icon(
+                      widget.data.icon,
+                      size: 26,
+                      color: widget.isSelected ? Colors.white : unselectedColor,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             );
           },

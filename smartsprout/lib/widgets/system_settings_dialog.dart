@@ -27,6 +27,7 @@ class SystemSettingsDialog extends ConsumerWidget {
             : 'Command sent: $command'),
         backgroundColor: const Color(0xFF0F2027),
         behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
@@ -42,7 +43,7 @@ class SystemSettingsDialog extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.95),
+            color: Colors.white.withValues(alpha: 0.95),
             borderRadius: BorderRadius.circular(32),
             boxShadow: const [
               BoxShadow(
@@ -56,7 +57,7 @@ class SystemSettingsDialog extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F2027).withOpacity(0.05),
+                  color: const Color(0xFF0F2027).withValues(alpha: 0.05),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.settings_system_daydream_rounded,
@@ -138,16 +139,16 @@ class SystemSettingsDialog extends ConsumerWidget {
         child: Ink(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+            border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5),
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.2),
+                  color: color.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, color: color, size: 28),
@@ -177,7 +178,7 @@ class SystemSettingsDialog extends ConsumerWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: color.withOpacity(0.5)),
+              Icon(Icons.chevron_right_rounded, color: color.withValues(alpha: 0.5)),
             ],
           ),
         ),

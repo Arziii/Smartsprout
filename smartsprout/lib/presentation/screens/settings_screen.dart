@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -74,8 +73,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               ),
             ),
           ),
-          _buildBlob(top: -50, right: -100, size: 300, color: const Color(0xFF2BCC71).withOpacity(0.15)),
-          _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withOpacity(0.1)),
+          _buildBlob(top: -50, right: -100, size: 300, color: const Color(0xFF2BCC71).withValues(alpha: 0.15)),
+          _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withValues(alpha: 0.1)),
 
           // ── Content ──
           SafeArea(
@@ -195,7 +194,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       leading: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: color, size: 24),
@@ -210,22 +209,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         style: GoogleFonts.outfit(
           fontSize: 13,
           fontWeight: FontWeight.w500,
-          color: const Color(0xFF4A6164).withOpacity(0.7),
+          color: const Color(0xFF4A6164).withValues(alpha: 0.7),
         )),
       trailing: isLoading
           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-          : Icon(Icons.chevron_right_rounded, color: const Color(0xFF4A6164).withOpacity(0.3)),
+          : Icon(Icons.chevron_right_rounded, color: const Color(0xFF4A6164).withValues(alpha: 0.3)),
     );
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(isLiteMode ? 0.95 : 0.7),
+        color: Colors.white.withValues(alpha: isLiteMode ? 0.95 : 0.7),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: isLiteMode ? null : [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -420,6 +419,7 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet> with Sin
             content: Text('Device renamed to "${_nameController.text.trim()}"!', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
             backgroundColor: const Color(0xFF2BCC71),
             behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
@@ -450,10 +450,10 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet> with Sin
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), borderRadius: BorderRadius.circular(10))),
+                    Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(10))),
                     Row(
                       children: [
-                        GestureDetector(onTap: () => Navigator.of(context).pop(), child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5)), child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: Color(0xFF0F2027)))),
+                        GestureDetector(onTap: () => Navigator.of(context).pop(), child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.5), shape: BoxShape.circle, border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.5)), child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: Color(0xFF0F2027)))),
                         const Spacer(),
                         Text('Rename Device', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: const Color(0xFF0F2027), letterSpacing: -0.5)),
                         const Spacer(),
@@ -461,14 +461,14 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet> with Sin
                       ],
                     ),
                     const SizedBox(height: 32),
-                    Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white.withOpacity(0.4), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: const Icon(Icons.drive_file_rename_outline_rounded, size: 40, color: Color(0xFF7E57C2))),
+                    Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.4), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: const Icon(Icons.drive_file_rename_outline_rounded, size: 40, color: Color(0xFF7E57C2))),
                     const SizedBox(height: 16),
                     Text('Change Display Name', style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900, color: const Color(0xFF0F2027), letterSpacing: -0.5)),
                     const SizedBox(height: 4),
                     Text('Enter your current PIN & new name', style: GoogleFonts.outfit(fontSize: 14, color: const Color(0xFF4A6164), fontWeight: FontWeight.w500)),
                     const SizedBox(height: 32),
                     Container(
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.7), borderRadius: BorderRadius.circular(28), border: Border.all(color: Colors.white, width: 2), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))]),
+                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(28), border: Border.all(color: Colors.white, width: 2), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, 10))]),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(28),
                         child: BackdropFilter(
@@ -521,7 +521,7 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet> with Sin
         TextFormField(
           controller: controller, obscureText: obscure, textCapitalization: textCapitalization,
           style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: const Color(0xFF0F2027)),
-          decoration: InputDecoration(hintText: hint, hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5)), prefixIcon: Icon(icon, color: const Color(0xFF7E57C2), size: 20), filled: true, fillColor: Colors.white.withOpacity(0.5), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.white.withOpacity(0.5))), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF7E57C2), width: 1.5)), contentPadding: const EdgeInsets.symmetric(vertical: 18)),
+          decoration: InputDecoration(hintText: hint, hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5)), prefixIcon: Icon(icon, color: const Color(0xFF7E57C2), size: 20), filled: true, fillColor: Colors.white.withValues(alpha: 0.5), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5))), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF7E57C2), width: 1.5)), contentPadding: const EdgeInsets.symmetric(vertical: 18)),
           validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
         ),
       ],
@@ -531,7 +531,7 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet> with Sin
   Widget _buildErrorBanner(String message) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.redAccent.withOpacity(0.2))),
+      decoration: BoxDecoration(color: Colors.redAccent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.redAccent.withValues(alpha: 0.2))),
       child: Row(children: [const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20), const SizedBox(width: 10), Expanded(child: Text(message, style: GoogleFonts.outfit(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w600)))]),
     );
   }
@@ -574,7 +574,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet> with SingleTic
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_pinController.text != _confirmController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('PINs do not match'), backgroundColor: Colors.redAccent, behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('PINs do not match'), backgroundColor: Colors.redAccent, behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
       return;
     }
 
@@ -589,7 +589,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet> with SingleTic
       setState(() => _isLoading = false);
       if (success) {
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PIN Successfully Changed!', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)), backgroundColor: const Color(0xFF2BCC71), behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PIN Successfully Changed!', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)), backgroundColor: const Color(0xFF2BCC71), behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
       }
     }
   }
@@ -617,10 +617,10 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet> with SingleTic
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), borderRadius: BorderRadius.circular(10))),
+                    Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(10))),
                     Row(
                       children: [
-                        GestureDetector(onTap: () => Navigator.of(context).pop(), child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5)), child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: Color(0xFF0F2027)))),
+                        GestureDetector(onTap: () => Navigator.of(context).pop(), child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.5), shape: BoxShape.circle, border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.5)), child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: Color(0xFF0F2027)))),
                         const Spacer(),
                         Text('Change PIN', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: const Color(0xFF0F2027), letterSpacing: -0.5)),
                         const Spacer(),
@@ -628,14 +628,14 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet> with SingleTic
                       ],
                     ),
                     const SizedBox(height: 32),
-                    Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white.withOpacity(0.4), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: const Icon(Icons.lock_rounded, size: 40, color: Color(0xFF78909C))),
+                    Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.4), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: const Icon(Icons.lock_rounded, size: 40, color: Color(0xFF78909C))),
                     const SizedBox(height: 16),
                     Text('Update Security PIN', style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900, color: const Color(0xFF0F2027), letterSpacing: -0.5)),
                     const SizedBox(height: 4),
                     Text('Set a new numeric PIN', style: GoogleFonts.outfit(fontSize: 14, color: const Color(0xFF4A6164), fontWeight: FontWeight.w500)),
                     const SizedBox(height: 32),
                     Container(
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.7), borderRadius: BorderRadius.circular(28), border: Border.all(color: Colors.white, width: 2), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))]),
+                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(28), border: Border.all(color: Colors.white, width: 2), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, 10))]),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(28),
                         child: BackdropFilter(
@@ -690,7 +690,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet> with SingleTic
         TextFormField(
           controller: controller, obscureText: obscure,
           style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: const Color(0xFF0F2027)),
-          decoration: InputDecoration(hintText: hint, hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5)), prefixIcon: Icon(icon, color: const Color(0xFF78909C), size: 20), filled: true, fillColor: Colors.white.withOpacity(0.5), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.white.withOpacity(0.5))), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF78909C), width: 1.5)), contentPadding: const EdgeInsets.symmetric(vertical: 18)),
+          decoration: InputDecoration(hintText: hint, hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5)), prefixIcon: Icon(icon, color: const Color(0xFF78909C), size: 20), filled: true, fillColor: Colors.white.withValues(alpha: 0.5), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5))), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF78909C), width: 1.5)), contentPadding: const EdgeInsets.symmetric(vertical: 18)),
           validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
         ),
       ],
@@ -700,7 +700,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet> with SingleTic
   Widget _buildErrorBanner(String message) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.redAccent.withOpacity(0.2))),
+      decoration: BoxDecoration(color: Colors.redAccent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.redAccent.withValues(alpha: 0.2))),
       child: Row(children: [const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20), const SizedBox(width: 10), Expanded(child: Text(message, style: GoogleFonts.outfit(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w600)))]),
     );
   }

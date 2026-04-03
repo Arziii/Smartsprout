@@ -200,7 +200,7 @@ class AuthNotifier extends Notifier<AuthState> {
         if (completed) return;
         if (!snap.exists) return;
 
-        final data = snap.data() as Map<String, dynamic>?;
+        final data = snap.data();
         if (data == null) return;
 
         final responseStatus = data['status'] as String? ?? 'pending';

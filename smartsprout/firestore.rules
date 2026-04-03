@@ -47,6 +47,14 @@ service cloud.firestore {
                      && request.auth.uid == deviceId;
         allow write: if false;   // Pi Admin SDK only
       }
+
+      // ── Zones subcollection (For plant image settings) ──
+      match /zones/{zoneId} {
+        allow read:  if request.auth != null
+                     && request.auth.uid == deviceId;
+        allow write: if request.auth != null
+                     && request.auth.uid == deviceId;
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════

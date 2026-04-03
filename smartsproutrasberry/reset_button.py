@@ -88,10 +88,11 @@ def _monitor_button():
     while True:
         try:
             # Wait for button press (falling edge = HIGH → LOW)
-            GPIO.wait_for_edge(pin, GPIO.FALLING)
-        except RuntimeError as e:
-            print(f"[RESET_BUTTON] GPIO wait_for_edge error on GPIO {pin}: {e}. Retrying in 5s...")
-            time.sleep(5)
+            # bouncetime added for noise, and checking wait for edge
+            GPIO.wait_for_edge(pin, GPIO.FALLING, bouncetime=200)
+        except Exception as e:
+            print(f"[RESET_BUTTON] GPIO wait_for_edge error on GPIO {pin}: {e}. Retrying in 30s...")
+            time.sleep(30)
             continue
 
         # Button pressed — start blinking LED and counting

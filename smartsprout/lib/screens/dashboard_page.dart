@@ -125,8 +125,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           ),
           
           // Background Blobs for depth
-          _buildBlob(top: -100, right: -50, size: 300, color: const Color(0xFF2BCC71).withOpacity(0.15)),
-          _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withOpacity(0.1)),
+          _buildBlob(top: -100, right: -50, size: 300, color: const Color(0xFF2BCC71).withValues(alpha: 0.15)),
+          _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withValues(alpha: 0.1)),
           
           // ── Main dashboard content ──
           // Windows: wrap in Scrollbar for mouse/keyboard UX
@@ -164,11 +164,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.orange.shade800.withOpacity(0.9),
+                  color: Colors.orange.shade800.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.orange.withOpacity(0.3),
+                      color: Colors.orange.withValues(alpha: 0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -354,9 +354,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
       width: 48,
       height: 48,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.5),
+        color: Colors.white.withValues(alpha: 0.5),
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.5),
       ),
       child: Icon(icon, color: color, size: 24),
     );
@@ -392,11 +392,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           child: Container(
             height: 140, // Match design
             decoration: BoxDecoration(
-              color: tankLevelStr == 'HIGH' ? Colors.white.withOpacity(0.9) : tankColor.withOpacity(0.08),
+              color: tankLevelStr == 'HIGH' ? Colors.white.withValues(alpha: 0.9) : tankColor.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: tankColor.withOpacity(tankLevelStr == 'HIGH' ? 0.3 : 0.8), width: 1.5),
+              border: Border.all(color: tankColor.withValues(alpha: tankLevelStr == 'HIGH' ? 0.3 : 0.8), width: 1.5),
               boxShadow: isLiteMode ? null : [
-                BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))
+                BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 5))
               ],
             ),
             padding: const EdgeInsets.all(16),
@@ -408,7 +408,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   children: [
                     Container(
                       padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(color: tankColor.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(color: tankColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
                       child: Icon(Icons.waves_rounded, color: tankColor, size: 28),
                     ),
                     const SizedBox(width: 12),
@@ -441,7 +441,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: tankColor.withOpacity(0.15),
+                    color: tankColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -478,14 +478,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Colors.white.withOpacity(0.95),
-                  const Color(0xFFE0ECE9).withOpacity(0.85),
+                  Colors.white.withValues(alpha: 0.95),
+                  const Color(0xFFE0ECE9).withValues(alpha: 0.85),
                 ],
               ),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: Colors.white, width: 2),
               boxShadow: isLiteMode ? null : [
-                BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))
+                BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 5))
               ],
             ),
             padding: const EdgeInsets.all(16),
@@ -497,7 +497,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   children: [
                     Container(
                       padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(color: const Color(0xFF29B6F6).withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(color: const Color(0xFF29B6F6).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
                       child: const Icon(Icons.thermostat_rounded, color: Color(0xFF0277BD), size: 28),
                     ),
                     const SizedBox(width: 12),
@@ -534,7 +534,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF29B6F6).withOpacity(0.15),
+                        color: const Color(0xFF29B6F6).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -553,7 +553,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF2BCC71).withOpacity(0.15),
+                        color: const Color(0xFF2BCC71).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -596,14 +596,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Colors.white.withOpacity(isLiteMode ? 1.0 : 0.95),
-              const Color(0xFFE0ECE9).withOpacity(isLiteMode ? 1.0 : 0.85),
+              Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.95),
+              const Color(0xFFE0ECE9).withValues(alpha: isLiteMode ? 1.0 : 0.85),
             ],
           ),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.white, width: 2),
           boxShadow: isLiteMode ? null : [
-            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))
+            BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, 10))
           ],
         ),
         padding: const EdgeInsets.all(16),
@@ -643,7 +643,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                         const SizedBox(height: 2),
                         Text(
                           isOffline ? "Controller disconnected." : (isHealthy ? "Operating normally." : "One or more sensors are offline."),
-                          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 10, color: titleColor.withOpacity(0.8)),
+                          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 10, color: titleColor.withValues(alpha: 0.8)),
                         ),
                       ],
                     ),
@@ -669,7 +669,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
 
   Widget _buildStatusOverlay({required IconData icon, required String title, required String subtitle, required Color color}) {
     final content = Container(
-      color: Colors.black.withOpacity(0.3),
+      color: Colors.black.withValues(alpha: 0.3),
       child: Center(
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 40),
@@ -677,14 +677,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(32),
-            boxShadow: isLiteMode ? null : [BoxShadow(color: Colors.black26, blurRadius: 30, offset: const Offset(0, 10))],
+            boxShadow: isLiteMode ? null : [const BoxShadow(color: Colors.black26, blurRadius: 30, offset: Offset(0, 10))],
           ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
                     padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+                    decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
                     child: Icon(icon, size: 48, color: color),
                   ),
                   const SizedBox(height: 24),

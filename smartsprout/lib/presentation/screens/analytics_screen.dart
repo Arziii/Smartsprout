@@ -61,8 +61,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
               ),
             ),
           ),
-          _buildBlob(top: -50, right: -100, size: 300, color: const Color(0xFF2BCC71).withOpacity(0.15)),
-          _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withOpacity(0.1)),
+          _buildBlob(top: -50, right: -100, size: 300, color: const Color(0xFF2BCC71).withValues(alpha: 0.15)),
+          _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withValues(alpha: 0.1)),
 
           // ── Content ──
           SafeArea(
@@ -117,12 +117,12 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.8),
+        color: Colors.white.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -142,7 +142,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.1),
+                        color: color.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(icon, color: color, size: 24),
@@ -180,7 +180,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                         horizontalInterval: 20,
                         getDrawingHorizontalLine: (value) {
                           return FlLine(
-                            color: const Color(0xFF4A6164).withOpacity(0.1),
+                            color: const Color(0xFF4A6164).withValues(alpha: 0.1),
                             strokeWidth: 1,
                             dashArray: [5, 5]
                           );
@@ -199,7 +199,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                               return Text('${value.toInt()}', 
                                 style: GoogleFonts.outfit(
                                   fontSize: 12, 
-                                  color: const Color(0xFF4A6164).withOpacity(0.7),
+                                  color: const Color(0xFF4A6164).withValues(alpha: 0.7),
                                   fontWeight: FontWeight.w600
                                 ));
                             },
@@ -216,7 +216,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                                 child: Text('D${value.toInt() + 1}', 
                                   style: GoogleFonts.outfit(
                                     fontSize: 12, 
-                                    color: const Color(0xFF4A6164).withOpacity(0.7),
+                                    color: const Color(0xFF4A6164).withValues(alpha: 0.7),
                                     fontWeight: FontWeight.w600
                                   )),
                               );
@@ -247,8 +247,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                             show: true,
                             gradient: LinearGradient(
                               colors: [
-                                color.withOpacity(0.3),
-                                color.withOpacity(0.0),
+                                color.withValues(alpha: 0.3),
+                                color.withValues(alpha: 0.0),
                               ],
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,

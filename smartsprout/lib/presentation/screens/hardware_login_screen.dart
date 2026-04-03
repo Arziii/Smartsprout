@@ -70,6 +70,7 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
           content: const Text('Login successful!'),
           backgroundColor: const Color(0xFF2BCC71),
           behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
@@ -106,8 +107,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
               ),
             ),
           ),
-          _buildBlob(top: -100, right: -50, size: 300, color: const Color(0xFF2BCC71).withOpacity(0.15)),
-          _buildBlob(bottom: -50, left: -100, size: 400, color: Colors.blue.withOpacity(0.1)),
+          _buildBlob(top: -100, right: -50, size: 300, color: const Color(0xFF2BCC71).withValues(alpha: 0.15)),
+          _buildBlob(bottom: -50, left: -100, size: 400, color: Colors.blue.withValues(alpha: 0.1)),
 
           Center(
             child: SingleChildScrollView(
@@ -152,7 +153,7 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.5),
+            color: Colors.white.withValues(alpha: 0.5),
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 2),
           ),
@@ -193,12 +194,12 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
       width: double.infinity,
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.7),
+        color: Colors.white.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: const Color(0xFFFFB347).withOpacity(0.5), width: 1.5),
+        border: Border.all(color: const Color(0xFFFFB347).withValues(alpha: 0.5), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.orange.withOpacity(0.1),
+            color: Colors.orange.withValues(alpha: 0.1),
             blurRadius: 30,
             offset: const Offset(0, 15),
           ),
@@ -214,7 +215,7 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFB347).withOpacity(0.15),
+                  color: const Color(0xFFFFB347).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.lock_clock_rounded, size: 48, color: Color(0xFFE67E22)),
@@ -243,9 +244,9 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F2027).withOpacity(0.05),
+                  color: const Color(0xFF0F2027).withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFFFB347).withOpacity(0.3)),
+                  border: Border.all(color: const Color(0xFFFFB347).withValues(alpha: 0.3)),
                 ),
                 child: Column(
                   children: [
@@ -306,26 +307,31 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
               final device = devices[index];
               return GestureDetector(
                 onTap: () async {
+                  // Capture context-dependent refs before async gap
+                  final messenger = ScaffoldMessenger.of(context);
+                  final router = GoRouter.of(context);
                   // Option B: try session reuse first
                   final success = await ref.read(authProvider.notifier).quickSwitch(device.deviceId);
                   if (success && mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       SnackBar(
                         content: Text('Switched to ${device.nickname}'),
                         backgroundColor: const Color(0xFF2BCC71),
                         behavior: SnackBarBehavior.floating,
+                        duration: const Duration(seconds: 2),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
                     );
-                    context.go('/dashboard');
+                    router.go('/dashboard');
                   } else {
                     // Session expired — pre-fill device ID and let user enter PIN
                     _deviceIdController.text = device.deviceId;
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       SnackBar(
                         content: Text('Session expired for ${device.nickname}. Enter your PIN.'),
                         backgroundColor: const Color(0xFF4A6164),
                         behavior: SnackBarBehavior.floating,
+                        duration: const Duration(seconds: 2),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
                     );
@@ -337,12 +343,12 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                       width: 90,
                       height: 100, // ensure explicit height
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: Colors.white, width: 2),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withValues(alpha: 0.05),
                             blurRadius: 15,
                             offset: const Offset(0, 5),
                           ),
@@ -385,6 +391,7 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                       right: 4,
                       child: GestureDetector(
                         onTap: () async {
+                          final messenger2 = ScaffoldMessenger.of(context);
                           final confirm = await showDialog<bool>(
                             context: context,
                             builder: (context) {
@@ -425,11 +432,12 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                           if (confirm == true) {
                             await ref.read(authProvider.notifier).removeSavedDevice(device.deviceId);
                             if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              messenger2.showSnackBar(
                                 SnackBar(
                                   content: Text('${device.nickname} removed'),
                                   backgroundColor: const Color(0xFFE67E22),
                                   behavior: SnackBarBehavior.floating,
+                                  duration: const Duration(seconds: 2),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                 ),
                               );
@@ -462,12 +470,12 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
   Widget _buildLoginForm(AuthState authState) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.7),
+        color: Colors.white.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(32),
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 30,
             offset: const Offset(0, 15),
           ),
@@ -526,19 +534,19 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF2BCC71).withOpacity(0.08),
+        color: const Color(0xFF2BCC71).withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2BCC71).withOpacity(0.2)),
+        border: Border.all(color: const Color(0xFF2BCC71).withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          SizedBox(
+          const SizedBox(
             width: 14,
             height: 14,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: const Color(0xFF2BCC71),
+              color: Color(0xFF2BCC71),
             ),
           ),
           const SizedBox(width: 10),
@@ -586,17 +594,17 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
           decoration: InputDecoration(
             hintText: hint,
             counterText: '',
-            hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5)),
+            hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5)),
             prefixIcon: Icon(icon, color: const Color(0xFF2BCC71), size: 20),
             filled: true,
-            fillColor: Colors.white.withOpacity(0.5),
+            fillColor: Colors.white.withValues(alpha: 0.5),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide.none,
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.5)),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
@@ -643,9 +651,9 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 24),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [

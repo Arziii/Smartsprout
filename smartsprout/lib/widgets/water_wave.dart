@@ -105,7 +105,7 @@ class _WavePainter extends CustomPainter {
     
     // Optional: Draw a second, darker wave for depth
     final paintDark = Paint()
-      ..color = color.withOpacity(0.3)
+      ..color = color.withValues(alpha: 0.3)
       ..style = PaintingStyle.fill;
     
     final pathDark = Path();
