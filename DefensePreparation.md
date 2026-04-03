@@ -237,7 +237,12 @@ Instead of spamming the database every second (which would crash the quota), the
 3. If none of these are met, the Pi stays quiet and saves bandwidth.
 4. When it *does* push, it overwrites the main device document in Firestore. The Flutter app is "listening" (via Riverpod Streams) to this document and instantly updates the mobile screen UI locally without requiring a manual refresh.
 
-### C. The Dead-Man's Switch (Safety)
+### C. Authentication & Hardware Connectivity (Firebase Auth & Admin SDK)
+The system uses dual authentication paradigms for the Mobile App and the Edge Device (Raspberry Pi):
+1. **Mobile App (Firebase Authentication)**: The Flutter app uses **Firebase Anonymous Sign-In** to establish a secure, short-lived session with Google's servers. Once the anonymous token is generated, the app queries the `devices/{deviceID}` document to validate the user-provided PIN against the stored `hashed_pin`. If it matches, the session is cached using `SharedPreferences`, granting the app read/write access to that specific device's document.
+2. **Raspberry Pi (Firebase Admin SDK)**: The Python backend does not use Firebase Authentication. Instead, it uses the **Firebase Admin SDK** armed with a locally stored `firebase_credentials.json` Service Account key. This gives the Pi Server-to-Server privileges to unconditionally publish telemetry and listen to the `commands/` subcollection securely.
+
+### D. The Dead-Man's Switch (Safety)
 If a user is manually watering via the app, what happens if their phone loses internet? 
 - **The Cloud Fix**: While holding the water button, the mobile app writes a "Heartbeat" timestamp to Firestore every 2 seconds.
 - **The Pi Check**: Before the Pi fires the relay, it reads that timestamp. If the timestamp is older than 5 seconds (meaning the phone disconnected), the Pi **aborts** the pump operation to prevent flooding the house.
@@ -306,12 +311,20 @@ If a user is manually watering via the app, what happens if their phone loses in
 **Q5: How is this system scalable?**
 *Answer:* Expanding the system is horizontally scalable through Firebase. By appending a new `device_id`, the user can buy a second Smart Sprout kit, place it in their backyard, and manage it seamlessly from the exact same mobile app by merely toggling device selection. 
 
-**Q6: How do you manage the 20,000 writes/day Firebase Free Tier Quota without losing real-time responsiveness?**
-*Answer:* We implemented a highly optimized **Dynamic Sync Architecture** that reduced data usage by over 90%:
-1. **Subcollection Routing:** Sensor "jitter" (electronic noise) caused 28,000+ writes a day. Now, periodic updates only overwrite the single Status document. The historical log is only appended during the 30-minute Eco-Mode limit.
-2. **Active Filtering:** We widened the differential sync thresholds (8% moisture / 3°C temp) to completely ignore noise and added a strict 60-second cooldown limiter.
-3. **Zero-Cost Heartbeat Caching:** The Pi monitors the app's Dead-Man pulse natively via a free `on_snapshot` cache instead of burning `.get()` reads every 3 seconds.
-4. **Live Bypass Mechanism:** When the pump triggers, we temporarily bypass all rate-limiters. The system streams data every 3 seconds so the mobile dashboard looks buttery smooth for the user without bloating the history database. The heartbeat remains at a brisk 10 seconds for near-instant offline detection.
+**Q6: How do you manage the 20,000 writes/day and 50,000 reads/day Firebase Free Tier Quotas?**
+*Answer:* We faced a scenario where background operations caused a massive 43,000+ read spike. We resolved this by implementing a highly optimized **Dynamic Sync & Caching Architecture** that reduced data usage by over 90%:
+1. **Analytics Query Capping & Caching:** We applied a `.limit(500)` cap to historical database queries. We also transitioned the mobile analytics provider from a volatile state to an `AsyncNotifier` with a **1-hour in-memory cache**. Navigating between screens now costs 0 additional reads.
+2. **Persistent Batch Cleanups:** The Raspberry Pi automatically deletes telemetry older than 30 days. We implemented local disk persistence for the `_last_cleanup_time` so the Pi doesn't redundantly query and attempt cleanups on every system reboot.
+3. **Subcollection Routing:** Sensor "jitter" (electronic noise) could cause 28,000+ writes a day. Now, periodic updates only overwrite a single Status document. 
+4. **Active Filtering:** We widened the differential sync thresholds (8% moisture / 3°C temp) to ignore noise and added a strict 60-second cooldown limiter.
+5. **Kiosk Polling Optimization**: We reduced the Linux Kiosk's REST API polling frequency from 5s to 30s. This reduces background local screen reads by 83% (saving ~14,000 reads/day) without impacting the mobile app's real-time listeners.
+6. **Live Bypass Mechanism & Snappy Heartbeats:** During manual watering, we bypass cooldowns to stream data every 3 seconds for zero-delay UX. To keep the app snappy when the Pi is unplugged, we maintained a 10s Pi heartbeat but aggressively optimized the mobile app's offline timeout to **25 seconds** (a fast, stable detection threshold).
+
+**Q7: Why use a 10-second heartbeat if it's meant for "real-time" monitoring? Is a 25-second reflection delay professional?**
+*Answer:* **It is an engineering trade-off between Quota Sustainability and Practical UX.** 
+1. **Quota Math**: A 1-second heartbeat would consume **86,400 writes/day**, which is 432% over the Firebase Free Tier limit. A 10-second heartbeat uses only **8,640 writes/day (43%)**, leaving plenty of room for actual sensor data.
+2. **Adaptive Sync Logic**: The 10s interval is only for "idle" states. The moment the pump is activated or a significant sensor change occurs, the Pi enters a **High-Frequency Bypass (3s updates)**, providing true real-time feedback when it matters most.
+3. **Professional UX standards**: In industrial IoT, "Offline" detection is usually set to **2 to 3 missed heartbeat cycles** to prevent "flickering" due to standard network jitter. By using a 10s heartbeat and a 25s app timeout, we achieve an extremely snappy 2.5-cycle detection that feels professional without wasting database costs.
 
 ---
 

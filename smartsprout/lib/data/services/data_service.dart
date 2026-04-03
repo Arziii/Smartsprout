@@ -89,8 +89,11 @@ class DataService {
   /// Streams the latest telemetry from the device's main document.
   Stream<SensorData> get telemetryStream {
     if (Platform.isLinux) {
-      // Poll REST API every 5 seconds on Linux
-      return Stream.periodic(const Duration(seconds: 5)).asyncMap((_) async {
+      // PHASE 2 FIX: Increased from 5s → 30s to reduce REST API reads.
+      // At 5s: 720 reads/hr (17,280/day) just from the Linux kiosk.
+      // At 30s: 120 reads/hr (2,880/day) — 83% reduction.
+      // The 30s interval still provides near-real-time sensor feedback.
+      return Stream.periodic(const Duration(seconds: 30)).asyncMap((_) async {
         try {
           final response = await _authenticatedGet('$_baseUrl?key=$_apiKey');
           if (response.statusCode == 200) {
@@ -472,12 +475,16 @@ class DataService {
     }
 
     try {
+      // PHASE 1 FIX: Hard cap at 500 documents to prevent unbounded reads.
+      // The Pi writes to telemetry only on Eco-Mode (every 30 min), so
+      // 500 docs = ~10+ days of data — well beyond the 7-day window needed.
       final snapshot = await _firestore
           .collection('devices')
           .doc(deviceId)
           .collection('telemetry')
           .where('timestamp', isGreaterThanOrEqualTo: cutoffSeconds)
           .orderBy('timestamp', descending: false)
+          .limit(500)
           .get();
 
       Map<int, List<Map<String, dynamic>>> grouped = {

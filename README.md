@@ -44,7 +44,7 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
 
 ## ✨ Core Features
 
-*   **Zero-Trust Security**: Remote access is strictly credential-based (Device ID + PIN) via Cloud Firestore. No local ports are exposed. Environment variables (`.env`) are used to manage secrets securely.
+*   **Zero-Trust Security**: Remote access is strictly credential-based (Device ID + PIN) via Firebase Authentication (Anonymous Sign-In) and Cloud Firestore validation. No local ports are exposed. Environment variables (`.env`) are used to manage secrets securely.
 *   **Dual Operation Modes**: 
     *   **Secure IoT**: Monitor and control your garden globally via the iOS, Android, and Windows Desktop apps.
     *   **Air-Gapped Local**: Full operation and calibration via the Raspberry Pi's physical touchscreen, independent of internet connectivity.
@@ -57,10 +57,12 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
     *   **Normally Closed (NC) Safety**: All valves are NC, ensuring they fail-safe to a closed position during power or software failures.
     *   **Pump Watchdog**: A dedicated GPIO-level Python daemon forces the water pump OFF if it runs longer than 120 seconds, preventing floods.
 *   **Hardware-Aware Maintenance Mode**: Gracefully handles I2C disconnects (Errno 5) and BME280 sensor faults. The UI displays a "Maintenance Required" wrench icon and hard-locks auto-watering for affected zones.
-*   **Eco-Mode & Dynamic Sync Architecture**: The backend separates physical hardware polling (every 3 seconds) from Firebase cloud pushes (every 30 minutes). To protect Cloud Quotas (staying under the 20,000 writes/day free tier), the system uses a highly optimized Dynamic Sync:
+*   **Eco-Mode, Caching & Dynamic Sync**: The backend separates physical hardware polling (every 3 seconds) from Firebase cloud pushes (every 30 minutes). To protect Cloud Quotas (staying well under 50,000 reads/day and 20,000 writes/day), the system uses extreme optimization:
     *   **Differential Sync**: If significant environmental changes are detected (Δ>8% Moisture or Δ>3.0°C Temp), the system instantly pushes an update. It uses a strict 60-second cooldown to suppress electronic sensor jitter.
-    *   **Live Watering Bypass**: When manual watering is active, the system bypasses the cooldowns to stream real-time data every 3 seconds to the mobile app for a premium, zero-delay UX without bloating the historical database.
-    *   **Zero-Cost Heartbeating**: A Dead-Man's Switch monitors the mobile app's connection natively via a free `on_snapshot` cache (updating every 10s), ensuring the pump kills itself instantly if the user's internet is lost during manual watering.
+    *   **1-Hour Analytics Cache & Limits**: Historical cloud queries are strictly capped at 500 documents and cached in-memory for 1 hour on the mobile device, preventing massive read spikes when users navigate between tabs.
+    *   **Persistent Maintenance**: Maintenance cleanups (deleting 30-day-old logs) persist their timestamps to the Pi's local disk, preventing redundant batch operations during reboots.
+    *   **Kiosk Polling Optimization**: The Linux Kiosk UI performs low-bandwidth REST polling every 30 seconds (saving ~14,000 reads/day) while native Mobile Apps use real-time listeners.
+    *   **Snappy 45s Offline Detection**: A Dead-Man's Switch monitors the mobile app's connection natively via a 10s heartbeat. If the hardware misses heartbeats for 45 seconds, the app instantly locks down, ensuring the pump kills itself instantly if internet drops during manual watering.
 *   **Advanced Device Management (v2.0)**:
     *   **In-App Account Switching**: Facebook-style account switcher allows users to manage multiple devices (e.g., Garden 1, Garden 2) and switch between them instantly without disconnecting.
     *   **In-App Device Provisioning**: Add new hardware units directly from the settings menu via a secure modal without leaving the app.

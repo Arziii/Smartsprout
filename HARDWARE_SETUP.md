@@ -1,6 +1,4 @@
-# Smart Sprout Hardware & System Setup
-
-This document serves as the permanent reference for configuring the **Raspberry Pi 4** and wiring the specific sensor array for the Smart Sprout system.
+This document serves as the permanent reference for configuring the **Raspberry Pi 4** and wiring the specific sensor array and protective power architecture for the Smart Sprout system.
 
 ---
 
@@ -10,9 +8,10 @@ This document serves as the permanent reference for configuring the **Raspberry 
 3. [One-Line Install Script](#3-one-line-install-script)
 4. [System Configuration Checklist](#4-system-configuration-checklist)
 5. [Pinout Reference Table (BCM Mapping)](#5-pinout-reference-table-bcm-mapping)
-6. [Solenoid & Pump Control Logic](#6-solenoid--pump-control-logic)
-7. [Critical Voltage Protection (Input/Output)](#7-critical-voltage-protection)
+6. [Solenoid & Pump Control Logic (Split-Rail Architecture)](#6-solenoid--pump-control-logic-split-rail-architecture)
+7. [Hardware Fault Mitigation & Protective Wiring](#7-hardware-fault-mitigation--protective-wiring)
 8. [Maintenance Note & Troubleshooting](#8-maintenance-note--troubleshooting)
+9. [Scaling & Security (Unit 10+)](#9-scaling--security-unit-10)
 
 ---
 
@@ -21,22 +20,19 @@ This document serves as the permanent reference for configuring the **Raspberry 
 To prevent I2C `[Errno 5]` errors and system instability, the project utilizes a **High-Current Single-Source Power Strategy** with an **XL4016 DC-DC Buck Module (8A)**.
 
 *   **Master Input:** 12V 8A DC Power Adapter (Powers the 12V Solenoid Rail and the Buck Module) using **18AWG copper wiring** for rail stability.
-*   **PC-Style Power Management:** A physical power-gating mechanism (latching switch) is wired between the 12V source and the XL4016. This ensures the system remains powered off after plugging in the adapter until a manual power-on intervention occurs, mimicking a traditional PC power supply.
+*   **PC-Style Power Management:** A physical power-gating mechanism (latching switch) is wired between the 12V source and the XL4016. This mimics a PC power supply, ensuring the system remains off after plugging it in until a manual power-on intervention occurs.
 *   **Logic Power:** The XL4016 steps 12V down to **5.1V**. This is delivered via a **Homesaya USB Female Jack** (2-wire) to the Raspberry Pi 4 to meet its 3.0A peak demand.
-*   **Peripheral Power:** The Buck Module’s secondary output terminals provide dedicated 5V power to the **USB Pump** and **Relay VCC**, isolating motor noise from the Pi’s internal power rail.
+*   **Peripheral Power:** The Buck Module’s secondary output terminals provide dedicated 5V power to the **5V Submersible Pump** and **Relay VCC**, isolating motor current from the Pi’s internal power rail.
 
 ---
 
 ## 2. Physical Sensor Specifications
 
-*   **Soil Moisture:** Capacitive v1.2 (Analog 1.2V-2.5V).
-    *   *Note:* The Raspberry Pi doesn't have built-in analog pins. These sensors require the **ADS1115 I2C ADC** to convert analog signals to digital values.
-*   **Temp/Humidity/Pressure:** BME280 (I2C).
-    *   *Note:* A precision sensor that communicates over the I2C bus (Address: 0x76).
-*   **Water Level:** XKC-Y26-V Non-contact Liquid Level Sensor.
-    *   *Note:* Powered by 5V for maximum sensitivity. Outputs a digital signal passed through a voltage divider for Pi safety.
-*   **Irrigation Control:** 12V Solenoid Valve - Normally Closed (NC).
-    *   *Note:* The system is designed for valves that stay CLOSED when unpowered. They are opened via the relay module using 12V DC.
+*   **Soil Moisture:** Capacitive v1.2 (Analog 1.2V-2.5V). Requires the **ADS1115 I2C ADC** to convert analog signals to digital values for the Pi.
+*   **Temp/Humidity/Pressure:** BME280 (I2C). A precision sensor that communicates over the I2C bus (Address: 0x76).
+*   **Water Level:** XKC-Y26-V Non-contact Liquid Level Sensor. Powered by 5V for maximum sensitivity. Outputs a digital signal passed through a voltage divider for Pi safety.
+*   **Irrigation Control:** 12V Solenoid Valves - Normally Closed (NC). Valves stay CLOSED when unpowered and open via the relay module using 12V DC.
+*   **Water Pump:** 5V Submersible Pump.
 
 ---
 
@@ -57,6 +53,7 @@ Before running the backend, ensure the Pi's hardware interfaces and memory are c
 *   [ ] **Step 1:** Run `sudo raspi-config` -> Interfacing Options -> **Enable I2C**.
 *   [ ] **Step 2:** Run `ls /dev/i2c*` or `i2cdetect -y 1` in the terminal to verify the I2C bus is active and sees your connected BME280 and ADS1115 sensors.
 *   [ ] **Step 3:** Verify the **2GB permanent swap file** is active by running `free -h` (check that 'Swap' shows ~2.0G total).
+*   [ ] **Step 4:** Using a multimeter, manually tune the XL4016 brass screw until the output is exactly 5.1V before plugging in the Raspberry Pi.
 
 ---
 
@@ -83,27 +80,53 @@ All software implementation must reference the **BCM (Broadcom)** numbering used
 
 ---
 
-## 6. Solenoid & Pump Control Logic
+## 6. Solenoid & Pump Control Logic (Split-Rail Architecture)
 
-The system utilizes a **4-Channel 5V Relay Module (SRD-05VDC)** acting as a galvanic isolation barrier between the 3.3V Pi logic and the high-current loads.
+Because the system controls a 5V Low-Voltage Pump and 12V High-Voltage Valves, the 4-channel relay module must be wired using a **"Split-Rail"** design to prevent 12V power from destroying the 5V components.
 
-*   **Normally Closed (NC) Safety:** All irrigation valves are NC. In the event of a power failure or software crash, the valves default to a closed state to prevent flooding.
-*   **USB Pump Splicing:** The pump's USB cable is spliced at the VCC (Red) wire. The Buck Module's 5V (+) is connected to the Relay COM, and the pump's Red wire is connected to Relay NO (Normally Open).
-*   **Common Ground:** All Ground (GND) wires from the 12V supply, 5V Buck Module, and Raspberry Pi GPIO are tied to a single **common ground plane** to ensure signal integrity.
+*   **Relay 1 (The 5V Pump Rail):**
+    *   **COM (Common):** Wire this to the 5V Output (+) of the XL4016 Buck Converter.
+    *   **NO (Normally Open):** Wire this to the Positive (+) wire of the 5V Pump.
+*   **Relays 2, 3, & 4 (The 12V Solenoid Rail):**
+    *   **COM (Common):** Wire these directly to the 12V Output (+) of the main power adapter. (You can daisy-chain a single 12V wire across the COM ports of Relays 2, 3, and 4).
+    *   **NO (Normally Open):** Wire these to the Positive (+) wires of Valve 1, Valve 2, and Valve 3.
+*   **The "Common Ground" Rule:** For the system to function safely, the Main 12V GND, the XL4016 5V GND, the Pi GND, the Pump GND, and all Valve GNDs must be physically connected together to share a single ground reference.
+
+> [!IMPORTANT]
+> **Hardware-Software Synchronization Note:**
+> To prevent confusion during wiring:
+> 1. **Terminal Selection:** Always use the **NO (Normally Open)** terminal on the relay. This ensures that if the Raspberry Pi loses power or the relay is de-energized, the circuit is broken and the water stops.
+> 2. **Valve Type:** We use **NC (Normally Closed)** valves. These require power to open.
+> 3. **Active-Low Logic:** The software treats the relay module as **Active-Low**.
+>    * GPIO **HIGH (3.3V)** = Relay De-energized = Circuit Open = **Valve CLOSED**.
+>    * GPIO **LOW (0V)** = Relay Energized = Circuit Closed = **Valve OPEN**.
 
 ---
 
-## 7. Critical Voltage Protection (Input/Output)
+## 7. Hardware Fault Mitigation & Protective Wiring
 
-Since the Raspberry Pi 4 GPIO is not 5V tolerant, the following safeguards are implemented:
+To ensure industrial-grade uptime, the following electrical shields are required to protect the Raspberry Pi from brownouts and reverse-voltage spikes (Back-EMF).
 
-*   **7.1 Level Shifting:** The XKC-Y26-V liquid sensor is powered by 5V for maximum sensitivity, but its output signal is passed through a **Voltage Divider (1kΩ/2kΩ)** to ensure the Pi only receives a safe 3.3V signal.
-*   **7.2 Back-EMF Protection:** The 12V solenoid valves generate flyback voltage when deactivated. The use of a relay module with **opto-isolation** prevents these spikes from reaching the Pi's processor.
-*   **7.3 Fail-Safe Irrigation:** Normally Closed (NC) solenoid valves are wired to Normally Open (NO) relay terminals. The valves receive 12V directly from the master adapter (bypassing the buck converter), ensuring they slam shut if the system loses logic power.
-*   **7.4 Thermal Management & Enclosure Design:** 
-    *   **Active Cooling:** A dedicated exhaust fan is integrated into the enclosure to manage heat from the XL4016 heatsinks and the Pi 4.
-    *   **Airflow:** Positioned to pull hot air out, preventing "thermal throttling" and sensor instability.
-    *   **Wiring:** 12V fans connect to XL4016 **IN+ / IN-** (full speed); 5V fans connect to **OUT+ / OUT-**.
+### Protective Bill of Materials (BOM)
+| Component | Specification | Qty | Target Device |
+| :--- | :--- | :--- | :--- |
+| **Flyback Diode** | 1N4007 Rectifier Diode | 4 pcs | 1x (5V Pump), 3x (12V Valves) |
+| **Bulk Capacitor** | 1000µF Electrolytic (100V) | 1 pc | 5V Power Rail (XL4016 Output) |
+
+### 7.1 Back-EMF Suppression (The Diodes)
+When the relays turn off the pump or valves, the collapsing magnetic fields inside the motors shoot a destructive, high-voltage spark backward through the wires.
+
+*   **Wiring:** Install one 1N4007 Diode across the positive and negative wires of the pump, and across the wires of each of the three valves.
+*   **Crucial Polarity:** Diodes are strictly one-way. You must wire them in **"Reverse Bias."** Connect the side with the Silver Stripe (Cathode) to the Positive (+) wire of the pump/valve. Connect the Solid Black side (Anode) to the Negative (GND) wire.
+
+### 7.2 Brownout Prevention (The Capacitor)
+When the 5V pump turns on, it sucks a massive "inrush current" that can drop the 5V line voltage low enough to instantly crash the Raspberry Pi.
+
+*   **Wiring:** Install the 1000µF Capacitor acting as a battery buffer directly at the output terminals of the XL4016 Buck Converter.
+*   **Crucial Polarity:** Connect the Long Leg (Positive) to the 5V Output (+). Connect the Short Leg with the grey minus stripe (Negative) to the GND Output (-). **Warning:** Wiring this backward will cause the capacitor to pop!
+
+### 7.3 Logic Level Shifting
+The XKC-Y26-V liquid sensor operates at 5V. Its output signal is passed through a **Voltage Divider (1kΩ/2kΩ resistors)** to ensure the Pi only receives a safe 3.3V signal on GPIO 5.
 
 ---
 ## 8. Maintenance Note & Troubleshooting
@@ -111,14 +134,12 @@ Since the Raspberry Pi 4 GPIO is not 5V tolerant, the following safeguards are i
 The Smart Sprout system features a **Hardware-Aware Maintenance Mode**. If the app displays an orange **Wrench Icon** with a **"FAULT"** label, it means the Raspberry Pi has detected a hardware disconnect.
 
 ### Common Fault Triggers:
-1.  **I2C Bus Error ([Errno 5]):** Usually indicates a loose SDA or SCL wire on the ADS1115 (Soil) or BME280 (Environment).
+1.  **I2C Bus Error ([Errno 5]):** Usually indicates a loose SDA or SCL wire, or that the system experienced a power-drop (ensure your 1000µF capacitor is installed securely).
 2.  **Missing Driver:** If the BME280 is connected but fails to initialize, ensure you have installed the driver specifically using the `adafruit-circuitpython-bme280` package with the `--break-system-packages` flag.
 3.  **Address Conflict:** The system expects the **BME280 at 0x76** and the **ADS1115 at 0x48**. Use `i2cdetect -y 1` to verify these addresses are visible on the bus.
 
 ### Safety Hard-lock:
 When a sensor is in "FAULT" state, the backend **automatically disables (Hard-locks)** all irrigation logic for that specific zone. This prevents the pump from running indefinitely due to a faulty "dry" sensor reading.
-
----
 
 ---
 

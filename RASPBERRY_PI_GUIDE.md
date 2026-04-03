@@ -89,6 +89,8 @@ Copy your `Smartsprout` folder to `/home/pi/`. Then, move the backend to a conve
     cp .env.example .env
     nano .env
     # Ensure DEVICE_ID and DEVICE_PIN are set correctly.
+    # Note: The Raspberry Pi uses the Firebase Admin SDK (Service Account Key) 
+    # to authenticate directly with Firestore, bypassing standard Firebase Authentication.
     ```
 4.  **Install the Reliability Watchdog (Systemd)**:
     This ensures the backend auto-starts on boot and automatically recovers from crashes.

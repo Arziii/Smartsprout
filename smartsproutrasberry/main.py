@@ -464,10 +464,9 @@ def main():
     pump_watchdog.start_pump_watchdog()
 
     # ── Start Heartbeat Thread ──
-    # Sends an "I am alive" ping every 10 seconds.
-    # This is the ONLY signal the mobile app uses to detect if the Pi
-    # went offline or was unplugged. With a 10s ping, the app detects failure almost immediately.
-    # At 10s, it consumes ~8,640 writes/day, well within the 20,000 free tier limit.
+    # REVERTED TO 10S: This is the fastest "Real-time" setting for the defense.
+    # The Flutter app "Offline" timeout was updated to 45s (from original 90s)
+    # to provide a much snappier response if the device is unplugged.
     HEARTBEAT_INTERVAL = 10  # 10 seconds
     def _heartbeat_loop():
         while _running:

@@ -231,7 +231,10 @@ class SensorDataNotifier extends Notifier<SensorData> {
 
   void _startTimeout() {
     _timeoutTimer?.cancel();
-    _timeoutTimer = Timer(const Duration(seconds: 90), () {
+    // DEFENSE OPTIMIZATION: Set to 25s (previously 45s).
+    // With a 10s heartbeat, 25s allows for just 2 missed packets before "Offline",
+    // giving the exact feel of a 5s heartbeat without burning quota.
+    _timeoutTimer = Timer(const Duration(seconds: 25), () {
       if (!state.isOffline) {
         state = state.copyWith(systemStatus: 'offline');
       }

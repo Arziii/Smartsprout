@@ -10,13 +10,41 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 import time
 import threading
 import sys
+import os
 import datetime
 from datetime import timedelta
 import config
 
 _db = None
 _command_listener = None
-_last_cleanup_time = 0
+
+# ── PHASE 1 FIX: Persist cleanup time across reboots ──
+# The cleanup timestamp is saved to a local file so that if the Pi reboots
+# or the script restarts at night, it does NOT trigger a full cleanup batch
+# (500 reads + 500 deletes) immediately. Without this, every nightly restart
+# was the most likely cause of the 43,000 Firestore read spike.
+_CLEANUP_STAMP_FILE = os.path.join(os.path.dirname(__file__), '.last_cleanup')
+
+def _read_persisted_cleanup_time() -> float:
+    """Reads the last cleanup timestamp from disk. Returns 0.0 if not found."""
+    try:
+        if os.path.exists(_CLEANUP_STAMP_FILE):
+            with open(_CLEANUP_STAMP_FILE, 'r') as f:
+                return float(f.read().strip())
+    except Exception:
+        pass
+    return 0.0
+
+def _write_persisted_cleanup_time(ts: float):
+    """Saves the last cleanup timestamp to disk."""
+    try:
+        with open(_CLEANUP_STAMP_FILE, 'w') as f:
+            f.write(str(ts))
+    except Exception as e:
+        print(f"[FIREBASE] Warning: Could not persist cleanup time: {e}")
+
+# Load on module startup — survives reboots
+_last_cleanup_time: float = _read_persisted_cleanup_time()
 
 # ── Heartbeat Cache ──
 # The Dead-Man's Switch monitor used to call _db.get() every 3 seconds — a
@@ -235,6 +263,8 @@ def perform_storage_cleanup(force=False):
             print(f"[FIREBASE] Cleanup finished: Deleted {deleted_count} telemetry and {cmd_deleted_count} commands.")
         
         _last_cleanup_time = current_time
+        # PHASE 1 FIX: Persist to disk so reboots don't re-trigger cleanup
+        _write_persisted_cleanup_time(current_time)
             
     except Exception as e:
         print(f"[FIREBASE_ERROR] Storage cleanup failed: {e}")
