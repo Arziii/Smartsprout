@@ -33,14 +33,16 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text('Analytics',
             style: GoogleFonts.outfit(
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF0F2027),
+              color: isDark ? Colors.white : const Color(0xFF0F2027),
               letterSpacing: -0.5,
             )),
         backgroundColor: Colors.transparent,
@@ -52,56 +54,78 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
           // ── Background ──
           Positioned.fill(
             child: Container(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                  colors: isDark
+                      ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
+                      : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
                 ),
               ),
             ),
           ),
-          _buildBlob(top: -50, right: -100, size: 300, color: const Color(0xFF2BCC71).withValues(alpha: 0.15)),
-          _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withValues(alpha: 0.1)),
+          _buildBlob(
+              top: -50,
+              right: -100,
+              size: 300,
+              color: const Color(0xFF2BCC71).withValues(alpha: 0.15)),
+          _buildBlob(
+              bottom: 100,
+              left: -100,
+              size: 400,
+              color: Colors.blue.withValues(alpha: 0.1)),
 
           // ── Content ──
           SafeArea(
             child: ref.watch(analyticsProvider).when(
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: Color(0xFF2BCC71)),
-              ),
-              error: (e, st) => Center(child: Text('Error loading analytics: $e', style: const TextStyle(color: Colors.red))),
-              data: (data) {
-                // Generate UI FlSpots
-                final moistureSpots = data.map((d) => FlSpot(d.dayIndex.toDouble(), d.avgMoisture)).toList();
-                final tempSpots = data.map((d) => FlSpot(d.dayIndex.toDouble(), d.avgTemp)).toList();
-
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                       _buildAnimatedItem(0, _buildChartCard(
-                        title: 'Soil Moisture Trend (7 Days)',
-                        subtitle: 'Average across all zones',
-                        color: const Color(0xFF8D6E63),
-                        icon: Icons.grass_rounded,
-                        spots: moistureSpots,
-                      )),
-                      const SizedBox(height: 24),
-                      _buildAnimatedItem(1, _buildChartCard(
-                        title: 'Temperature Trend',
-                        subtitle: 'Daily average in °C',
-                        color: const Color(0xFFFF7043),
-                        icon: Icons.thermostat_rounded,
-                        spots: tempSpots,
-                      )),
-                      const SizedBox(height: 100),
-                    ],
+                  loading: () => const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF2BCC71)),
                   ),
-                );
-              },
-            ),
+                  error: (e, st) => Center(
+                      child: Text('Error loading analytics: $e',
+                          style: const TextStyle(color: Colors.red))),
+                  data: (data) {
+                    // Generate UI FlSpots
+                    final moistureSpots = data
+                        .map(
+                            (d) => FlSpot(d.dayIndex.toDouble(), d.avgMoisture))
+                        .toList();
+                    final tempSpots = data
+                        .map((d) => FlSpot(d.dayIndex.toDouble(), d.avgTemp))
+                        .toList();
+
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildAnimatedItem(
+                              0,
+                              _buildChartCard(
+                                title: 'Soil Moisture Trend (7 Days)',
+                                subtitle: 'Average across all zones',
+                                color: const Color(0xFF8D6E63),
+                                icon: Icons.grass_rounded,
+                                spots: moistureSpots,
+                              )),
+                          const SizedBox(height: 24),
+                          _buildAnimatedItem(
+                              1,
+                              _buildChartCard(
+                                title: 'Temperature Trend',
+                                subtitle: 'Daily average in °C',
+                                color: const Color(0xFFFF7043),
+                                icon: Icons.thermostat_rounded,
+                                spots: tempSpots,
+                              )),
+                          const SizedBox(height: 100),
+                        ],
+                      ),
+                    );
+                  },
+                ),
           ),
         ],
       ),
@@ -115,11 +139,16 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
     required IconData icon,
     required List<FlSpot> spots,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.8),
+        color: isDark
+            ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+            : Colors.white.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white, width: 2),
+        border:
+            Border.all(color: isDark ? Colors.white24 : Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -152,18 +181,21 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(title, 
-                            style: GoogleFonts.outfit(
-                              fontSize: 18, 
-                              fontWeight: FontWeight.w800, 
-                              color: const Color(0xFF0F2027)
-                            )),
+                          Text(title,
+                              style: GoogleFonts.outfit(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: isDark
+                                      ? Colors.white
+                                      : const Color(0xFF0F2027))),
                           Text(subtitle,
-                            style: GoogleFonts.outfit(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: const Color(0xFF4A6164),
-                            )),
+                              style: GoogleFonts.outfit(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: isDark
+                                    ? Colors.white70
+                                    : const Color(0xFF4A6164),
+                              )),
                         ],
                       ),
                     ),
@@ -180,28 +212,32 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                         horizontalInterval: 20,
                         getDrawingHorizontalLine: (value) {
                           return FlLine(
-                            color: const Color(0xFF4A6164).withValues(alpha: 0.1),
-                            strokeWidth: 1,
-                            dashArray: [5, 5]
-                          );
+                              color: const Color(0xFF4A6164)
+                                  .withValues(alpha: 0.1),
+                              strokeWidth: 1,
+                              dashArray: [5, 5]);
                         },
                       ),
                       titlesData: FlTitlesData(
-                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
                         leftTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
                             reservedSize: 30,
                             interval: 1,
                             getTitlesWidget: (value, meta) {
-                              if (value != value.toInt()) return const SizedBox.shrink();
-                              return Text('${value.toInt()}', 
-                                style: GoogleFonts.outfit(
-                                  fontSize: 12, 
-                                  color: const Color(0xFF4A6164).withValues(alpha: 0.7),
-                                  fontWeight: FontWeight.w600
-                                ));
+                              if (value != value.toInt()) {
+                                return const SizedBox.shrink();
+                              }
+                              return Text('${value.toInt()}',
+                                  style: GoogleFonts.outfit(
+                                      fontSize: 12,
+                                      color: const Color(0xFF4A6164)
+                                          .withValues(alpha: 0.7),
+                                      fontWeight: FontWeight.w600));
                             },
                           ),
                         ),
@@ -210,15 +246,17 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                             showTitles: true,
                             interval: 1,
                             getTitlesWidget: (value, meta) {
-                              if (value != value.toInt()) return const SizedBox.shrink();
+                              if (value != value.toInt()) {
+                                return const SizedBox.shrink();
+                              }
                               return Padding(
                                 padding: const EdgeInsets.only(top: 8.0),
-                                child: Text('D${value.toInt() + 1}', 
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 12, 
-                                    color: const Color(0xFF4A6164).withValues(alpha: 0.7),
-                                    fontWeight: FontWeight.w600
-                                  )),
+                                child: Text('D${value.toInt() + 1}',
+                                    style: GoogleFonts.outfit(
+                                        fontSize: 12,
+                                        color: const Color(0xFF4A6164)
+                                            .withValues(alpha: 0.7),
+                                        fontWeight: FontWeight.w600)),
                               );
                             },
                           ),
@@ -267,7 +305,13 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
     );
   }
 
-  Widget _buildBlob({double? top, double? left, double? right, double? bottom, required double size, required Color color}) {
+  Widget _buildBlob(
+      {double? top,
+      double? left,
+      double? right,
+      double? bottom,
+      required double size,
+      required Color color}) {
     return Positioned(
       top: top,
       left: left,
@@ -292,7 +336,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
         final start = index * 0.15;
         final curve = CurvedAnimation(
           parent: _entranceController,
-          curve: Interval(start.clamp(0.0, 1.0), (start + 0.6).clamp(0.0, 1.0), curve: Curves.easeOutQuart),
+          curve: Interval(start.clamp(0.0, 1.0), (start + 0.6).clamp(0.0, 1.0),
+              curve: Curves.easeOutQuart),
         );
         return Opacity(
           opacity: curve.value,

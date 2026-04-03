@@ -53,11 +53,15 @@ class _WifiService {
   static Future<List<WifiNetwork>> scan() async {
     final data = await _get('/scan');
     final list = data['networks'] as List<dynamic>? ?? [];
-    return list.map((e) => WifiNetwork.fromJson(e as Map<String, dynamic>)).toList();
+    return list
+        .map((e) => WifiNetwork.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  static Future<Map<String, dynamic>> connect(String ssid, String password) =>
-      _get('/connect?ssid=${Uri.encodeComponent(ssid)}&password=${Uri.encodeComponent(password)}');
+  static Future<
+      Map<String,
+          dynamic>> connect(String ssid, String password) => _get(
+      '/connect?ssid=${Uri.encodeComponent(ssid)}&password=${Uri.encodeComponent(password)}');
 
   static Future<Map<String, dynamic>> forget(String ssid) =>
       _get('/forget?ssid=${Uri.encodeComponent(ssid)}');
@@ -94,7 +98,8 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
       final data = await _WifiService.status();
       if (mounted) {
         setState(() {
-          _connectedSsid = data['connected'] == true ? (data['ssid'] ?? '') : '';
+          _connectedSsid =
+              data['connected'] == true ? (data['ssid'] ?? '') : '';
         });
       }
     } catch (_) {}
@@ -111,7 +116,8 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _statusMessage = 'Could not reach Wi-Fi bridge. Is wifi_bridge.py running?';
+          _statusMessage =
+              'Could not reach Wi-Fi bridge. Is wifi_bridge.py running?';
           _statusSuccess = false;
         });
       }
@@ -148,7 +154,8 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
       final success = result['success'] == true;
       if (mounted) {
         setState(() {
-          _statusMessage = result['message'] ?? (success ? 'Connected!' : 'Failed');
+          _statusMessage =
+              result['message'] ?? (success ? 'Connected!' : 'Failed');
           _statusSuccess = success;
           if (success) _connectedSsid = ssid;
         });
@@ -169,16 +176,19 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A2A2F),
         title: Text('Forget "$ssid"?',
-            style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w700)),
+            style: GoogleFonts.outfit(
+                color: Colors.white, fontWeight: FontWeight.w700)),
         content: Text('This will remove the saved password for this network.',
             style: GoogleFonts.outfit(color: Colors.white70)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: GoogleFonts.outfit(color: Colors.white54))),
+              child: Text('Cancel',
+                  style: GoogleFonts.outfit(color: Colors.white54))),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Forget', style: GoogleFonts.outfit(color: Colors.redAccent))),
+              child: Text('Forget',
+                  style: GoogleFonts.outfit(color: Colors.redAccent))),
         ],
       ),
     );
@@ -188,7 +198,8 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
       final success = result['success'] == true;
       if (mounted) {
         setState(() {
-          _statusMessage = result['message'] ?? (success ? 'Network forgotten.' : 'Failed');
+          _statusMessage =
+              result['message'] ?? (success ? 'Network forgotten.' : 'Failed');
           _statusSuccess = success;
           if (success) {
             _networks.removeWhere((n) => n.ssid == ssid);
@@ -197,7 +208,12 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() { _statusMessage = 'Error: $e'; _statusSuccess = false; });
+      if (mounted) {
+        setState(() {
+          _statusMessage = 'Error: $e';
+          _statusSuccess = false;
+        });
+      }
     }
   }
 
@@ -205,17 +221,23 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
 
   IconData _signalIcon(String strength) {
     switch (strength) {
-      case 'strong': return Icons.signal_wifi_4_bar_rounded;
-      case 'medium': return Icons.network_wifi_3_bar_rounded;
-      default:       return Icons.network_wifi_1_bar_rounded;
+      case 'strong':
+        return Icons.signal_wifi_4_bar_rounded;
+      case 'medium':
+        return Icons.network_wifi_3_bar_rounded;
+      default:
+        return Icons.network_wifi_1_bar_rounded;
     }
   }
 
   Color _signalColor(String strength) {
     switch (strength) {
-      case 'strong': return const Color(0xFF2BCC71);
-      case 'medium': return const Color(0xFFFFA726);
-      default:       return Colors.redAccent;
+      case 'strong':
+        return const Color(0xFF2BCC71);
+      case 'medium':
+        return const Color(0xFFFFA726);
+      default:
+        return Colors.redAccent;
     }
   }
 
@@ -236,7 +258,8 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF0F2027), size: 20),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              color: Color(0xFF0F2027), size: 20),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
@@ -271,10 +294,12 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
                 // ── Status / Error Message ────────────────────────────────
                 if (_statusMessage != null)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
                         color: _statusSuccess
                             ? const Color(0xFF2BCC71).withValues(alpha: 0.15)
@@ -289,8 +314,12 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
                       child: Row(
                         children: [
                           Icon(
-                            _statusSuccess ? Icons.check_circle_outline_rounded : Icons.error_outline_rounded,
-                            color: _statusSuccess ? const Color(0xFF2BCC71) : Colors.redAccent,
+                            _statusSuccess
+                                ? Icons.check_circle_outline_rounded
+                                : Icons.error_outline_rounded,
+                            color: _statusSuccess
+                                ? const Color(0xFF2BCC71)
+                                : Colors.redAccent,
                             size: 18,
                           ),
                           const SizedBox(width: 10),
@@ -320,15 +349,19 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
                       onPressed: _scanning ? null : _scan,
                       icon: _scanning
                           ? const SizedBox(
-                              width: 18, height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
                           : const Icon(Icons.wifi_find_rounded, size: 20),
                       label: Text(_scanning ? 'Scanning…' : 'Scan for Wi-Fi',
-                          style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 15)),
+                          style: GoogleFonts.outfit(
+                              fontWeight: FontWeight.w700, fontSize: 15)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF2BCC71),
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
                         elevation: 0,
                       ),
                     ),
@@ -344,13 +377,16 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.wifi_off_rounded, size: 60,
-                                  color: const Color(0xFF4A6164).withValues(alpha: 0.3)),
+                              Icon(Icons.wifi_off_rounded,
+                                  size: 60,
+                                  color: const Color(0xFF4A6164)
+                                      .withValues(alpha: 0.3)),
                               const SizedBox(height: 12),
                               Text('No networks found.\nPress Scan to search.',
                                   textAlign: TextAlign.center,
                                   style: GoogleFonts.outfit(
-                                      color: const Color(0xFF4A6164).withValues(alpha: 0.5),
+                                      color: const Color(0xFF4A6164)
+                                          .withValues(alpha: 0.5),
                                       fontSize: 14)),
                             ],
                           ),
@@ -358,8 +394,10 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
                       : ListView.separated(
                           padding: const EdgeInsets.symmetric(horizontal: 20),
                           itemCount: _networks.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (_, i) => _buildNetworkTile(_networks[i]),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (_, i) =>
+                              _buildNetworkTile(_networks[i]),
                         ),
                 ),
               ],
@@ -400,12 +438,12 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
                   style: GoogleFonts.outfit(
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
-                      color: connected ? const Color(0xFF2BCC71) : Colors.orange)),
+                      color:
+                          connected ? const Color(0xFF2BCC71) : Colors.orange)),
               if (connected)
                 Text(_connectedSsid,
                     style: GoogleFonts.outfit(
-                        fontSize: 12,
-                        color: const Color(0xFF4A6164))),
+                        fontSize: 12, color: const Color(0xFF4A6164))),
             ],
           ),
         ],
@@ -583,14 +621,17 @@ class _PasswordSheetState extends State<_PasswordSheet> {
               hintStyle: GoogleFonts.outfit(color: Colors.white38),
               filled: true,
               fillColor: Colors.white.withValues(alpha: 0.08),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
                 borderSide: BorderSide.none,
               ),
               suffixIcon: IconButton(
                 icon: Icon(
-                    _obscure ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                    _obscure
+                        ? Icons.visibility_off_rounded
+                        : Icons.visibility_rounded,
                     color: Colors.white38),
                 onPressed: () => setState(() => _obscure = !_obscure),
               ),
@@ -614,7 +655,8 @@ class _PasswordSheetState extends State<_PasswordSheet> {
               ),
               child: _connecting
                   ? const SizedBox(
-                      width: 22, height: 22,
+                      width: 22,
+                      height: 22,
                       child: CircularProgressIndicator(
                           strokeWidth: 2.5, color: Colors.white))
                   : Text('Connect',

@@ -86,8 +86,10 @@ class AuthState {
       deviceName: deviceName ?? this.deviceName,
       error: clearError ? null : (error ?? this.error),
       savedDevices: savedDevices ?? this.savedDevices,
-      isRateLimited: clearRateLimit ? false : (isRateLimited ?? this.isRateLimited),
-      rateLimitExpiry: clearRateLimit ? null : (rateLimitExpiry ?? this.rateLimitExpiry),
+      isRateLimited:
+          clearRateLimit ? false : (isRateLimited ?? this.isRateLimited),
+      rateLimitExpiry:
+          clearRateLimit ? null : (rateLimitExpiry ?? this.rateLimitExpiry),
     );
   }
 }
@@ -114,7 +116,10 @@ class AuthNotifier extends Notifier<AuthState> {
 
     // Auto-login bypass for Raspberry Pi Kiosk (Linux)
     if (Platform.isLinux) {
-      state = AuthState(isLoading: false, deviceId: 'SPROUT_A1B2', deviceName: 'Smart Sprout Kiosk');
+      state = AuthState(
+          isLoading: false,
+          deviceId: 'SPROUT_A1B2',
+          deviceName: 'Smart Sprout Kiosk');
       return;
     }
 
@@ -150,7 +155,8 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<bool> login(String deviceId, String pin) async {
     if (Platform.isLinux) return true;
 
-    state = state.copyWith(isLoading: true, clearError: true, clearRateLimit: true);
+    state =
+        state.copyWith(isLoading: true, clearError: true, clearRateLimit: true);
 
     final requestId = _uuid.v4();
     StreamSubscription<DocumentSnapshot>? listener;
@@ -171,16 +177,17 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       // Step 1: Write the login request to Firestore
       await _firestore.collection('login_requests').doc(requestId).set({
-        'deviceId':  deviceId,
-        'pin':       pin,
-        'status':    'pending',
+        'deviceId': deviceId,
+        'pin': pin,
+        'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
       });
 
       final Completer<bool> completer = Completer();
 
       // Step 2: Start 15-second hardware offline timeout
-      timeoutTimer = Timer(const Duration(seconds: _piTimeoutSeconds), () async {
+      timeoutTimer =
+          Timer(const Duration(seconds: _piTimeoutSeconds), () async {
         if (completed) return;
         completed = true;
         await cleanup();
@@ -220,12 +227,14 @@ class AuthNotifier extends Notifier<AuthState> {
                 _onLoginSuccess(deviceId, data);
                 if (!completer.isCompleted) completer.complete(true);
               } catch (e) {
-                state = state.copyWith(isLoading: false, error: 'Auth failed: $e');
+                state =
+                    state.copyWith(isLoading: false, error: 'Auth failed: $e');
                 await cleanup();
                 if (!completer.isCompleted) completer.complete(false);
               }
             } else {
-              state = state.copyWith(isLoading: false, error: 'Token missing. Try again.');
+              state = state.copyWith(
+                  isLoading: false, error: 'Token missing. Try again.');
               await cleanup();
               if (!completer.isCompleted) completer.complete(false);
             }
@@ -233,10 +242,12 @@ class AuthNotifier extends Notifier<AuthState> {
 
           case 'rate_limited':
             final lockedUntilEpoch = data['locked_until'] as int?;
-            final errorMsg = data['error'] as String? ?? 'Too many attempts. Wait 15 minutes.';
+            final errorMsg = data['error'] as String? ??
+                'Too many attempts. Wait 15 minutes.';
             DateTime? expiry;
             if (lockedUntilEpoch != null) {
-              expiry = DateTime.fromMillisecondsSinceEpoch(lockedUntilEpoch * 1000);
+              expiry =
+                  DateTime.fromMillisecondsSinceEpoch(lockedUntilEpoch * 1000);
             }
             state = state.copyWith(
               isLoading: false,
@@ -259,7 +270,6 @@ class AuthNotifier extends Notifier<AuthState> {
       });
 
       return await completer.future;
-
     } catch (e) {
       timeoutTimer?.cancel();
       listener?.cancel();
@@ -288,10 +298,11 @@ class AuthNotifier extends Notifier<AuthState> {
       final updatedDevices = List<SavedDevice>.from(state.savedDevices);
       final idx = updatedDevices.indexWhere((d) => d.deviceId == deviceId);
       if (idx != -1) {
-        updatedDevices[idx] = updatedDevices[idx].copyWith(lastUsed: DateTime.now());
+        updatedDevices[idx] =
+            updatedDevices[idx].copyWith(lastUsed: DateTime.now());
         updatedDevices.sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
-        await prefs.setString(
-            'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+        await prefs.setString('saved_devices',
+            jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
       }
 
       state = AuthState(
@@ -319,19 +330,23 @@ class AuthNotifier extends Notifier<AuthState> {
   // ─────────────────────────────────────────────────────
   // Post-login persistence
   // ─────────────────────────────────────────────────────
-  Future<void> _onLoginSuccess(String deviceId, Map<String, dynamic> responseData) async {
+  Future<void> _onLoginSuccess(
+      String deviceId, Map<String, dynamic> responseData) async {
     // Fetch device name from Firestore devices doc
     String finalNickname = deviceId;
     try {
       final doc = await _firestore.collection('devices').doc(deviceId).get();
       if (doc.exists) {
         final cloudName = doc.data()?['device_name'] as String?;
-        if (cloudName != null && cloudName.isNotEmpty) finalNickname = cloudName;
+        if (cloudName != null && cloudName.isNotEmpty) {
+          finalNickname = cloudName;
+        }
       }
     } catch (_) {}
 
     List<SavedDevice> updatedDevices = List.from(state.savedDevices);
-    final existingIndex = updatedDevices.indexWhere((d) => d.deviceId == deviceId);
+    final existingIndex =
+        updatedDevices.indexWhere((d) => d.deviceId == deviceId);
 
     if (existingIndex != -1) {
       finalNickname = updatedDevices[existingIndex].nickname.isNotEmpty
@@ -356,8 +371,8 @@ class AuthNotifier extends Notifier<AuthState> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('device_id', deviceId);
     await prefs.setString('device_name', finalNickname);
-    await prefs.setString(
-        'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+    await prefs.setString('saved_devices',
+        jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
 
     state = AuthState(
       isLoading: false,
@@ -373,12 +388,14 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> updateDeviceNickname(String deviceId, String newNickname) async {
     final prefs = await SharedPreferences.getInstance();
     List<SavedDevice> updatedDevices = List.from(state.savedDevices);
-    final existingIndex = updatedDevices.indexWhere((d) => d.deviceId == deviceId);
+    final existingIndex =
+        updatedDevices.indexWhere((d) => d.deviceId == deviceId);
 
     if (existingIndex != -1) {
-      updatedDevices[existingIndex] = updatedDevices[existingIndex].copyWith(nickname: newNickname);
-      await prefs.setString(
-          'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+      updatedDevices[existingIndex] =
+          updatedDevices[existingIndex].copyWith(nickname: newNickname);
+      await prefs.setString('saved_devices',
+          jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
       state = state.copyWith(savedDevices: updatedDevices);
     }
   }
@@ -387,8 +404,8 @@ class AuthNotifier extends Notifier<AuthState> {
     final prefs = await SharedPreferences.getInstance();
     List<SavedDevice> updatedDevices = List.from(state.savedDevices);
     updatedDevices.removeWhere((d) => d.deviceId == deviceId);
-    await prefs.setString(
-        'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+    await prefs.setString('saved_devices',
+        jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
 
     final currentDevice = state.deviceId;
     state = state.copyWith(savedDevices: updatedDevices);
@@ -416,17 +433,18 @@ class AuthNotifier extends Notifier<AuthState> {
           .doc(currentDevice)
           .collection('commands')
           .add({
-        'command':     'change_pin',
+        'command': 'change_pin',
         'current_pin': currentPin,
-        'new_pin':     newPin,
-        'processed':   false,
-        'createdAt':   FieldValue.serverTimestamp(),
+        'new_pin': newPin,
+        'processed': false,
+        'createdAt': FieldValue.serverTimestamp(),
       });
 
       state = state.copyWith(isLoading: false);
       return true;
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: 'Failed to update PIN: $e');
+      state =
+          state.copyWith(isLoading: false, error: 'Failed to update PIN: $e');
       return false;
     }
   }
@@ -448,11 +466,13 @@ class AuthNotifier extends Notifier<AuthState> {
       await prefs.setString('device_name', newDeviceName);
 
       List<SavedDevice> updatedDevices = List.from(state.savedDevices);
-      final idx = updatedDevices.indexWhere((d) => d.deviceId == currentDeviceId);
+      final idx =
+          updatedDevices.indexWhere((d) => d.deviceId == currentDeviceId);
       if (idx != -1) {
-        updatedDevices[idx] = updatedDevices[idx].copyWith(nickname: newDeviceName);
-        await prefs.setString(
-            'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+        updatedDevices[idx] =
+            updatedDevices[idx].copyWith(nickname: newDeviceName);
+        await prefs.setString('saved_devices',
+            jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
       }
 
       state = state.copyWith(

@@ -50,8 +50,8 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
     if (!_targetsLoaded) {
       final triggers = ref.read(triggerSettingsProvider);
       for (int z = 1; z <= 3; z++) {
-        _localStarts[z]   = triggers.startThreshold[z - 1];
-        _localTargets[z]  = triggers.targetMoisture[z - 1];
+        _localStarts[z] = triggers.startThreshold[z - 1];
+        _localTargets[z] = triggers.targetMoisture[z - 1];
         _localTimeouts[z] = triggers.maxPumpRuntime[z - 1];
       }
       _targetsLoaded = true;
@@ -69,16 +69,23 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
         title: Text('Calibration',
             style: GoogleFonts.outfit(
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF0F2027),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F2027),
               letterSpacing: -0.5,
             )),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: Color(0xFF0F2027), size: 20),
-          onPressed: () => context.canPop() ? context.pop() : context.pushReplacement('/settings'),
+          icon: Icon(Icons.arrow_back_ios_new_rounded,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F2027),
+              size: 20),
+          onPressed: () => context.canPop()
+              ? context.pop()
+              : context.pushReplacement('/settings'),
         ),
       ),
       body: GestureDetector(
@@ -97,7 +104,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                 ),
               ),
             ),
-            
+
             // Organic Blob shapes
             Positioned(
               top: -50,
@@ -126,61 +133,72 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
 
             SafeArea(
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 children: [
                   _buildInfoBanner(),
                   const SizedBox(height: 25),
                   _buildSectionHeader('Watering Triggers'),
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Column(
-                          children: [
-                            for (int i = 0; i < 3; i++) ...[
-                              _buildAnimatedItem(
-                                i,
-                                _buildCalibrationCard(
-                                  zone: i + 1,
-                                  label: i == 0 ? 'LEFT BED' : i == 1 ? 'CENTER BED' : 'RIGHT BED',
-                                  liveMoisture: liveMoisture(i),
-                                  offsetValue: sensorData.soilOffsets.length > i ? sensorData.soilOffsets[i] : 0.0,
-                                  isConnected: isConnected,
-                                ),
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Column(
+                        children: [
+                          for (int i = 0; i < 3; i++) ...[
+                            _buildAnimatedItem(
+                              i,
+                              _buildCalibrationCard(
+                                zone: i + 1,
+                                label: i == 0
+                                    ? 'LEFT BED'
+                                    : i == 1
+                                        ? 'CENTER BED'
+                                        : 'RIGHT BED',
+                                liveMoisture: liveMoisture(i),
+                                offsetValue: sensorData.soilOffsets.length > i
+                                    ? sensorData.soilOffsets[i]
+                                    : 0.0,
+                                isConnected: isConnected,
                               ),
-                              const SizedBox(height: 15),
-                            ],
+                            ),
+                            const SizedBox(height: 15),
                           ],
-                        ),
-                        if (!isConnected)
-                          Positioned.fill(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                                child: Container(
-                                  color: Colors.white.withValues(alpha: 0.6),
-                                  alignment: Alignment.center,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const CircularProgressIndicator(color: Color(0xFF2BCC71)),
-                                      const SizedBox(height: 16),
-                                      Text(
-                                        'Searching for Raspberry Pi...',
-                                        style: GoogleFonts.outfit(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 16,
-                                          color: const Color(0xFF0F2027),
-                                        ),
+                        ],
+                      ),
+                      if (!isConnected)
+                        Positioned.fill(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(24),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                              child: Container(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                alignment: Alignment.center,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const CircularProgressIndicator(
+                                        color: Color(0xFF2BCC71)),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Searching for Raspberry Pi...',
+                                      style: GoogleFonts.outfit(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 16,
+                                        color: Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.white
+                                            : const Color(0xFF0F2027),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 30),
                   _buildSectionHeader('Reference Reset'),
                   _buildAnimatedItem(
@@ -207,10 +225,13 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.5),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F2027).withValues(alpha: 0.05),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : const Color(0xFF0F2027).withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -224,7 +245,8 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
               color: const Color(0xFFFFA726).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.info_outline_rounded, color: Color(0xFFE65100), size: 24),
+            child: const Icon(Icons.info_outline_rounded,
+                color: Color(0xFFE65100), size: 24),
           ),
           const SizedBox(width: 15),
           Expanded(
@@ -282,7 +304,9 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F2027).withValues(alpha: 0.05),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : const Color(0xFF0F2027).withValues(alpha: 0.05),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -300,21 +324,26 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                 style: GoogleFonts.outfit(
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
-                  color: const Color(0xFF0F2027),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : const Color(0xFF0F2027),
                 ),
               ),
               if (offsetValue != null && offsetValue != 0.0)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: const Color(0xFF29B6F6).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF29B6F6).withValues(alpha: 0.3)),
+                    border: Border.all(
+                        color: const Color(0xFF29B6F6).withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.tune_rounded, size: 12, color: Color(0xFF0277BD)),
+                      const Icon(Icons.tune_rounded,
+                          size: 12, color: Color(0xFF0277BD)),
                       const SizedBox(width: 4),
                       Text(
                         '${offsetValue >= 0 ? "+" : ""}${offsetValue.toStringAsFixed(1)}%',
@@ -334,14 +363,16 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
           // ── Live Moisture Display ──
           Row(
             children: [
-               Icon(Icons.water_drop_rounded, color: moistureColor, size: 20),
+              Icon(Icons.water_drop_rounded, color: moistureColor, size: 20),
               const SizedBox(width: 8),
               Text(
                 isConnected ? '${liveMoisture.toStringAsFixed(1)}%' : '--%',
                 style: GoogleFonts.outfit(
                   fontWeight: FontWeight.w900,
                   fontSize: 28,
-                  color: const Color(0xFF0F2027),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : const Color(0xFF0F2027),
                 ),
               ),
               const SizedBox(width: 8),
@@ -371,7 +402,8 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                 onTap: isConnected ? () => _submitZoneTargets(zone) : null,
                 borderRadius: BorderRadius.circular(14),
                 child: Ink(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: isConnected
@@ -382,7 +414,8 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                     boxShadow: isConnected
                         ? [
                             BoxShadow(
-                              color: const Color(0xFF2BCC71).withValues(alpha: 0.3),
+                              color: const Color(0xFF2BCC71)
+                                  .withValues(alpha: 0.3),
                               blurRadius: 8,
                               offset: const Offset(0, 3),
                             ),
@@ -423,14 +456,16 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
         decoration: BoxDecoration(
           color: const Color(0xFFF0F9F4),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF2BCC71).withValues(alpha: 0.2)),
+          border:
+              Border.all(color: const Color(0xFF2BCC71).withValues(alpha: 0.2)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(Icons.tune_rounded, size: 16, color: Color(0xFF2BCC71)),
+                const Icon(Icons.tune_rounded,
+                    size: 16, color: Color(0xFF2BCC71)),
                 const SizedBox(width: 6),
                 Text(
                   'AUTOMATION SETTINGS',
@@ -455,7 +490,8 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                         fontSize: 13,
                         color: const Color(0xFF37474F))),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: const Color(0xFF2BCC71).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
@@ -498,7 +534,8 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                         fontSize: 13,
                         color: const Color(0xFF37474F))),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: const Color(0xFF2BCC71).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
@@ -542,7 +579,8 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                         fontSize: 13,
                         color: const Color(0xFF37474F))),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFFA726).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
@@ -575,38 +613,42 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
   }
 
   void _submitZoneTargets(int zone) {
-    final start   = _localStarts[zone]   ?? 50.0;
-    final target  = _localTargets[zone]  ?? 65.0;
+    final start = _localStarts[zone] ?? 50.0;
+    final target = _localTargets[zone] ?? 65.0;
     final timeout = _localTimeouts[zone] ?? 30;
 
     // 1. Persist locally via provider so sliders survive navigation.
     ref.read(triggerSettingsProvider.notifier).updateZone(
-      zone,
-      start:   start,
-      target:  target,
-      timeout: timeout,
-    );
+          zone,
+          start: start,
+          target: target,
+          timeout: timeout,
+        );
 
     // 2. Zero-Trust Flow: push command to Firestore queue.
     final dataService = ref.read(dataServiceProvider);
     dataService?.sendCommand({
-      'command':          'set_triggers',
-      'zone':             zone,
-      'start_threshold':  start,
+      'command': 'set_triggers',
+      'zone': zone,
+      'start_threshold': start,
       'target_saturation': target,
-      'safety_timeout':   timeout,
+      'safety_timeout': timeout,
     });
 
     // 3. Confirm to user.
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
           content: Text(
             'Zone $zone rules queued — Start: ${start.round()}%, Target: ${target.round()}%, Timeout: ${timeout}s',
             style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
           ),
-          backgroundColor: const Color(0xFF0F2027),
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : const Color(0xFF0F2027),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           duration: const Duration(seconds: 3),
         ),
       );
@@ -627,56 +669,67 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
           padding: const EdgeInsets.symmetric(vertical: 20),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: isConnected 
+              colors: isConnected
                   ? [const Color(0xFFA1887F), const Color(0xFF795548)]
-                  : [Colors.grey.withValues(alpha: 0.4), Colors.grey.withValues(alpha: 0.5)],
+                  : [
+                      Colors.grey.withValues(alpha: 0.4),
+                      Colors.grey.withValues(alpha: 0.5)
+                    ],
             ),
             borderRadius: BorderRadius.circular(20),
-            border: isConnected ? null : Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1.5),
-            boxShadow: isConnected ? [
-              BoxShadow(
-                color: const Color(0xFF795548).withValues(alpha: 0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
-              )
-            ] : null,
+            border: isConnected
+                ? null
+                : Border.all(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white10
+                        : Colors.white.withValues(alpha: 0.5),
+                    width: 1.5),
+            boxShadow: isConnected
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF795548).withValues(alpha: 0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    )
+                  ]
+                : null,
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: isConnected 
-              ? [
-                  const Icon(Icons.water_drop_outlined, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Text(
-                    'RUN DRY CALIBRATION (ALL ZONES)',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                      color: Colors.white,
-                      letterSpacing: 1.0,
+            children: isConnected
+                ? [
+                    const Icon(Icons.water_drop_outlined, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text(
+                      'RUN DRY CALIBRATION (ALL ZONES)',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: Colors.white,
+                        letterSpacing: 1.0,
+                      ),
                     ),
-                  ),
-                ]
-              : [
-                  const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2.5,
+                  ]
+                : [
+                    const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.5,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'WAITING FOR CONNECTION...',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                      color: Colors.white,
-                      letterSpacing: 1.0,
+                    const SizedBox(width: 12),
+                    Text(
+                      'WAITING FOR CONNECTION...',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: Colors.white,
+                        letterSpacing: 1.0,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
           ),
         ),
       ),
@@ -690,12 +743,15 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
         filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
         child: AlertDialog(
           backgroundColor: Colors.white.withValues(alpha: 0.9),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           title: Text(
             'Confirm Dry Calibration',
             style: GoogleFonts.outfit(
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF0F2027),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F2027),
             ),
           ),
           content: Text(
@@ -707,7 +763,8 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
               onPressed: () => Navigator.pop(dialogCtx),
               child: Text(
                 'CANCEL',
-                style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: Colors.grey),
+                style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w800, color: Colors.grey),
               ),
             ),
             ElevatedButton(
@@ -717,8 +774,10 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                 // Auto force-sync after dry calibration
                 dataService?.forceSync();
                 Navigator.pop(dialogCtx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Dry calibration command sent — syncing live data...'),
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'Dry calibration command sent — syncing live data...'),
                     backgroundColor: Color(0xFF5D4037),
                     behavior: SnackBarBehavior.floating,
                     duration: Duration(seconds: 2),
@@ -727,9 +786,12 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF795548),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
-              child: Text('CONFIRM', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: Colors.white)),
+              child: Text('CONFIRM',
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w800, color: Colors.white)),
             ),
           ],
         ),
@@ -755,10 +817,19 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
             gradient: LinearGradient(
               colors: isConnected
                   ? [const Color(0xFF29B6F6), const Color(0xFF0288D1)]
-                  : [Colors.grey.withValues(alpha: 0.4), Colors.grey.withValues(alpha: 0.5)],
+                  : [
+                      Colors.grey.withValues(alpha: 0.4),
+                      Colors.grey.withValues(alpha: 0.5)
+                    ],
             ),
             borderRadius: BorderRadius.circular(20),
-            border: isConnected ? null : Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1.5),
+            border: isConnected
+                ? null
+                : Border.all(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white10
+                        : Colors.white.withValues(alpha: 0.5),
+                    width: 1.5),
             boxShadow: isConnected
                 ? [
                     BoxShadow(
@@ -818,12 +889,15 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
         filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
         child: AlertDialog(
           backgroundColor: Colors.white.withValues(alpha: 0.9),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           title: Text(
             'Confirm Wet Calibration',
             style: GoogleFonts.outfit(
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF0F2027),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F2027),
             ),
           ),
           content: Text(
@@ -835,7 +909,8 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
               onPressed: () => Navigator.pop(dialogCtx),
               child: Text(
                 'CANCEL',
-                style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: Colors.grey),
+                style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w800, color: Colors.grey),
               ),
             ),
             ElevatedButton(
@@ -845,8 +920,10 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                 // Auto force-sync so the new wet_raw values appear immediately
                 dataService?.forceSync();
                 Navigator.pop(dialogCtx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Wet calibration command sent — syncing live data...'),
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'Wet calibration command sent — syncing live data...'),
                     backgroundColor: Color(0xFF0288D1),
                     behavior: SnackBarBehavior.floating,
                     duration: Duration(seconds: 2),
@@ -855,9 +932,12 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF29B6F6),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
-              child: Text('CONFIRM', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: Colors.white)),
+              child: Text('CONFIRM',
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w800, color: Colors.white)),
             ),
           ],
         ),
@@ -896,4 +976,3 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
     );
   }
 }
-

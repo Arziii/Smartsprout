@@ -96,8 +96,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       // Check if Pi confirmed in time
       final sensorData = ref.read(sensorDataProvider);
       final zoneIdx = zone - 1;
-      final confirmed =
-          zoneIdx < sensorData.pumpStatus.length && sensorData.pumpStatus[zoneIdx];
+      final confirmed = zoneIdx < sensorData.pumpStatus.length &&
+          sensorData.pumpStatus[zoneIdx];
       if (!confirmed) {
         _onPumpTimeout(zone);
       }
@@ -128,12 +128,14 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       SnackBar(
         content: Row(
           children: [
-            const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+            const Icon(Icons.warning_amber_rounded,
+                color: Colors.white, size: 20),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 'Zone $zone: Hardware did not respond. Check your connection.',
-                style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.white),
+                style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w600, color: Colors.white),
               ),
             ),
           ],
@@ -219,6 +221,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final sensorData = ref.watch(sensorDataProvider);
 
     // ── Optimistic UI: Listen for per-zone pump status confirmation from Pi ──
@@ -240,7 +243,6 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     final notifier = ref.read(sensorDataProvider.notifier);
     final isConnected = Platform.isLinux || !sensorData.isOffline;
 
-    
     // TEMPORARY BYPASS FOR UI TESTING WITHOUT SENSORS:
     const isTankLow = false; // normally: tankLevel < 10;
     const isPumpLockedSafe = false; // normally: pumpLocked;
@@ -250,20 +252,24 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       for (var z in [1, 2, 3]) {
         _wateringActive[z] = false;
       }
-      if (_activeStrategy != IrrigationStrategy.none) _activeStrategy = IrrigationStrategy.none;
+      if (_activeStrategy != IrrigationStrategy.none) {
+        _activeStrategy = IrrigationStrategy.none;
+      }
     }
 
     // Get raw moisture per zone for safety checks
     final rawSoil = sensorData.soilMoistureRaw;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text('Irrigation Control',
             style: GoogleFonts.outfit(
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF0F2027),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F2027),
               letterSpacing: -0.5,
             )),
         backgroundColor: Colors.transparent,
@@ -275,17 +281,27 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
           // ── Background ──
           Positioned.fill(
             child: Container(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                  colors: isDark
+                      ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
+                      : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
                 ),
               ),
             ),
           ),
-          _buildBlob(top: -50, right: -100, size: 300, color: const Color(0xFF2BCC71).withValues(alpha: 0.15)),
-          _buildBlob(bottom: 100, left: -100, size: 400, color: Colors.blue.withValues(alpha: 0.1)),
+          _buildBlob(
+              top: -50,
+              right: -100,
+              size: 300,
+              color: const Color(0xFF2BCC71).withValues(alpha: 0.15)),
+          _buildBlob(
+              bottom: 100,
+              left: -100,
+              size: 400,
+              color: Colors.blue.withValues(alpha: 0.1)),
 
           // ── Content ──
           SafeArea(
@@ -294,387 +310,567 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _buildAnimatedItem(0, Container(
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: isConnected ? const Color(0xFF2BCC71).withValues(alpha: 0.1) : Colors.redAccent.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(isConnected ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, 
-                          color: isConnected ? const Color(0xFF2BCC71) : Colors.redAccent, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          isConnected ? "System online and connected" : "System offline - commands disabled",
-                          style: GoogleFonts.outfit(
-                            color: isConnected ? const Color(0xFF2BCC71) : Colors.redAccent,
-                            fontWeight: FontWeight.w600,
-                          ),
+                  _buildAnimatedItem(
+                      0,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 8, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: isConnected
+                              ? const Color(0xFF2BCC71).withValues(alpha: 0.1)
+                              : Colors.redAccent.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ],
-                    ),
-                  )),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                                isConnected
+                                    ? Icons.cloud_done_rounded
+                                    : Icons.cloud_off_rounded,
+                                color: isConnected
+                                    ? const Color(0xFF2BCC71)
+                                    : Colors.redAccent,
+                                size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              isConnected
+                                  ? "System online and connected"
+                                  : "System offline - commands disabled",
+                              style: GoogleFonts.outfit(
+                                color: isConnected
+                                    ? const Color(0xFF2BCC71)
+                                    : Colors.redAccent,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
                   const SizedBox(height: 24),
 
                   // Mode Selector Card
-                  _buildAnimatedItem(1, _buildGlassCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Operation Mode',
-                            style: GoogleFonts.outfit(
-                                fontSize: 18, fontWeight: FontWeight.w800, color: const Color(0xFF0F2027))),
-                        const SizedBox(height: 16),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: SegmentedButton<String>(
-                            style: SegmentedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              selectedForegroundColor: Colors.white,
-                              selectedBackgroundColor: const Color(0xFF0F2027),
-                              textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              side: BorderSide.none,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  _buildAnimatedItem(
+                      1,
+                      _buildGlassCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Operation Mode',
+                                style: GoogleFonts.outfit(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.white
+                                        : const Color(0xFF0F2027))),
+                            const SizedBox(height: 16),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.white10
+                                    : Colors.white.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: SegmentedButton<String>(
+                                style: SegmentedButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  selectedForegroundColor:
+                                      Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? const Color(0xFF0F2027)
+                                          : Colors.white,
+                                  selectedBackgroundColor:
+                                      Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.white
+                                          : const Color(0xFF0F2027),
+                                  textStyle: GoogleFonts.outfit(
+                                      fontWeight: FontWeight.w600),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                  side: BorderSide.none,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12)),
+                                ),
+                                segments: const [
+                                  ButtonSegment(
+                                      value: 'manual',
+                                      label: Text('Manual'),
+                                      icon: Icon(Icons.touch_app_rounded)),
+                                  ButtonSegment(
+                                      value: 'auto',
+                                      label: Text('Auto'),
+                                      icon: Icon(Icons.schedule_rounded)),
+                                ],
+                                selected: {_mode},
+                                showSelectedIcon: false,
+                                onSelectionChanged: (sel) =>
+                                    setState(() => _mode = sel.first),
+                              ),
                             ),
-                            segments: const [
-                              ButtonSegment(
-                                  value: 'manual',
-                                  label: Text('Manual'),
-                                  icon: Icon(Icons.touch_app_rounded)),
-                              ButtonSegment(
-                                  value: 'auto',
-                                  label: Text('Auto'),
-                                  icon: Icon(Icons.schedule_rounded)),
-                            ],
-                            selected: {_mode},
-                            showSelectedIcon: false,
-                            onSelectionChanged: (sel) =>
-                                setState(() => _mode = sel.first),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                  )),
+                      )),
                   const SizedBox(height: 20),
 
                   // Per-Zone Toggle Controls
                   if (_mode == 'manual') ...[
-                    _buildAnimatedItem(2, _buildGlassCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Manual Override",
-                              style: GoogleFonts.outfit(
-                                  fontSize: 18, fontWeight: FontWeight.w800, color: const Color(0xFF0F2027))),
-                          const SizedBox(height: 8),
-                          Text("Tap to start watering, tap again to stop.",
-                              style: GoogleFonts.outfit(
-                                  fontSize: 13, fontWeight: FontWeight.w500, color: const Color(0xFF4A6164))),
-                          const SizedBox(height: 16),
+                    _buildAnimatedItem(
+                        2,
+                        _buildGlassCard(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("Manual Override",
+                                  style: GoogleFonts.outfit(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.white
+                                          : const Color(0xFF0F2027))),
+                              const SizedBox(height: 8),
+                              Text("Tap to start watering, tap again to stop.",
+                                  style: GoogleFonts.outfit(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.white70
+                                          : const Color(0xFF4A6164))),
+                              const SizedBox(height: 16),
 
-                          // Safety warnings (currently bypassed by UI testing flags)
+                              // Safety warnings (currently bypassed by UI testing flags)
 
-                          _buildZoneToggle(
-                            zone: 1,
-                            label: "Zone 1 (Left)",
-                            moisture: rawSoil.isNotEmpty ? rawSoil[0] : 0,
-                            target: sensorData.targetMoisture.isNotEmpty ? sensorData.targetMoisture[0] : 65.0,
-                            isActive: _wateringActive[1] ?? false,
-                            disabled: isPumpLockedSafe || !isConnected || isTankLow,
+                              _buildZoneToggle(
+                                zone: 1,
+                                label: "Zone 1 (Left)",
+                                moisture: rawSoil.isNotEmpty ? rawSoil[0] : 0,
+                                target: sensorData.targetMoisture.isNotEmpty
+                                    ? sensorData.targetMoisture[0]
+                                    : 65.0,
+                                isActive: _wateringActive[1] ?? false,
+                                disabled: isPumpLockedSafe ||
+                                    !isConnected ||
+                                    isTankLow,
+                              ),
+                              const SizedBox(height: 12),
+                              _buildZoneToggle(
+                                zone: 2,
+                                label: "Zone 2 (Center)",
+                                moisture: rawSoil.length > 1 ? rawSoil[1] : 0,
+                                target: sensorData.targetMoisture.length > 1
+                                    ? sensorData.targetMoisture[1]
+                                    : 65.0,
+                                isActive: _wateringActive[2] ?? false,
+                                disabled: isPumpLockedSafe ||
+                                    !isConnected ||
+                                    isTankLow,
+                              ),
+                              const SizedBox(height: 12),
+                              _buildZoneToggle(
+                                zone: 3,
+                                label: "Zone 3 (Right)",
+                                moisture: rawSoil.length > 2 ? rawSoil[2] : 0,
+                                target: sensorData.targetMoisture.length > 2
+                                    ? sensorData.targetMoisture[2]
+                                    : 65.0,
+                                isActive: _wateringActive[3] ?? false,
+                                disabled: isPumpLockedSafe ||
+                                    !isConnected ||
+                                    isTankLow,
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 12),
-                          _buildZoneToggle(
-                            zone: 2,
-                            label: "Zone 2 (Center)",
-                            moisture: rawSoil.length > 1 ? rawSoil[1] : 0,
-                            target: sensorData.targetMoisture.length > 1 ? sensorData.targetMoisture[1] : 65.0,
-                            isActive: _wateringActive[2] ?? false,
-                            disabled: isPumpLockedSafe || !isConnected || isTankLow,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildZoneToggle(
-                            zone: 3,
-                            label: "Zone 3 (Right)",
-                            moisture: rawSoil.length > 2 ? rawSoil[2] : 0,
-                            target: sensorData.targetMoisture.length > 2 ? sensorData.targetMoisture[2] : 65.0,
-                            isActive: _wateringActive[3] ?? false,
-                            disabled: isPumpLockedSafe || !isConnected || isTankLow,
-                          ),
-                        ],
-                      ),
-                    )),
+                        )),
                     const SizedBox(height: 24),
                   ],
 
                   if (_mode == 'auto') ...[
-                    _buildAnimatedItem(2, _buildGlassCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text("Automatic Strategy",
-                              style: GoogleFonts.outfit(
-                                  fontSize: 18, fontWeight: FontWeight.w800, color: const Color(0xFF0F2027))),
-                          const SizedBox(height: 16),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            padding: const EdgeInsets.all(4),
-                            child: SegmentedButton<String>(
-                              style: SegmentedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                selectedForegroundColor: Colors.white,
-                                selectedBackgroundColor: const Color(0xFF29B6F6),
-                                textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                side: BorderSide.none,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    _buildAnimatedItem(
+                        2,
+                        _buildGlassCard(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text("Automatic Strategy",
+                                  style: GoogleFonts.outfit(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.white
+                                          : const Color(0xFF0F2027))),
+                              const SizedBox(height: 16),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white10
+                                      : Colors.white.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                padding: const EdgeInsets.all(4),
+                                child: SegmentedButton<String>(
+                                  style: SegmentedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    selectedForegroundColor:
+                                        Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? const Color(0xFF0F2027)
+                                            : Colors.white,
+                                    selectedBackgroundColor:
+                                        const Color(0xFF29B6F6),
+                                    textStyle: GoogleFonts.outfit(
+                                        fontWeight: FontWeight.w600),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
+                                    side: BorderSide.none,
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(12)),
+                                  ),
+                                  segments: const [
+                                    ButtonSegment(
+                                      value: 'sensor',
+                                      label: Text('Sensor Target'),
+                                      icon: Icon(Icons.water_drop_rounded),
+                                    ),
+                                    ButtonSegment(
+                                      value: 'timer',
+                                      label: Text('Daily Timer'),
+                                      icon: Icon(
+                                          Icons.access_time_filled_rounded),
+                                    ),
+                                  ],
+                                  selected: {_autoStrategy},
+                                  showSelectedIcon: false,
+                                  onSelectionChanged: (sel) =>
+                                      setState(() => _autoStrategy = sel.first),
+                                ),
                               ),
-                              segments: const [
-                                ButtonSegment(
-                                  value: 'sensor',
-                                  label: Text('Sensor Target'),
-                                  icon: Icon(Icons.water_drop_rounded),
-                                ),
-                                ButtonSegment(
-                                  value: 'timer',
-                                  label: Text('Daily Timer'),
-                                  icon: Icon(Icons.access_time_filled_rounded),
-                                ),
+                              const SizedBox(height: 24),
+
+                              if (_autoStrategy == 'sensor') ...[
+                                Row(children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                        color: const Color(0xFF29B6F6)
+                                            .withValues(alpha: 0.15),
+                                        shape: BoxShape.circle),
+                                    child: const Icon(Icons.water_drop_rounded,
+                                        color: Color(0xFF29B6F6)),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                      child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                        Text("Sensor Thresholds",
+                                            style: GoogleFonts.outfit(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w700,
+                                                color: Theme.of(context)
+                                                            .brightness ==
+                                                        Brightness.dark
+                                                    ? Colors.white
+                                                    : const Color(0xFF0F2027))),
+                                        Text(
+                                            "Waters automatically when soil moisture drops below your calibration level.",
+                                            style: GoogleFonts.outfit(
+                                                color: Theme.of(context)
+                                                            .brightness ==
+                                                        Brightness.dark
+                                                    ? Colors.white70
+                                                    : const Color(0xFF4A6164),
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w500)),
+                                      ]))
+                                ])
+                              ] else ...[
+                                Row(children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                        color: const Color(0xFF29B6F6)
+                                            .withValues(alpha: 0.15),
+                                        shape: BoxShape.circle),
+                                    child: const Icon(
+                                        Icons.access_time_filled_rounded,
+                                        color: Color(0xFF29B6F6)),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                      child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                        Text("Daily Schedule",
+                                            style: GoogleFonts.outfit(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w700,
+                                                color: Theme.of(context)
+                                                            .brightness ==
+                                                        Brightness.dark
+                                                    ? Colors.white
+                                                    : const Color(0xFF0F2027))),
+                                        Text(
+                                            "Waters all zones every day at the time selected below.",
+                                            style: GoogleFonts.outfit(
+                                                color: Theme.of(context)
+                                                            .brightness ==
+                                                        Brightness.dark
+                                                    ? Colors.white70
+                                                    : const Color(0xFF4A6164),
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w500)),
+                                      ]))
+                                ]),
+                                const SizedBox(height: 16),
+                                InkWell(
+                                    onTap: () async {
+                                      final time = await showTimePicker(
+                                          context: context,
+                                          initialTime: _autoTime);
+                                      if (time != null) {
+                                        setState(() => _autoTime = time);
+                                      }
+                                    },
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 16, horizontal: 20),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.8),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          border: Border.all(
+                                              color: const Color(0xFF29B6F6)
+                                                  .withValues(alpha: 0.3)),
+                                        ),
+                                        child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text("Execution Time",
+                                                  style: GoogleFonts.outfit(
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      fontSize: 15,
+                                                      color: Theme.of(context)
+                                                                  .brightness ==
+                                                              Brightness.dark
+                                                          ? Colors.white
+                                                          : const Color(
+                                                              0xFF0F2027))),
+                                              Text(_autoTime.format(context),
+                                                  style: GoogleFonts.outfit(
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                      fontSize: 18,
+                                                      color: const Color(
+                                                          0xFF29B6F6))),
+                                            ])))
                               ],
-                              selected: {_autoStrategy},
-                              showSelectedIcon: false,
-                              onSelectionChanged: (sel) => setState(() => _autoStrategy = sel.first),
-                            ),
+
+                              // Safety warning for auto mode (currently bypassed by UI testing flags)
+
+                              const SizedBox(height: 24),
+                              // ── Auto Mode Toggle Switch ──
+                              _buildAutoModeToggle(
+                                isActive: _activeStrategy ==
+                                    (_autoStrategy == 'sensor'
+                                        ? IrrigationStrategy.sensor
+                                        : IrrigationStrategy.timer),
+                                disabled: !isConnected ||
+                                    isPumpLockedSafe ||
+                                    isTankLow,
+                                onToggle: () {
+                                  HapticFeedback.heavyImpact();
+                                  final targetStrategy =
+                                      _autoStrategy == 'sensor'
+                                          ? IrrigationStrategy.sensor
+                                          : IrrigationStrategy.timer;
+
+                                  setState(() {
+                                    if (_activeStrategy == targetStrategy) {
+                                      _activeStrategy = IrrigationStrategy.none;
+                                    } else {
+                                      _activeStrategy = targetStrategy;
+                                    }
+                                  });
+
+                                  if (_activeStrategy !=
+                                      IrrigationStrategy.none) {
+                                    ref
+                                        .read(dataServiceProvider)
+                                        ?.setWateringMode(
+                                          'auto',
+                                          strategy: _activeStrategy.name,
+                                          timerHour: _autoTime.hour,
+                                          timerMinute: _autoTime.minute,
+                                        );
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                            'Auto watering ON — ${_activeStrategy.name} mode',
+                                            style: GoogleFonts.outfit(
+                                                fontWeight: FontWeight.w600)),
+                                        backgroundColor:
+                                            const Color(0xFF2BCC71),
+                                        behavior: SnackBarBehavior.floating,
+                                        duration: const Duration(seconds: 2),
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(10)),
+                                      ),
+                                    );
+                                  } else {
+                                    ref
+                                        .read(dataServiceProvider)
+                                        ?.setWateringMode('manual');
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Auto watering OFF',
+                                            style: GoogleFonts.outfit(
+                                                fontWeight: FontWeight.w600)),
+                                        backgroundColor:
+                                            const Color(0xFF0F2027),
+                                        behavior: SnackBarBehavior.floating,
+                                        duration: const Duration(seconds: 2),
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(10)),
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 24),
-                          
-                          if (_autoStrategy == 'sensor') ...[
-                             Row(
-                               children: [
-                                 Container(
-                                   padding: const EdgeInsets.all(12),
-                                   decoration: BoxDecoration(color: const Color(0xFF29B6F6).withValues(alpha: 0.15), shape: BoxShape.circle),
-                                   child: const Icon(Icons.water_drop_rounded, color: Color(0xFF29B6F6)),
-                                 ),
-                                 const SizedBox(width: 16),
-                                 Expanded(
-                                   child: Column(
-                                     crossAxisAlignment: CrossAxisAlignment.start,
-                                     children: [
-                                       Text("Sensor Thresholds", style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: const Color(0xFF0F2027))),
-                                       Text("Waters automatically when soil moisture drops below your calibration level.", style: GoogleFonts.outfit(color: const Color(0xFF4A6164), fontSize: 13, fontWeight: FontWeight.w500)),
-                                     ]
-                                   )
-                                 )
-                               ]
-                             )
-                          ] else ...[
-                             Row(
-                               children: [
-                                 Container(
-                                   padding: const EdgeInsets.all(12),
-                                   decoration: BoxDecoration(color: const Color(0xFF29B6F6).withValues(alpha: 0.15), shape: BoxShape.circle),
-                                   child: const Icon(Icons.access_time_filled_rounded, color: Color(0xFF29B6F6)),
-                                 ),
-                                 const SizedBox(width: 16),
-                                 Expanded(
-                                   child: Column(
-                                     crossAxisAlignment: CrossAxisAlignment.start,
-                                     children: [
-                                       Text("Daily Schedule", style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: const Color(0xFF0F2027))),
-                                       Text("Waters all zones every day at the time selected below.", style: GoogleFonts.outfit(color: const Color(0xFF4A6164), fontSize: 13, fontWeight: FontWeight.w500)),
-                                     ]
-                                   )
-                                 )
-                               ]
-                             ),
-                             const SizedBox(height: 16),
-                             InkWell(
-                               onTap: () async {
-                                 final time = await showTimePicker(context: context, initialTime: _autoTime);
-                                 if (time != null) setState(() => _autoTime = time);
-                               },
-                               borderRadius: BorderRadius.circular(12),
-                               child: Container(
-                                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                                 decoration: BoxDecoration(
-                                   color: Colors.white.withValues(alpha: 0.8),
-                                   borderRadius: BorderRadius.circular(12),
-                                   border: Border.all(color: const Color(0xFF29B6F6).withValues(alpha: 0.3)),
-                                 ),
-                                 child: Row(
-                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                   children: [
-                                     Text("Execution Time", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 15, color: const Color(0xFF0F2027))),
-                                     Text(_autoTime.format(context), style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 18, color: const Color(0xFF29B6F6))),
-                                   ]
-                                 )
-                               )
-                             )
-                          ],
-
-                          // Safety warning for auto mode (currently bypassed by UI testing flags)
-
-
-                          const SizedBox(height: 24),
-                          // ── Auto Mode Toggle Switch ──
-                          _buildAutoModeToggle(
-                            isActive: _activeStrategy == (_autoStrategy == 'sensor' ? IrrigationStrategy.sensor : IrrigationStrategy.timer),
-                            disabled: !isConnected || isPumpLockedSafe || isTankLow,
-                            onToggle: () {
-                              HapticFeedback.heavyImpact();
-                              final targetStrategy = _autoStrategy == 'sensor' ? IrrigationStrategy.sensor : IrrigationStrategy.timer;
-                              
-                              setState(() {
-                                if (_activeStrategy == targetStrategy) {
-                                  _activeStrategy = IrrigationStrategy.none;
-                                } else {
-                                  _activeStrategy = targetStrategy;
-                                }
-                              });
-                              
-                              if (_activeStrategy != IrrigationStrategy.none) {
-                                ref.read(dataServiceProvider)?.setWateringMode(
-                                  'auto',
-                                  strategy: _activeStrategy.name,
-                                  timerHour: _autoTime.hour,
-                                  timerMinute: _autoTime.minute,
-                                );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Auto watering ON — ${_activeStrategy.name} mode',
-                                        style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
-                                    backgroundColor: const Color(0xFF2BCC71),
-                                    behavior: SnackBarBehavior.floating,
-                                    duration: const Duration(seconds: 2),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                  ),
-                                );
-                              } else {
-                                ref.read(dataServiceProvider)?.setWateringMode('manual');
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Auto watering OFF',
-                                        style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
-                                    backgroundColor: const Color(0xFF0F2027),
-                                    behavior: SnackBarBehavior.floating,
-                                    duration: const Duration(seconds: 2),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                  ),
-                                );
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                    )),
+                        )),
                     const SizedBox(height: 24),
                   ],
 
                   // ── Emergency Stop / Lockdown Controller ──
-                  _buildAnimatedItem(3, AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    padding: _masterLockdown ? const EdgeInsets.all(16) : EdgeInsets.zero,
-                    decoration: BoxDecoration(
-                      color: _masterLockdown ? Colors.redAccent.withValues(alpha: 0.1) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(24),
-                      border: _masterLockdown 
-                          ? Border.all(color: Colors.redAccent.withValues(alpha: 0.3), width: 2)
-                          : null,
-                      boxShadow: [
-                        BoxShadow(
-                          color: _masterLockdown 
-                             ? Colors.redAccent.withValues(alpha: 0.1)
-                             : Colors.redAccent.withValues(alpha: 0.3),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        )
-                      ]
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_masterLockdown) ...[
-                          Row(
-                            children: [
-                              const Icon(Icons.report_problem_rounded, color: Colors.redAccent, size: 24),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text("MASTER LOCKDOWN ACTIVE",
-                                        style: GoogleFonts.outfit(
-                                            color: Colors.redAccent,
-                                            fontWeight: FontWeight.w900,
-                                            fontSize: 13,
-                                            letterSpacing: 0.5)),
-                                    Text("All watering disabled for safety.",
-                                        style: GoogleFonts.outfit(
-                                            color: Colors.redAccent.withValues(alpha: 0.7),
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 11)),
-                                  ],
+                  _buildAnimatedItem(
+                      3,
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        padding: _masterLockdown
+                            ? const EdgeInsets.all(16)
+                            : EdgeInsets.zero,
+                        decoration: BoxDecoration(
+                            color: _masterLockdown
+                                ? Colors.redAccent.withValues(alpha: 0.1)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(24),
+                            border: _masterLockdown
+                                ? Border.all(
+                                    color:
+                                        Colors.redAccent.withValues(alpha: 0.3),
+                                    width: 2)
+                                : null,
+                            boxShadow: [
+                              BoxShadow(
+                                color: _masterLockdown
+                                    ? Colors.redAccent.withValues(alpha: 0.1)
+                                    : Colors.redAccent.withValues(alpha: 0.3),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
+                              )
+                            ]),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_masterLockdown) ...[
+                              Row(
+                                children: [
+                                  const Icon(Icons.report_problem_rounded,
+                                      color: Colors.redAccent, size: 24),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text("MASTER LOCKDOWN ACTIVE",
+                                            style: GoogleFonts.outfit(
+                                                color: Colors.redAccent,
+                                                fontWeight: FontWeight.w900,
+                                                fontSize: 13,
+                                                letterSpacing: 0.5)),
+                                        Text(
+                                            "All watering disabled for safety.",
+                                            style: GoogleFonts.outfit(
+                                                color: Colors.redAccent
+                                                    .withValues(alpha: 0.7),
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 11)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+                            SizedBox(
+                              height: 56,
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: isConnected
+                                    ? () {
+                                        HapticFeedback.heavyImpact();
+                                        if (!_masterLockdown) {
+                                          notifier.emergencyStop();
+                                          setState(() {
+                                            _masterLockdown = true;
+                                            _wateringActive[1] = false;
+                                            _wateringActive[2] = false;
+                                            _wateringActive[3] = false;
+                                            _activeStrategy =
+                                                IrrigationStrategy.none;
+                                          });
+                                        } else {
+                                          setState(
+                                              () => _masterLockdown = false);
+                                        }
+                                      }
+                                    : null,
+                                icon: Icon(
+                                    _masterLockdown
+                                        ? Icons.lock_open_rounded
+                                        : Icons.power_settings_new_rounded,
+                                    size: 24),
+                                label: Text(
+                                    _masterLockdown
+                                        ? "RELEASE SYSTEM LOCK"
+                                        : "EMERGENCY STOP",
+                                    style: GoogleFonts.outfit(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 1.0)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _masterLockdown
+                                      ? const Color(0xFF1B1B1B)
+                                      : Colors.redAccent,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(20)),
+                                  elevation: 0,
                                 ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                        SizedBox(
-                          height: 56,
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: isConnected
-                                ? () {
-                                    HapticFeedback.heavyImpact();
-                                    if (!_masterLockdown) {
-                                      notifier.emergencyStop();
-                                      setState(() {
-                                        _masterLockdown = true;
-                                        _wateringActive[1] = false;
-                                        _wateringActive[2] = false;
-                                        _wateringActive[3] = false;
-                                        _activeStrategy = IrrigationStrategy.none;
-                                      });
-                                    } else {
-                                      setState(() => _masterLockdown = false);
-                                    }
-                                  }
-                                : null,
-                            icon: Icon(
-                              _masterLockdown 
-                                ? Icons.lock_open_rounded 
-                                : Icons.power_settings_new_rounded, 
-                              size: 24),
-                            label: Text(
-                              _masterLockdown ? "RELEASE SYSTEM LOCK" : "EMERGENCY STOP",
-                              style: GoogleFonts.outfit(
-                                  fontSize: 16, 
-                                  fontWeight: FontWeight.w800, 
-                                  letterSpacing: 1.0)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _masterLockdown ? const Color(0xFF1B1B1B) : Colors.redAccent,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20)),
-                              elevation: 0,
                             ),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                  )),
+                      )),
                   const SizedBox(height: 100),
                 ],
               ),
@@ -724,8 +920,12 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
 
     if (isLocked) {
       // Locked state — greyed out
-      bgColor = Colors.grey.shade50;
-      borderColor = Colors.grey.shade200;
+      bgColor = Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF2C2C2C)
+          : Colors.grey.shade50;
+      borderColor = Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey.shade800
+          : Colors.grey.shade200;
       iconBgColor = Colors.grey.shade100;
       iconColor = Colors.grey.shade400;
       toggleBgColor = Colors.grey.shade200;
@@ -751,8 +951,12 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       toggleLabel = 'Stop';
     } else {
       // Idle state — ready to start
-      bgColor = Colors.white.withValues(alpha: 0.5);
-      borderColor = Colors.white;
+      bgColor = Theme.of(context).brightness == Brightness.dark
+          ? Colors.white10
+          : Colors.white.withValues(alpha: 0.5);
+      borderColor = Theme.of(context).brightness == Brightness.dark
+          ? Colors.white24
+          : Colors.white;
       iconBgColor = const Color(0xFF2BCC71).withValues(alpha: 0.1);
       iconColor = const Color(0xFF2BCC71);
       toggleBgColor = const Color(0xFF2BCC71);
@@ -839,7 +1043,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF29B6F6).withValues(alpha: 0.2),
+                              color: const Color(0xFF29B6F6)
+                                  .withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text('WATERING',
@@ -872,7 +1077,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                   ],
                 ),
               ),
-              
+
               const SizedBox(width: 8),
 
               // ── Right Action: Spinner / Stop / Lock ──
@@ -881,7 +1086,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                 Flexible(
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       color: Colors.orange.shade700,
                       borderRadius: BorderRadius.circular(14),
@@ -901,7 +1107,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                           height: 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -920,14 +1127,16 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                     onTap: isLocked ? null : () => _toggleWatering(zone),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
                         color: toggleBgColor,
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: isActive
                             ? [
                                 BoxShadow(
-                                  color: Colors.redAccent.withValues(alpha: 0.3),
+                                  color:
+                                      Colors.redAccent.withValues(alpha: 0.3),
                                   blurRadius: 8,
                                   offset: const Offset(0, 3),
                                 )
@@ -998,9 +1207,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
           ],
           // ── Live Moisture Expansion Panel (visible when actively watering) ──
           AnimatedCrossFade(
-            crossFadeState: isActive
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
+            crossFadeState:
+                isActive ? CrossFadeState.showSecond : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 400),
             sizeCurve: Curves.easeInOut,
             firstChild: const SizedBox.shrink(),
@@ -1030,9 +1238,15 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
         decoration: BoxDecoration(
           color: isFilled ? color : color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
-          border: isFilled ? null : Border.all(color: color.withValues(alpha: 0.3)),
+          border:
+              isFilled ? null : Border.all(color: color.withValues(alpha: 0.3)),
           boxShadow: isFilled
-              ? [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 2))]
+              ? [
+                  BoxShadow(
+                      color: color.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2))
+                ]
               : null,
         ),
         alignment: Alignment.center,
@@ -1050,9 +1264,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
 
   // ignore: unused_element — retained for when UI testing bypass is removed
   Widget _buildWarningBanner(
-      {required IconData icon,
-      required String text,
-      required Color color}) {
+      {required IconData icon, required String text, required Color color}) {
     return Container(
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 16),
@@ -1068,9 +1280,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
           Expanded(
             child: Text(text,
                 style: GoogleFonts.outfit(
-                    color: color,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13)),
+                    color: color, fontWeight: FontWeight.w600, fontSize: 13)),
           ),
         ],
       ),
@@ -1094,8 +1304,12 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     final String subtitle;
 
     if (disabled) {
-      bgColor = Colors.grey.shade100;
-      borderColor = Colors.grey.shade200;
+      bgColor = Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF2C2C2C)
+          : Colors.grey.shade100;
+      borderColor = Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey.shade800
+          : Colors.grey.shade200;
       textColor = Colors.grey.shade400;
       icon = Icons.lock_rounded;
       label = 'Locked';
@@ -1108,7 +1322,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       label = 'Auto Mode ON';
       subtitle = 'Tap to deactivate';
     } else {
-      bgColor = Colors.white.withValues(alpha: 0.5);
+      bgColor = Theme.of(context).brightness == Brightness.dark
+          ? Colors.white10
+          : Colors.white.withValues(alpha: 0.5);
       borderColor = const Color(0xFF0F2027).withValues(alpha: 0.15);
       textColor = const Color(0xFF0F2027);
       icon = Icons.toggle_off_rounded;
@@ -1170,13 +1386,18 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     );
   }
 
-
   Widget _buildGlassCard({required Widget child}) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.7),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E1E1E).withValues(alpha: 0.7)
+            : Colors.white.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white, width: 2),
+        border: Border.all(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white24
+                : Colors.white,
+            width: 2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -1198,7 +1419,13 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     );
   }
 
-  Widget _buildBlob({double? top, double? left, double? right, double? bottom, required double size, required Color color}) {
+  Widget _buildBlob(
+      {double? top,
+      double? left,
+      double? right,
+      double? bottom,
+      required double size,
+      required Color color}) {
     return Positioned(
       top: top,
       left: left,
@@ -1223,7 +1450,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
         final start = index * 0.1;
         final curve = CurvedAnimation(
           parent: _entranceController,
-          curve: Interval(start.clamp(0.0, 1.0), (start + 0.6).clamp(0.0, 1.0), curve: Curves.easeOutQuart),
+          curve: Interval(start.clamp(0.0, 1.0), (start + 0.6).clamp(0.0, 1.0),
+              curve: Curves.easeOutQuart),
         );
         return Opacity(
           opacity: curve.value,
@@ -1310,7 +1538,9 @@ class _LiveMoisturePanelState extends State<_LiveMoisturePanel>
               style: GoogleFonts.outfit(
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
-                color: const Color(0xFF4A6164),
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white70
+                    : const Color(0xFF4A6164),
                 letterSpacing: 1.2,
               ),
             ),
@@ -1370,7 +1600,9 @@ class _LiveMoisturePanelState extends State<_LiveMoisturePanel>
                       'Target',
                       style: GoogleFonts.outfit(
                         fontSize: 10,
-                        color: const Color(0xFF4A6164),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white70
+                            : const Color(0xFF4A6164),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -1394,7 +1626,8 @@ class _LiveMoisturePanelState extends State<_LiveMoisturePanel>
           LayoutBuilder(
             builder: (context, constraints) {
               final barWidth = constraints.maxWidth;
-              final tickX = (targetFraction * barWidth).clamp(0.0, barWidth - 4);
+              final tickX =
+                  (targetFraction * barWidth).clamp(0.0, barWidth - 4);
               return SizedBox(
                 height: 10,
                 child: Stack(
@@ -1416,8 +1649,14 @@ class _LiveMoisturePanelState extends State<_LiveMoisturePanel>
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: nearTarget
-                                ? [const Color(0xFF2BCC71), const Color(0xFF1BA85D)]
-                                : [const Color(0xFF29B6F6), const Color(0xFF0277BD)],
+                                ? [
+                                    const Color(0xFF2BCC71),
+                                    const Color(0xFF1BA85D)
+                                  ]
+                                : [
+                                    const Color(0xFF29B6F6),
+                                    const Color(0xFF0277BD)
+                                  ],
                           ),
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -1435,7 +1674,8 @@ class _LiveMoisturePanelState extends State<_LiveMoisturePanel>
                           borderRadius: BorderRadius.circular(2),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF2BCC71).withValues(alpha: 0.6),
+                              color: const Color(0xFF2BCC71)
+                                  .withValues(alpha: 0.6),
                               blurRadius: 4,
                             ),
                           ],
@@ -1454,12 +1694,16 @@ class _LiveMoisturePanelState extends State<_LiveMoisturePanel>
               Text('0%',
                   style: GoogleFonts.outfit(
                       fontSize: 9,
-                      color: const Color(0xFF4A6164),
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white70
+                          : const Color(0xFF4A6164),
                       fontWeight: FontWeight.w500)),
               Text('100%',
                   style: GoogleFonts.outfit(
                       fontSize: 9,
-                      color: const Color(0xFF4A6164),
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white70
+                          : const Color(0xFF4A6164),
                       fontWeight: FontWeight.w500)),
             ],
           ),
@@ -1469,7 +1713,8 @@ class _LiveMoisturePanelState extends State<_LiveMoisturePanel>
             decoration: BoxDecoration(
               color: Colors.redAccent.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
+              border:
+                  Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
             ),
             child: Text(
               'Sensor fault — moisture reading unavailable',

@@ -7,12 +7,13 @@ import '../../data/services/data_service.dart';
 
 // Persistence keys
 const _kCalibrationKey = 'smartsprout_calibration_offsets';
-const _kTriggersKey    = 'smartsprout_trigger_settings';
+const _kTriggersKey = 'smartsprout_trigger_settings';
 
 // ═══════════════════════════════════════════════════════
 // Plant Image Provider for Zones
 // ═══════════════════════════════════════════════════════
-final plantImageProvider = StreamProvider.autoDispose.family<String?, String>((ref, zoneId) {
+final plantImageProvider =
+    StreamProvider.autoDispose.family<String?, String>((ref, zoneId) {
   final firebase = ref.watch(dataServiceProvider);
   if (firebase == null) return Stream.value(null);
   return firebase.zoneImageStream(zoneId);
@@ -40,9 +41,9 @@ final pumpLoadingProvider =
 /// Stores the most recently SUBMITTED trigger rules per zone so they survive
 /// navigation AND are reflected on ZoneCards before the Pi confirms them.
 class TriggerSettings {
-  final List<double> startThreshold;   // [z1, z2, z3]
-  final List<double> targetMoisture;   // [z1, z2, z3]
-  final List<int>    maxPumpRuntime;   // [z1, z2, z3]
+  final List<double> startThreshold; // [z1, z2, z3]
+  final List<double> targetMoisture; // [z1, z2, z3]
+  final List<int> maxPumpRuntime; // [z1, z2, z3]
 
   const TriggerSettings({
     this.startThreshold = const [50.0, 50.0, 50.0],
@@ -50,17 +51,18 @@ class TriggerSettings {
     this.maxPumpRuntime = const [30, 30, 30],
   });
 
-  TriggerSettings copyWithZone(int zone, {
+  TriggerSettings copyWithZone(
+    int zone, {
     double? start,
     double? target,
-    int?    timeout,
+    int? timeout,
   }) {
     final idx = zone - 1;
-    final newStarts   = List<double>.from(startThreshold);
-    final newTargets  = List<double>.from(targetMoisture);
+    final newStarts = List<double>.from(startThreshold);
+    final newTargets = List<double>.from(targetMoisture);
     final newTimeouts = List<int>.from(maxPumpRuntime);
-    if (start   != null) newStarts[idx]   = start;
-    if (target  != null) newTargets[idx]  = target;
+    if (start != null) newStarts[idx] = start;
+    if (target != null) newTargets[idx] = target;
     if (timeout != null) newTimeouts[idx] = timeout;
     return TriggerSettings(
       startThreshold: newStarts,
@@ -72,13 +74,19 @@ class TriggerSettings {
   /// Merge: local wins over remote for any zone where local differs from default.
   TriggerSettings mergeWith(TriggerSettings remote) {
     const d = TriggerSettings();
-    final newStarts   = List<double>.from(remote.startThreshold);
-    final newTargets  = List<double>.from(remote.targetMoisture);
+    final newStarts = List<double>.from(remote.startThreshold);
+    final newTargets = List<double>.from(remote.targetMoisture);
     final newTimeouts = List<int>.from(remote.maxPumpRuntime);
     for (int i = 0; i < 3; i++) {
-      if (startThreshold[i] != d.startThreshold[i]) newStarts[i]   = startThreshold[i];
-      if (targetMoisture[i] != d.targetMoisture[i]) newTargets[i]  = targetMoisture[i];
-      if (maxPumpRuntime[i] != d.maxPumpRuntime[i]) newTimeouts[i] = maxPumpRuntime[i];
+      if (startThreshold[i] != d.startThreshold[i]) {
+        newStarts[i] = startThreshold[i];
+      }
+      if (targetMoisture[i] != d.targetMoisture[i]) {
+        newTargets[i] = targetMoisture[i];
+      }
+      if (maxPumpRuntime[i] != d.maxPumpRuntime[i]) {
+        newTimeouts[i] = maxPumpRuntime[i];
+      }
     }
     return TriggerSettings(
       startThreshold: newStarts,
@@ -88,25 +96,29 @@ class TriggerSettings {
   }
 
   Map<String, dynamic> toJson() => {
-    'starts':   startThreshold,
-    'targets':  targetMoisture,
-    'timeouts': maxPumpRuntime,
-  };
+        'starts': startThreshold,
+        'targets': targetMoisture,
+        'timeouts': maxPumpRuntime,
+      };
 
   factory TriggerSettings.fromJson(Map<String, dynamic> json) {
     List<double> parseDoubles(dynamic raw, List<double> fallback) {
-      if (raw is List) return raw.map<double>((e) => (e as num).toDouble()).toList();
+      if (raw is List) {
+        return raw.map<double>((e) => (e as num).toDouble()).toList();
+      }
       return fallback;
     }
+
     List<int> parseInts(dynamic raw, List<int> fallback) {
       if (raw is List) return raw.map<int>((e) => (e as num).toInt()).toList();
       return fallback;
     }
+
     const d = TriggerSettings();
     return TriggerSettings(
-      startThreshold: parseDoubles(json['starts'],   d.startThreshold),
-      targetMoisture: parseDoubles(json['targets'],  d.targetMoisture),
-      maxPumpRuntime: parseInts   (json['timeouts'], d.maxPumpRuntime),
+      startThreshold: parseDoubles(json['starts'], d.startThreshold),
+      targetMoisture: parseDoubles(json['targets'], d.targetMoisture),
+      maxPumpRuntime: parseInts(json['timeouts'], d.maxPumpRuntime),
     );
   }
 }
@@ -119,12 +131,14 @@ class TriggerSettingsNotifier extends Notifier<TriggerSettings> {
   }
 
   /// Call when user taps SET TRIGGER RULES.
-  void updateZone(int zone, {
+  void updateZone(
+    int zone, {
     required double start,
     required double target,
-    required int    timeout,
+    required int timeout,
   }) {
-    state = state.copyWithZone(zone, start: start, target: target, timeout: timeout);
+    state = state.copyWithZone(zone,
+        start: start, target: target, timeout: timeout);
     _persist();
   }
 
@@ -139,7 +153,8 @@ class TriggerSettingsNotifier extends Notifier<TriggerSettings> {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_kTriggersKey);
       if (raw != null) {
-        state = TriggerSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        state =
+            TriggerSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
       }
     } catch (_) {}
   }
@@ -195,12 +210,14 @@ class SensorDataNotifier extends Notifier<SensorData> {
             targetMoisture: data.targetMoisture,
             maxPumpRuntime: data.maxPumpRuntime,
           );
-          ref.read(triggerSettingsProvider.notifier).mergeRemote(remoteSettings);
+          ref
+              .read(triggerSettingsProvider.notifier)
+              .mergeRemote(remoteSettings);
 
           // Read merged trigger values back into sensorData.
           final triggers = ref.read(triggerSettingsProvider);
           state = data.copyWith(
-            soilOffsets:    mergedOffsets,
+            soilOffsets: mergedOffsets,
             startThreshold: triggers.startThreshold,
             targetMoisture: triggers.targetMoisture,
             maxPumpRuntime: triggers.maxPumpRuntime,
@@ -273,7 +290,7 @@ class SensorDataNotifier extends Notifier<SensorData> {
     final merged = <double>[];
     for (int i = 0; i < 3; i++) {
       final r = i < remote.length ? remote[i] : 0.0;
-      final l = i < local.length  ? local[i]  : 0.0;
+      final l = i < local.length ? local[i] : 0.0;
       merged.add(l != 0.0 ? l : r);
     }
     return merged;
@@ -285,8 +302,10 @@ class SensorDataNotifier extends Notifier<SensorData> {
       final raw = prefs.getString(_kCalibrationKey);
       if (raw != null) {
         final decoded = jsonDecode(raw) as List<dynamic>;
-        _localCalibration = decoded.map<double>((e) => (e as num).toDouble()).toList();
-        state = state.copyWith(soilOffsets: List<double>.from(_localCalibration));
+        _localCalibration =
+            decoded.map<double>((e) => (e as num).toDouble()).toList();
+        state =
+            state.copyWith(soilOffsets: List<double>.from(_localCalibration));
       }
     } catch (_) {}
   }

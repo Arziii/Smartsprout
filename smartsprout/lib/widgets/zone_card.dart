@@ -9,9 +9,9 @@ import '../data/services/data_service.dart';
 class ZoneCard extends ConsumerStatefulWidget {
   final String zoneId;
   final String zoneName;
-  final int rawMoisture;         // Actual sensor reading from the Pi/database
-  final double calibratedValue;  // User-set threshold from Calibration screen
-  final double targetMoisture;   // Precision saturation target
+  final int rawMoisture; // Actual sensor reading from the Pi/database
+  final double calibratedValue; // User-set threshold from Calibration screen
+  final double targetMoisture; // Precision saturation target
   final int temp;
   final Animation<double> pulseAnim;
   final bool isFault;
@@ -55,256 +55,279 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
     final plantImageName = plantImageAsync.value;
 
     return MouseRegion(
-      onEnter: Platform.isWindows ? (_) => setState(() => _isHovered = true) : null,
-      onExit: Platform.isWindows ? (_) => setState(() => _isHovered = false) : null,
+      onEnter:
+          Platform.isWindows ? (_) => setState(() => _isHovered = true) : null,
+      onExit:
+          Platform.isWindows ? (_) => setState(() => _isHovered = false) : null,
       child: GestureDetector(
-      onTapDown: (_) => setState(() => _isPressed = true),
-      onTapUp: (_) => setState(() => _isPressed = false),
-      onTapCancel: () => setState(() => _isPressed = false),
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PlantSelectionGrid(
-              onPlantSelected: (filename) async {
-                final dataService = ref.read(dataServiceProvider);
-                if (dataService != null) {
-                  await dataService.updateZoneImage(widget.zoneId, filename);
-                }
-              },
+        onTapDown: (_) => setState(() => _isPressed = true),
+        onTapUp: (_) => setState(() => _isPressed = false),
+        onTapCancel: () => setState(() => _isPressed = false),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PlantSelectionGrid(
+                onPlantSelected: (filename) async {
+                  final dataService = ref.read(dataServiceProvider);
+                  if (dataService != null) {
+                    await dataService.updateZoneImage(widget.zoneId, filename);
+                  }
+                },
+              ),
             ),
-          ),
-        );
-      },
-      child: AnimatedScale(
-        scale: _isPressed ? 0.96 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.9),
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: isLiteMode
-                ? null
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                    if (_isPressed)
+          );
+        },
+        child: AnimatedScale(
+          scale: _isPressed ? 0.96 : 1.0,
+          duration: const Duration(milliseconds: 100),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.9),
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: isLiteMode
+                  ? null
+                  : [
                       BoxShadow(
-                        color: statusColor.withValues(alpha: 0.2),
-                        blurRadius: 15,
-                        spreadRadius: -5,
-                      ),
-                    // Windows hover glow
-                    if (_isHovered && Platform.isWindows)
-                      BoxShadow(
-                        color: const Color(0xFF2BCC71).withValues(alpha: 0.25),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 20,
-                        spreadRadius: 2,
+                        offset: const Offset(0, 10),
                       ),
-                  ],
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.5),
-              width: 1.5,
-            ),
-          ),
-          clipBehavior: Clip.hardEdge,
-          child: Stack(
-            children: [
-              // ── Full Background Image ──
-              if (plantImageName != null && plantImageName.isNotEmpty) ...[
-                Positioned.fill(
-                  child: Image.asset(
-                    'assets/images/plants/$plantImageName',
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.white.withValues(alpha: 0.85),
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.5),
-                        ],
-                        stops: const [0.0, 0.4, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-              ] else ...[
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          statusColor.withValues(alpha: 0.1),
-                          statusColor.withValues(alpha: 0.3),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: -20,
-                  bottom: -20,
-                  child: Icon(
-                    Icons.local_florist_rounded,
-                    size: 150,
-                    color: statusColor.withValues(alpha: 0.1),
-                  ),
-                ),
-              ],
-
-              // ── TOP-LEFT: Zone Name ──
-              Positioned(
-                top: 16,
-                left: 14,
-                right: 90,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.zoneName.replaceFirst(' (', '\n('),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF0F2027),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.3,
-                        height: 1.25,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // ── TOP-RIGHT: Current Moisture & Target Moisture Pills ──
-              Positioned(
-                top: 16,
-                right: 16,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Current Moisture
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.water_drop_rounded, size: 14, color: Color(0xFF0277BD)),
-                          const SizedBox(width: 4),
-                          Text(
-                            (widget.isFault || widget.rawMoisture < 0) ? '--%' : '${widget.rawMoisture}%',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 13,
-                              color: Color(0xFF0277BD),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    // Target Moisture
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.eco_rounded, size: 14, color: Color(0xFF1B8E4F)),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${widget.targetMoisture.round()}%',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 13,
-                              color: Color(0xFF1B8E4F),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // ── BOTTOM FAULT BANNER ──
-              if (widget.isFault || widget.rawMoisture < 0)
-                Positioned(
-                  bottom: 12,
-                  left: 12,
-                  right: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF3E0).withValues(alpha: 0.95), // Light warm orange
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.orange.shade200, width: 1.5),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'FAULT',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 16,
-                                  color: Colors.orange,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              Text(
-                                'Sensor disconnected',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 11,
-                                  color: Colors.orange,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
+                      if (_isPressed)
+                        BoxShadow(
+                          color: statusColor.withValues(alpha: 0.2),
+                          blurRadius: 15,
+                          spreadRadius: -5,
                         ),
-                      ],
+                      // Windows hover glow
+                      if (_isHovered && Platform.isWindows)
+                        BoxShadow(
+                          color:
+                              const Color(0xFF2BCC71).withValues(alpha: 0.25),
+                          blurRadius: 20,
+                          spreadRadius: 2,
+                        ),
+                    ],
+              border: Border.all(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white10
+                    : Colors.white.withValues(alpha: 0.5),
+                width: 1.5,
+              ),
+            ),
+            clipBehavior: Clip.hardEdge,
+            child: Stack(
+              children: [
+                // ── Full Background Image ──
+                if (plantImageName != null && plantImageName.isNotEmpty) ...[
+                  Positioned.fill(
+                    child: Image.asset(
+                      'assets/images/plants/$plantImageName',
+                      fit: BoxFit.cover,
                     ),
                   ),
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.white.withValues(alpha: 0.85),
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.5),
+                          ],
+                          stops: const [0.0, 0.4, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            statusColor.withValues(alpha: 0.1),
+                            statusColor.withValues(alpha: 0.3),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: -20,
+                    bottom: -20,
+                    child: Icon(
+                      Icons.local_florist_rounded,
+                      size: 150,
+                      color: statusColor.withValues(alpha: 0.1),
+                    ),
+                  ),
+                ],
+
+                // ── TOP-LEFT: Zone Name ──
+                Positioned(
+                  top: 16,
+                  left: 14,
+                  right: 90,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.zoneName.replaceFirst(' (', '\n('),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : const Color(0xFF0F2027),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.3,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-            ],
+
+                // ── TOP-RIGHT: Current Moisture & Target Moisture Pills ──
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Current Moisture
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2))
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.water_drop_rounded,
+                                size: 14, color: Color(0xFF0277BD)),
+                            const SizedBox(width: 4),
+                            Text(
+                              (widget.isFault || widget.rawMoisture < 0)
+                                  ? '--%'
+                                  : '${widget.rawMoisture}%',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                                color: Color(0xFF0277BD),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      // Target Moisture
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2))
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.eco_rounded,
+                                size: 14, color: Color(0xFF1B8E4F)),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${widget.targetMoisture.round()}%',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                                color: Color(0xFF1B8E4F),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // ── BOTTOM FAULT BANNER ──
+                if (widget.isFault || widget.rawMoisture < 0)
+                  Positioned(
+                    bottom: 12,
+                    left: 12,
+                    right: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF3E0)
+                            .withValues(alpha: 0.95), // Light warm orange
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: Colors.orange.shade200, width: 1.5),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded,
+                              color: Colors.orange, size: 28),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'FAULT',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 16,
+                                    color: Colors.orange,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                Text(
+                                  'Sensor disconnected',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11,
+                                    color: Colors.orange,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
-    ),
     );
   }
 }

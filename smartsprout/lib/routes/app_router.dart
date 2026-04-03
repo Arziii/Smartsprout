@@ -62,27 +62,33 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: '/pairing',
-            pageBuilder: (context, state) => _buildPage(state, const PairingScreen()),
+            pageBuilder: (context, state) =>
+                _buildPage(state, const PairingScreen()),
           ),
           GoRoute(
             path: '/dashboard',
-            pageBuilder: (context, state) => _buildPage(state, const DashboardPage()),
+            pageBuilder: (context, state) =>
+                _buildPage(state, const DashboardPage()),
           ),
           GoRoute(
             path: '/control',
-            pageBuilder: (context, state) => _buildPage(state, const ControlScreen()),
+            pageBuilder: (context, state) =>
+                _buildPage(state, const ControlScreen()),
           ),
           GoRoute(
             path: '/analytics',
-            pageBuilder: (context, state) => _buildPage(state, const AnalyticsScreen()),
+            pageBuilder: (context, state) =>
+                _buildPage(state, const AnalyticsScreen()),
           ),
           GoRoute(
             path: '/settings',
-            pageBuilder: (context, state) => _buildPage(state, const SettingsScreen()),
+            pageBuilder: (context, state) =>
+                _buildPage(state, const SettingsScreen()),
           ),
           GoRoute(
             path: '/calibration',
-            pageBuilder: (context, state) => _buildPage(state, const CalibrationScreen()),
+            pageBuilder: (context, state) =>
+                _buildPage(state, const CalibrationScreen()),
           ),
         ],
       ),
@@ -165,16 +171,27 @@ class _FrostedNavBar extends StatelessWidget {
         builder: (context, constraints) {
           final tabWidth = constraints.maxWidth / items.length;
           const circleSize = 56.0;
-          final leftOffset = (tabWidth * selectedIndex) + (tabWidth - circleSize) / 2;
+          final leftOffset =
+              (tabWidth * selectedIndex) + (tabWidth - circleSize) / 2;
+
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          final backgroundColor = isDark
+              ? const Color(0xFF1E1E1E)
+                  .withValues(alpha: isLiteMode ? 1.0 : 0.60)
+              : Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.60);
+          final borderColor = isDark
+              ? Colors.white.withValues(alpha: 0.10)
+              : Colors.white.withValues(alpha: 0.50);
 
           final background = Container(
             height: 68,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.60),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              color: backgroundColor,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(24)),
               border: Border(
                 top: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.50),
+                  color: borderColor,
                   width: 1.0,
                 ),
               ),
@@ -188,25 +205,34 @@ class _FrostedNavBar extends StatelessWidget {
               children: [
                 // 1. Frosted Bar Background
                 Positioned(
-                  left: 0, right: 0, bottom: 0, height: 68,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 68,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                      boxShadow: isLiteMode ? null : [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.10),
-                          blurRadius: 24,
-                          offset: const Offset(0, -4),
-                        ),
-                      ],
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(24)),
+                      boxShadow: isLiteMode
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.10),
+                                blurRadius: 24,
+                                offset: const Offset(0, -4),
+                              ),
+                            ],
                     ),
-                    child: isPremiumMode ? ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                        child: background,
-                      ),
-                    ) : background,
+                    child: isPremiumMode
+                        ? ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(24)),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                              child: background,
+                            ),
+                          )
+                        : background,
                   ),
                 ),
 
@@ -279,14 +305,16 @@ class _NavButton extends StatefulWidget {
   State<_NavButton> createState() => _NavButtonState();
 }
 
-class _NavButtonState extends State<_NavButton> with SingleTickerProviderStateMixin {
+class _NavButtonState extends State<_NavButton>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 150));
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 150));
     _scale = Tween<double>(begin: 1.0, end: 0.9).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
     );
@@ -295,7 +323,7 @@ class _NavButtonState extends State<_NavButton> with SingleTickerProviderStateMi
   @override
   void didUpdateWidget(_NavButton old) {
     super.didUpdateWidget(old);
-    // Scale animation not strictly needed for selection anymore, 
+    // Scale animation not strictly needed for selection anymore,
     // but kept for tap down/up feedback
   }
 
@@ -307,7 +335,8 @@ class _NavButtonState extends State<_NavButton> with SingleTickerProviderStateMi
 
   @override
   Widget build(BuildContext context) {
-    final unselectedColor = Colors.grey.shade500;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final unselectedColor = isDark ? Colors.white54 : Colors.grey.shade500;
 
     return Semantics(
       label: widget.data.label,

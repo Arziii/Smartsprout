@@ -21,7 +21,8 @@ class DataService {
 
   DataService(this.deviceId);
 
-  String get _baseUrl => 'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents/devices/$deviceId';
+  String get _baseUrl =>
+      'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents/devices/$deviceId';
 
   // ═══════════════════════════════════════════════════════
   // Firebase Auth REST API - Anonymous Sign-In for Linux
@@ -30,15 +31,16 @@ class DataService {
   /// Gets a valid auth token, refreshing if expired
   Future<String?> _getAuthToken() async {
     // Return cached token if still valid (with 5-min buffer)
-    if (_authToken != null && _tokenExpiry != null &&
-        DateTime.now().isBefore(_tokenExpiry!.subtract(const Duration(minutes: 5)))) {
+    if (_authToken != null &&
+        _tokenExpiry != null &&
+        DateTime.now()
+            .isBefore(_tokenExpiry!.subtract(const Duration(minutes: 5)))) {
       return _authToken;
     }
 
     try {
       final url = Uri.parse(
-        'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$_apiKey'
-      );
+          'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$_apiKey');
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
@@ -73,7 +75,8 @@ class DataService {
   }
 
   /// Makes an authenticated POST request to Firestore REST API
-  Future<http.Response> _authenticatedPost(String url, Map<String, dynamic> body) async {
+  Future<http.Response> _authenticatedPost(
+      String url, Map<String, dynamic> body) async {
     final token = await _getAuthToken();
     final headers = <String, String>{'Content-Type': 'application/json'};
     if (token != null) {
@@ -100,7 +103,8 @@ class DataService {
             final data = json.decode(response.body);
             return _parseRestData(data);
           } else {
-            debugPrint('[REST_ERROR] status ${response.statusCode}: ${response.body}');
+            debugPrint(
+                '[REST_ERROR] status ${response.statusCode}: ${response.body}');
           }
         } catch (e) {
           debugPrint('[REST_ERROR] fetch telemetry: $e');
@@ -109,7 +113,11 @@ class DataService {
       });
     } else {
       // Native Firebase on Mobile
-      return _firestore.collection('devices').doc(deviceId).snapshots().map((snapshot) {
+      return _firestore
+          .collection('devices')
+          .doc(deviceId)
+          .snapshots()
+          .map((snapshot) {
         if (!snapshot.exists || snapshot.data() == null) {
           return const SensorData(systemStatus: 'offline');
         }
@@ -124,26 +132,32 @@ class DataService {
 
   /// Parses Firestore REST JSON payload into SensorData
   SensorData _parseRestData(Map<String, dynamic> doc) {
-    if (!doc.containsKey('fields')) return const SensorData(systemStatus: 'offline');
+    if (!doc.containsKey('fields')) {
+      return const SensorData(systemStatus: 'offline');
+    }
     final fields = doc['fields'] as Map<String, dynamic>;
-    
+
     dynamic getField(String key) {
       if (!fields.containsKey(key)) return null;
       final val = fields[key];
       if (val.containsKey('stringValue')) return val['stringValue'];
       if (val.containsKey('doubleValue')) return val['doubleValue'];
-      if (val.containsKey('integerValue')) return double.tryParse(val['integerValue'].toString());
+      if (val.containsKey('integerValue')) {
+        return double.tryParse(val['integerValue'].toString());
+      }
       if (val.containsKey('booleanValue')) return val['booleanValue'];
-      
+
       if (val.containsKey('arrayValue')) {
-         final arr = val['arrayValue']['values'] as List?;
-         if (arr == null) return [];
-         return arr.map((e) {
-            if (e.containsKey('doubleValue')) return e['doubleValue'];
-            if (e.containsKey('integerValue')) return double.tryParse(e['integerValue'].toString()) ?? 0.0;
-            if (e.containsKey('stringValue')) return e['stringValue'];
-            return 0.0;
-         }).toList();
+        final arr = val['arrayValue']['values'] as List?;
+        if (arr == null) return [];
+        return arr.map((e) {
+          if (e.containsKey('doubleValue')) return e['doubleValue'];
+          if (e.containsKey('integerValue')) {
+            return double.tryParse(e['integerValue'].toString()) ?? 0.0;
+          }
+          if (e.containsKey('stringValue')) return e['stringValue'];
+          return 0.0;
+        }).toList();
       }
 
       // Handle Firestore REST mapValue (e.g., soil_moisture: {bed1: ..., bed2: ..., bed3: ...})
@@ -217,7 +231,8 @@ class DataService {
           'processed': false,
         };
         final restPayload = _mapToRestFields(commandPayload);
-        await _authenticatedPost('$_baseUrl/commands?key=$_apiKey', {'fields': restPayload});
+        await _authenticatedPost(
+            '$_baseUrl/commands?key=$_apiKey', {'fields': restPayload});
       } catch (e) {
         debugPrint('[REST_ERROR] sendCommand: $e');
       }
@@ -265,7 +280,8 @@ class DataService {
   Future<void> updateManualHeartbeat() async {
     if (Platform.isLinux) {
       try {
-        final url = '$_baseUrl?updateMask.fieldPaths=manual_heartbeat&key=$_apiKey';
+        final url =
+            '$_baseUrl?updateMask.fieldPaths=manual_heartbeat&key=$_apiKey';
         final token = await _getAuthToken();
         final headers = <String, String>{'Content-Type': 'application/json'};
         if (token != null) headers['Authorization'] = 'Bearer $token';
@@ -311,7 +327,8 @@ class DataService {
     if (Platform.isLinux) {
       try {
         // REST API: PATCH the soil_offsets field
-        final url = '$_baseUrl?updateMask.fieldPaths=soil_offsets.$bedKey&key=$_apiKey';
+        final url =
+            '$_baseUrl?updateMask.fieldPaths=soil_offsets.$bedKey&key=$_apiKey';
         final token = await _getAuthToken();
         final headers = <String, String>{'Content-Type': 'application/json'};
         if (token != null) headers['Authorization'] = 'Bearer $token';
@@ -337,7 +354,9 @@ class DataService {
       // Native Firestore on mobile
       try {
         await _firestore.collection('devices').doc(deviceId).set(
-          {'soil_offsets': {bedKey: value}},
+          {
+            'soil_offsets': {bedKey: value}
+          },
           SetOptions(merge: true),
         );
       } catch (e) {
@@ -351,7 +370,8 @@ class DataService {
     final bedKey = 'bed$zone';
     if (Platform.isLinux) {
       try {
-        final url = '$_baseUrl?updateMask.fieldPaths=target_moisture.$bedKey&updateMask.fieldPaths=max_pump_runtime.$bedKey&key=$_apiKey';
+        final url =
+            '$_baseUrl?updateMask.fieldPaths=target_moisture.$bedKey&updateMask.fieldPaths=max_pump_runtime.$bedKey&key=$_apiKey';
         final token = await _getAuthToken();
         final headers = <String, String>{'Content-Type': 'application/json'};
         if (token != null) headers['Authorization'] = 'Bearer $token';
@@ -406,7 +426,8 @@ class DataService {
           final response = await _authenticatedGet(url);
           if (response.statusCode == 200) {
             final data = json.decode(response.body);
-            if (data['fields'] != null && data['fields']['plant_image_name'] != null) {
+            if (data['fields'] != null &&
+                data['fields']['plant_image_name'] != null) {
               return data['fields']['plant_image_name']['stringValue'];
             }
           }
@@ -414,7 +435,13 @@ class DataService {
         return null;
       });
     } else {
-      return _firestore.collection('devices').doc(deviceId).collection('zones').doc(zoneId).snapshots().map((doc) {
+      return _firestore
+          .collection('devices')
+          .doc(deviceId)
+          .collection('zones')
+          .doc(zoneId)
+          .snapshots()
+          .map((doc) {
         return doc.data()?['plant_image_name'] as String?;
       });
     }
@@ -423,7 +450,8 @@ class DataService {
   Future<void> updateZoneImage(String zoneId, String imageName) async {
     if (Platform.isLinux) {
       try {
-        final url = '$_baseUrl/zones/$zoneId?updateMask.fieldPaths=plant_image_name&key=$_apiKey';
+        final url =
+            '$_baseUrl/zones/$zoneId?updateMask.fieldPaths=plant_image_name&key=$_apiKey';
         final token = await _getAuthToken();
         final headers = <String, String>{'Content-Type': 'application/json'};
         if (token != null) headers['Authorization'] = 'Bearer $token';
@@ -431,7 +459,8 @@ class DataService {
           Uri.parse(url),
           headers: headers,
           body: json.encode({
-            'name': 'projects/$_projectId/databases/(default)/documents/devices/$deviceId/zones/$zoneId',
+            'name':
+                'projects/$_projectId/databases/(default)/documents/devices/$deviceId/zones/$zoneId',
             'fields': {
               'plant_image_name': {'stringValue': imageName}
             }
@@ -442,7 +471,12 @@ class DataService {
       }
     } else {
       try {
-        await _firestore.collection('devices').doc(deviceId).collection('zones').doc(zoneId).set(
+        await _firestore
+            .collection('devices')
+            .doc(deviceId)
+            .collection('zones')
+            .doc(zoneId)
+            .set(
           {'plant_image_name': imageName},
           SetOptions(merge: true),
         );
@@ -458,7 +492,8 @@ class DataService {
     });
   }
 
-  Future<void> setWateringMode(String mode, {String? strategy, int? timerHour, int? timerMinute}) async {
+  Future<void> setWateringMode(String mode,
+      {String? strategy, int? timerHour, int? timerMinute}) async {
     final payload = <String, dynamic>{
       'command': 'set_mode',
       'mode': mode,
@@ -466,7 +501,7 @@ class DataService {
     if (strategy != null) payload['strategy'] = strategy;
     if (timerHour != null) payload['timer_hour'] = timerHour;
     if (timerMinute != null) payload['timer_minute'] = timerMinute;
-    
+
     await sendCommand(payload);
   }
 
@@ -476,11 +511,13 @@ class DataService {
 
   Future<List<DailyAnalytics>> fetchWeeklyAnalytics() async {
     final now = DateTime.now();
-    final cutoff = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
+    final cutoff = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 6));
     final cutoffSeconds = cutoff.millisecondsSinceEpoch ~/ 1000;
 
     if (Platform.isLinux) {
-        return List.generate(7, (i) => DailyAnalytics(dayIndex: i, avgMoisture: 0, avgTemp: 0));
+      return List.generate(
+          7, (i) => DailyAnalytics(dayIndex: i, avgMoisture: 0, avgTemp: 0));
     }
 
     try {
@@ -504,10 +541,10 @@ class DataService {
         final data = doc.data();
         final ts = data['timestamp'] as int?;
         if (ts == null) continue;
-        
+
         final date = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
         final dayDiff = date.difference(cutoff).inDays;
-        
+
         if (dayDiff >= 0 && dayDiff < 7) {
           grouped[dayDiff]!.add(data);
         }
@@ -522,22 +559,23 @@ class DataService {
           double totalMoisture = 0;
           double totalTemp = 0;
           for (var d in docs) {
-            final soil = List<num>.from(d['soil_moisture'] ?? [0,0,0]);
-            final avgSoil = soil.isEmpty ? 0 : soil.reduce((a, b) => a + b) / soil.length;
+            final soil = List<num>.from(d['soil_moisture'] ?? [0, 0, 0]);
+            final avgSoil =
+                soil.isEmpty ? 0 : soil.reduce((a, b) => a + b) / soil.length;
             totalMoisture += avgSoil;
             totalTemp += (d['temperature'] ?? 0.0);
           }
           results.add(DailyAnalytics(
-            dayIndex: i, 
-            avgMoisture: totalMoisture / docs.length, 
-            avgTemp: totalTemp / docs.length
-          ));
+              dayIndex: i,
+              avgMoisture: totalMoisture / docs.length,
+              avgTemp: totalTemp / docs.length));
         }
       }
       return results;
     } catch (e) {
       debugPrint('[FIREBASE_SERVICE] Failed to fetch analytics: $e');
-      return List.generate(7, (i) => DailyAnalytics(dayIndex: i, avgMoisture: 0, avgTemp: 0));
+      return List.generate(
+          7, (i) => DailyAnalytics(dayIndex: i, avgMoisture: 0, avgTemp: 0));
     }
   }
 }

@@ -1,20 +1,21 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SensorData {
-  final List<double> soilMoisture;    // 3 zones (calibrated = raw + offset)
+  final List<double> soilMoisture; // 3 zones (calibrated = raw + offset)
   final List<double> soilMoistureRaw; // 3 zones (raw sensor, before offset)
-  final List<double> soilOffsets;     // 3 zone offsets
-  final List<double> startThreshold;  // 3 zone start thresholds (start pump)
-  final List<double> targetMoisture;  // 3 zone saturation targets (stop pump)
-  final List<int> maxPumpRuntime;     // 3 zone safety timeouts (seconds)
+  final List<double> soilOffsets; // 3 zone offsets
+  final List<double> startThreshold; // 3 zone start thresholds (start pump)
+  final List<double> targetMoisture; // 3 zone saturation targets (stop pump)
+  final List<int> maxPumpRuntime; // 3 zone safety timeouts (seconds)
   final double temperature;
   final double humidity;
   final String tankLevel;
   final double flowRate;
   final bool pumpLocked;
-  final List<bool> pumpStatus;   // Per-zone pump active state confirmed by Pi
+  final List<bool> pumpStatus; // Per-zone pump active state confirmed by Pi
   final String systemStatus; // 'ok', 'sensor_fault', 'tank_low', 'offline'
-  final Map<String, String> hardwareStatus; // explicit fault flags e.g. {'bed1': 'ok', 'environment': 'fault'}
+  final Map<String, String>
+      hardwareStatus; // explicit fault flags e.g. {'bed1': 'ok', 'environment': 'fault'}
   final List<String> alerts;
   final int timestamp;
   final DateTime? lastHeartbeat;
@@ -130,7 +131,11 @@ class SensorData {
     }
     // Parse start thresholds per zone
     final startJson = json['start_threshold'];
-    List<double> starts = [targets[0] - 15.0, targets[1] - 15.0, targets[2] - 15.0];
+    List<double> starts = [
+      targets[0] - 15.0,
+      targets[1] - 15.0,
+      targets[2] - 15.0
+    ];
     if (startJson is Map) {
       starts = [
         (startJson['bed1'] as num?)?.toDouble() ?? (targets[0] - 15.0),
@@ -164,21 +169,33 @@ class SensorData {
     );
   }
 
-  bool get hasSensorFault => systemStatus == 'sensor_fault' || alerts.contains('soil_sensor_fault') || alerts.contains('dht22_fault') || alerts.contains('environment_sensor_fault') || isTankFault;
-  bool get isTankLow => systemStatus == 'tank_low' || alerts.contains('tank_empty') || tankLevel == 'LOW';
+  bool get hasSensorFault =>
+      systemStatus == 'sensor_fault' ||
+      alerts.contains('soil_sensor_fault') ||
+      alerts.contains('dht22_fault') ||
+      alerts.contains('environment_sensor_fault') ||
+      isTankFault;
+  bool get isTankLow =>
+      systemStatus == 'tank_low' ||
+      alerts.contains('tank_empty') ||
+      tankLevel == 'LOW';
   bool get isOffline => systemStatus == 'offline' || isControllerDisconnected;
   bool get isHealthy => !hasSensorFault && !isTankLow && !isOffline;
-  
+
   bool get isEnvFault => hardwareStatus['environment'] == 'fault';
+
   /// Returns true if the bed has a hardware fault flag OR its raw sensor reads
   /// the -1 sentinel (disconnected / open-circuit sensor).
   bool hasBedFault(int index) {
     final hwFault = hardwareStatus['bed${index + 1}'] == 'fault';
-    final rawFault = index < soilMoistureRaw.length && soilMoistureRaw[index] < 0;
+    final rawFault =
+        index < soilMoistureRaw.length && soilMoistureRaw[index] < 0;
     return hwFault || rawFault;
   }
-  bool get isTankFault => hardwareStatus['tank'] == 'fault' || tankLevel == 'FAULT';
-  
+
+  bool get isTankFault =>
+      hardwareStatus['tank'] == 'fault' || tankLevel == 'FAULT';
+
   bool get isControllerDisconnected {
     if (lastHeartbeat == null) return true;
     return DateTime.now().difference(lastHeartbeat!).inMinutes > 2;

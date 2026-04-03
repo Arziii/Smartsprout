@@ -10,11 +10,26 @@ class PlantSelectionGrid extends StatelessWidget {
   });
 
   static const List<String> _plantImages = [
-    'aloe_vera.jpg', 'ampalaya.jpg', 'basil.jpg', 'bougainvillea.jpg',
-    'calamansi.jpg', 'gumamela.jpg', 'kamatis.jpg', 'kang_kong.jpg',
-    'lemongrass.jpg', 'mango.jpg', 'mung_bean.jpg', 'okra.jpg',
-    'oregano.jpg', 'papaya.jpg', 'pechay.jpg', 'sibuyas.jpg',
-    'siling_labuyo.jpg', 'snake_plant.jpg', 'string_beans.jpg', 'talong.jpg'
+    'aloe_vera.jpg',
+    'ampalaya.jpg',
+    'basil.jpg',
+    'bougainvillea.jpg',
+    'calamansi.jpg',
+    'gumamela.jpg',
+    'kamatis.jpg',
+    'kang_kong.jpg',
+    'lemongrass.jpg',
+    'mango.jpg',
+    'mung_bean.jpg',
+    'okra.jpg',
+    'oregano.jpg',
+    'papaya.jpg',
+    'pechay.jpg',
+    'sibuyas.jpg',
+    'siling_labuyo.jpg',
+    'snake_plant.jpg',
+    'string_beans.jpg',
+    'talong.jpg'
   ];
 
   Widget _buildTile({
@@ -71,13 +86,18 @@ class PlantSelectionGrid extends StatelessWidget {
           style: GoogleFonts.outfit(
             fontSize: 24,
             fontWeight: FontWeight.w800,
-            color: const Color(0xFF0F2027),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : const Color(0xFF0F2027),
           ),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F2027)),
+          icon: Icon(Icons.arrow_back,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F2027)),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
@@ -99,8 +119,10 @@ class PlantSelectionGrid extends StatelessWidget {
                   imageWidget: Image.asset(
                     'assets/images/default_flower.png',
                     fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.local_florist, size: 40, color: Colors.grey),
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.local_florist,
+                        size: 40,
+                        color: Colors.grey),
                   ),
                   onTap: () {
                     onPlantSelected('');
@@ -109,7 +131,8 @@ class PlantSelectionGrid extends StatelessWidget {
                 );
               }
               final filename = _plantImages[index - 1];
-              final name = filename.split('.').first.replaceAll('_', ' ').toUpperCase();
+              final name =
+                  filename.split('.').first.replaceAll('_', ' ').toUpperCase();
               return _buildTile(
                 context: context,
                 name: name,

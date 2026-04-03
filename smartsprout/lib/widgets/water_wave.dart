@@ -70,14 +70,15 @@ class _WavePainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.fill;
-    
+
     final path = Path();
 
     // Adjusted levels to make sure 0% really looks empty and 100% full
     final yBase = size.height * (1 - fillLevel);
-    
+
     // Wave parameters
-    final double waveHeight = fillLevel > 0 && fillLevel < 1 && !isLiteMode ? 4.0 : 0.0;
+    final double waveHeight =
+        fillLevel > 0 && fillLevel < 1 && !isLiteMode ? 4.0 : 0.0;
     const double waveFrequency = 1.5;
 
     path.moveTo(0, yBase);
@@ -102,15 +103,15 @@ class _WavePainter extends CustomPainter {
     path.close();
 
     canvas.drawPath(path, paint);
-    
+
     // Optional: Draw a second, darker wave for depth
     final paintDark = Paint()
       ..color = color.withValues(alpha: 0.3)
       ..style = PaintingStyle.fill;
-    
+
     final pathDark = Path();
     pathDark.moveTo(0, yBase);
-    
+
     if (fillLevel > 0) {
       if (isLiteMode) {
         pathDark.lineTo(size.width, yBase);
@@ -124,11 +125,11 @@ class _WavePainter extends CustomPainter {
         }
       }
     }
-    
+
     pathDark.lineTo(size.width, size.height);
     pathDark.lineTo(0, size.height);
     pathDark.close();
-    
+
     canvas.drawPath(pathDark, paintDark);
   }
 

@@ -58,4 +58,52 @@ class AppTheme {
         bodyLarge: TextStyle(color: textPrimary),
         bodyMedium: TextStyle(color: textSecondary),
       ));
+
+  static const Color backgroundDark = Color(0xFF121212);
+  static const Color surfaceDark = Color(0xFF1E1E1E);
+  static const Color textPrimaryDark = Color(0xFFE0E0E0);
+  static const Color textSecondaryDark = Color(0xFFA0A0A0);
+
+  static final ThemeData darkTheme = ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        brightness: Brightness.dark,
+        seedColor: primaryGreen,
+        primary: primaryGreen,
+        secondary: darkGreen,
+        surface: surfaceDark,
+        error: alertRed,
+      ),
+      scaffoldBackgroundColor: backgroundDark,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: surfaceDark,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      cardTheme: CardThemeData(
+        color: surfaceDark,
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryGreen,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+        ),
+      ),
+      textTheme: const TextTheme(
+        titleLarge:
+            TextStyle(color: textPrimaryDark, fontWeight: FontWeight.bold),
+        titleMedium:
+            TextStyle(color: textPrimaryDark, fontWeight: FontWeight.w600),
+        bodyLarge: TextStyle(color: textPrimaryDark),
+        bodyMedium: TextStyle(color: textSecondaryDark),
+      ));
 }

@@ -29,7 +29,9 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
         context.go('/dashboard');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(duration: Duration(seconds: 2), content: Text('Failed to switch device.')),
+          const SnackBar(
+              duration: Duration(seconds: 2),
+              content: Text('Failed to switch device.')),
         );
       }
     }
@@ -44,53 +46,26 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
     );
   }
 
-  void _showEditNicknameDialog(SavedDevice device) {
-    final controller = TextEditingController(text: device.nickname);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text('Edit Nickname', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
-        content: TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            hintText: 'e.g. Backyard Garden',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              final newName = controller.text.trim();
-              if (newName.isNotEmpty) {
-                ref.read(authProvider.notifier).updateDeviceNickname(device.deviceId, newName);
-              }
-              Navigator.pop(ctx);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _confirmDelete(SavedDevice device) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text('Remove Account', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+        title: Text('Remove Account',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
         content: Text(
           "Are you sure you want to remove ${device.nickname}? You'll need to enter the PIN to add it again.",
           style: GoogleFonts.outfit(),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () {
-              ref.read(authProvider.notifier).removeSavedDevice(device.deviceId);
+              ref
+                  .read(authProvider.notifier)
+                  .removeSavedDevice(device.deviceId);
               Navigator.pop(ctx);
             },
             child: const Text('Remove', style: TextStyle(color: Colors.white)),
@@ -111,7 +86,8 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
         color: Colors.white.withValues(alpha: 0.95),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 40, offset: Offset(0, -10))
+          BoxShadow(
+              color: Colors.black26, blurRadius: 40, offset: Offset(0, -10))
         ],
       ),
       child: ClipRRect(
@@ -143,7 +119,9 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
                       style: GoogleFonts.outfit(
                         fontSize: 24,
                         fontWeight: FontWeight.w800,
-                        color: const Color(0xFF0F2027),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : const Color(0xFF0F2027),
                       ),
                     ),
                     Expanded(
@@ -162,7 +140,8 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     child: Column(
                       children: [
-                        Icon(Icons.devices_rounded, size: 48, color: Colors.grey.shade300),
+                        Icon(Icons.devices_rounded,
+                            size: 48, color: Colors.grey.shade300),
                         const SizedBox(height: 12),
                         Text(
                           'No saved accounts yet.',
@@ -206,23 +185,29 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
                             ),
                           ),
                           child: ListTile(
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
                             leading: CircleAvatar(
                               backgroundColor: isActive
                                   ? const Color(0xFF2BCC71)
                                   : const Color(0xFF4A6164),
                               child: isActive
-                                  ? const Icon(Icons.check_rounded, color: Colors.white)
-                                  : const Icon(Icons.grass_rounded, color: Colors.white),
+                                  ? const Icon(Icons.check_rounded,
+                                      color: Colors.white)
+                                  : const Icon(Icons.grass_rounded,
+                                      color: Colors.white),
                             ),
                             title: Text(
                               device.nickname,
                               style: GoogleFonts.outfit(
-                                fontWeight:
-                                    isActive ? FontWeight.w800 : FontWeight.w600,
+                                fontWeight: isActive
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
                                 fontSize: 16,
-                                color: const Color(0xFF0F2027),
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.white
+                                    : const Color(0xFF0F2027),
                               ),
                             ),
                             subtitle: Text(
@@ -233,11 +218,6 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                IconButton(
-                                  icon: Icon(Icons.edit_rounded,
-                                      color: Colors.grey.shade400, size: 20),
-                                  onPressed: () => _showEditNicknameDialog(device),
-                                ),
                                 IconButton(
                                   icon: const Icon(
                                       Icons.remove_circle_outline_rounded,
@@ -331,7 +311,7 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..forward();
-    
+
     // Clear any stale errors from previous login attempts
     Future.microtask(() => ref.read(authProvider.notifier).clearError());
   }
@@ -366,7 +346,8 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
             backgroundColor: const Color(0xFF2BCC71),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
@@ -400,7 +381,10 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
               opacity: _fadeController,
               child: SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
-                  28, 20, 28, MediaQuery.of(context).padding.bottom + 100,
+                  28,
+                  20,
+                  28,
+                  MediaQuery.of(context).padding.bottom + 100,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -411,7 +395,9 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
                       height: 5,
                       margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.5),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white10
+                            : Colors.white.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
@@ -424,15 +410,22 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
                           child: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.5),
+                              color: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Colors.white10
+                                  : Colors.white.withValues(alpha: 0.5),
                               shape: BoxShape.circle,
                               border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.8), width: 1.5),
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                  width: 1.5),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.arrow_back_ios_new_rounded,
                               size: 16,
-                              color: Color(0xFF0F2027),
+                              color: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Colors.white
+                                  : const Color(0xFF0F2027),
                             ),
                           ),
                         ),
@@ -442,7 +435,10 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
                           style: GoogleFonts.outfit(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
-                            color: const Color(0xFF0F2027),
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white
+                                    : const Color(0xFF0F2027),
                             letterSpacing: -0.5,
                           ),
                         ),
@@ -472,7 +468,9 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
                       style: GoogleFonts.outfit(
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
-                        color: const Color(0xFF0F2027),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : const Color(0xFF0F2027),
                         letterSpacing: -0.5,
                       ),
                     ),
@@ -564,7 +562,9 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
             fontSize: 11,
             fontWeight: FontWeight.w800,
             letterSpacing: 1.2,
-            color: const Color(0xFF0F2027),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : const Color(0xFF0F2027),
           ),
         ),
         const SizedBox(height: 8),
@@ -572,7 +572,10 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
           controller: controller,
           obscureText: obscure,
           style: GoogleFonts.outfit(
-              fontWeight: FontWeight.w600, color: const Color(0xFF0F2027)),
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F2027)),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5)),
@@ -585,7 +588,10 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+              borderSide: BorderSide(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white10
+                      : Colors.white.withValues(alpha: 0.5)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
@@ -594,8 +600,7 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
             ),
             contentPadding: const EdgeInsets.symmetric(vertical: 18),
           ),
-          validator: (v) =>
-              v == null || v.trim().isEmpty ? 'Required' : null,
+          validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
         ),
       ],
     );
@@ -608,7 +613,9 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
       child: ElevatedButton(
         onPressed: isLoading ? null : _addAccount,
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF0F2027),
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : const Color(0xFF0F2027),
           foregroundColor: Colors.white,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),

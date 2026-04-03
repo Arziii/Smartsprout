@@ -10,7 +10,8 @@ class HardwareLoginScreen extends ConsumerStatefulWidget {
   const HardwareLoginScreen({super.key});
 
   @override
-  ConsumerState<HardwareLoginScreen> createState() => _HardwareLoginScreenState();
+  ConsumerState<HardwareLoginScreen> createState() =>
+      _HardwareLoginScreenState();
 }
 
 class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
@@ -71,7 +72,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
           backgroundColor: const Color(0xFF2BCC71),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
       context.go('/dashboard');
@@ -86,8 +88,11 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
     if (authState.isRateLimited && authState.rateLimitExpiry != null) {
       final expiry = authState.rateLimitExpiry!;
       final remaining = expiry.difference(DateTime.now());
-      if (!remaining.isNegative && remaining.inSeconds > 0 && (countdownTimer == null || !countdownTimer!.isActive)) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => _startCountdown(expiry));
+      if (!remaining.isNegative &&
+          remaining.inSeconds > 0 &&
+          (countdownTimer == null || !countdownTimer!.isActive)) {
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _startCountdown(expiry));
       }
     }
 
@@ -107,8 +112,16 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
               ),
             ),
           ),
-          _buildBlob(top: -100, right: -50, size: 300, color: const Color(0xFF2BCC71).withValues(alpha: 0.15)),
-          _buildBlob(bottom: -50, left: -100, size: 400, color: Colors.blue.withValues(alpha: 0.1)),
+          _buildBlob(
+              top: -100,
+              right: -50,
+              size: 300,
+              color: const Color(0xFF2BCC71).withValues(alpha: 0.15)),
+          _buildBlob(
+              bottom: -50,
+              left: -100,
+              size: 400,
+              color: Colors.blue.withValues(alpha: 0.1)),
 
           Center(
             child: SingleChildScrollView(
@@ -129,7 +142,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
 
                     if (!authState.isRateLimited) ...[
                       if (authState.savedDevices.isNotEmpty) ...[
-                        _buildAnimatedElement(1, _buildSavedAccountsHorizontal(authState)),
+                        _buildAnimatedElement(
+                            1, _buildSavedAccountsHorizontal(authState)),
                         const SizedBox(height: 32),
                       ],
                       _buildAnimatedElement(2, _buildLoginForm(authState)),
@@ -157,7 +171,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 2),
           ),
-          child: const Icon(Icons.grass_rounded, size: 60, color: Color(0xFF2BCC71)),
+          child: const Icon(Icons.grass_rounded,
+              size: 60, color: Color(0xFF2BCC71)),
         ),
         const SizedBox(height: 24),
         Text(
@@ -188,7 +203,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
   Widget _buildRateLimitBanner() {
     final minutes = _rateLimitRemaining.inMinutes;
     final seconds = _rateLimitRemaining.inSeconds.remainder(60);
-    final timeStr = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
 
     return Container(
       width: double.infinity,
@@ -196,7 +212,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: const Color(0xFFFFB347).withValues(alpha: 0.5), width: 1.5),
+        border: Border.all(
+            color: const Color(0xFFFFB347).withValues(alpha: 0.5), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: Colors.orange.withValues(alpha: 0.1),
@@ -218,7 +235,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                   color: const Color(0xFFFFB347).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.lock_clock_rounded, size: 48, color: Color(0xFFE67E22)),
+                child: const Icon(Icons.lock_clock_rounded,
+                    size: 48, color: Color(0xFFE67E22)),
               ),
               const SizedBox(height: 20),
               Text(
@@ -242,11 +260,13 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
               const SizedBox(height: 28),
               // Countdown display
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 decoration: BoxDecoration(
                   color: const Color(0xFF0F2027).withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFFFB347).withValues(alpha: 0.3)),
+                  border: Border.all(
+                      color: const Color(0xFFFFB347).withValues(alpha: 0.3)),
                 ),
                 child: Column(
                   children: [
@@ -311,7 +331,9 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                   final messenger = ScaffoldMessenger.of(context);
                   final router = GoRouter.of(context);
                   // Option B: try session reuse first
-                  final success = await ref.read(authProvider.notifier).quickSwitch(device.deviceId);
+                  final success = await ref
+                      .read(authProvider.notifier)
+                      .quickSwitch(device.deviceId);
                   if (success && mounted) {
                     messenger.showSnackBar(
                       SnackBar(
@@ -319,7 +341,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                         backgroundColor: const Color(0xFF2BCC71),
                         behavior: SnackBarBehavior.floating,
                         duration: const Duration(seconds: 2),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
                       ),
                     );
                     router.go('/dashboard');
@@ -328,11 +351,13 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                     _deviceIdController.text = device.deviceId;
                     messenger.showSnackBar(
                       SnackBar(
-                        content: Text('Session expired for ${device.nickname}. Enter your PIN.'),
+                        content: Text(
+                            'Session expired for ${device.nickname}. Enter your PIN.'),
                         backgroundColor: const Color(0xFF4A6164),
                         behavior: SnackBarBehavior.floating,
                         duration: const Duration(seconds: 2),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
                       ),
                     );
                   }
@@ -364,11 +389,13 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                               const CircleAvatar(
                                 radius: 20,
                                 backgroundColor: Color(0xFF2BCC71),
-                                child: Icon(Icons.grass_rounded, color: Colors.white, size: 20),
+                                child: Icon(Icons.grass_rounded,
+                                    color: Colors.white, size: 20),
                               ),
                               const SizedBox(height: 8),
                               Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
                                 child: Text(
                                   device.nickname,
                                   textAlign: TextAlign.center,
@@ -396,7 +423,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                             context: context,
                             builder: (context) {
                               return AlertDialog(
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20)),
                                 backgroundColor: const Color(0xFFF0FDF4),
                                 title: Text(
                                   'Remove Account',
@@ -407,21 +435,28 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                                 ),
                                 content: Text(
                                   'Are you sure you want to remove ${device.nickname}?',
-                                  style: GoogleFonts.outfit(color: const Color(0xFF4A6164)),
+                                  style: GoogleFonts.outfit(
+                                      color: const Color(0xFF4A6164)),
                                 ),
                                 actions: [
                                   TextButton(
-                                    onPressed: () => Navigator.pop(context, false),
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
                                     child: Text(
                                       'CANCEL',
-                                      style: GoogleFonts.outfit(color: const Color(0xFF4A6164), fontWeight: FontWeight.w600),
+                                      style: GoogleFonts.outfit(
+                                          color: const Color(0xFF4A6164),
+                                          fontWeight: FontWeight.w600),
                                     ),
                                   ),
                                   TextButton(
-                                    onPressed: () => Navigator.pop(context, true),
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
                                     child: Text(
                                       'REMOVE',
-                                      style: GoogleFonts.outfit(color: Colors.redAccent, fontWeight: FontWeight.bold),
+                                      style: GoogleFonts.outfit(
+                                          color: Colors.redAccent,
+                                          fontWeight: FontWeight.bold),
                                     ),
                                   ),
                                 ],
@@ -430,7 +465,9 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                           );
 
                           if (confirm == true) {
-                            await ref.read(authProvider.notifier).removeSavedDevice(device.deviceId);
+                            await ref
+                                .read(authProvider.notifier)
+                                .removeSavedDevice(device.deviceId);
                             if (mounted) {
                               messenger2.showSnackBar(
                                 SnackBar(
@@ -438,7 +475,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                                   backgroundColor: const Color(0xFFE67E22),
                                   behavior: SnackBarBehavior.floating,
                                   duration: const Duration(seconds: 2),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10)),
                                 ),
                               );
                             }
@@ -450,7 +488,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                             shape: BoxShape.circle,
                             color: Colors.transparent,
                           ),
-                          child: const Icon(Icons.close_rounded, size: 16, color: Colors.black54),
+                          child: const Icon(Icons.close_rounded,
+                              size: 16, color: Colors.black54),
                         ),
                       ),
                     ),
@@ -536,7 +575,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
       decoration: BoxDecoration(
         color: const Color(0xFF2BCC71).withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2BCC71).withValues(alpha: 0.2)),
+        border:
+            Border.all(color: const Color(0xFF2BCC71).withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -590,7 +630,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
           obscureText: obscure,
           maxLength: maxLength,
           keyboardType: keyboardType,
-          style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: const Color(0xFF0F2027)),
+          style: GoogleFonts.outfit(
+              fontWeight: FontWeight.w600, color: const Color(0xFF0F2027)),
           decoration: InputDecoration(
             hintText: hint,
             counterText: '',
@@ -604,15 +645,18 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.5)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: Color(0xFF2BCC71), width: 1.5),
+              borderSide:
+                  const BorderSide(color: Color(0xFF2BCC71), width: 1.5),
             ),
             contentPadding: const EdgeInsets.symmetric(vertical: 18),
           ),
-          validator: (value) => value == null || value.trim().isEmpty ? 'Required' : null,
+          validator: (value) =>
+              value == null || value.trim().isEmpty ? 'Required' : null,
         ),
       ],
     );
@@ -627,7 +671,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF0F2027),
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           elevation: 0,
         ),
         child: Text(
@@ -644,7 +689,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
 
   Widget _buildErrorBanner(String message) {
     // "Hardware Offline" gets a special amber treatment
-    final isOffline = message.contains('Offline') || message.contains('offline');
+    final isOffline =
+        message.contains('Offline') || message.contains('offline');
     final color = isOffline ? const Color(0xFFE67E22) : Colors.redAccent;
 
     return Container(
@@ -666,7 +712,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
           Expanded(
             child: Text(
               message,
-              style: GoogleFonts.outfit(color: color, fontSize: 13, fontWeight: FontWeight.w600),
+              style: GoogleFonts.outfit(
+                  color: color, fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ),
         ],

@@ -51,7 +51,9 @@ class FirebaseFirestore {
 
 class StubCollectionReference {
   StubDocumentReference doc([String? path]) => StubDocumentReference();
-  StubCollectionReference where(dynamic field, {dynamic isGreaterThanOrEqualTo}) => this;
+  StubCollectionReference where(dynamic field,
+          {dynamic isGreaterThanOrEqualTo}) =>
+      this;
   StubCollectionReference orderBy(dynamic field, {dynamic descending}) => this;
   Future<StubQuerySnapshot> get([dynamic options]) async => StubQuerySnapshot();
   Future<void> add(Map<String, dynamic> data) async {}
@@ -66,7 +68,8 @@ class StubQueryDocumentSnapshot {
 }
 
 class StubDocumentReference {
-  Future<StubDocumentSnapshot> get([dynamic options]) async => StubDocumentSnapshot();
+  Future<StubDocumentSnapshot> get([dynamic options]) async =>
+      StubDocumentSnapshot();
   Future<void> update(Map<String, dynamic> data) async {}
   Future<void> set(Map<String, dynamic> data, [dynamic options]) async {}
   Stream<StubDocumentSnapshot> snapshots() => const Stream.empty();

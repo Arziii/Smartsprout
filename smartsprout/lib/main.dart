@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'firebase_options.dart';
 
 import 'core/constants/app_theme.dart';
+import 'presentation/providers/theme_provider.dart';
 import 'routes/app_router.dart';
 
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
@@ -45,11 +46,14 @@ class _SmartSproutAppState extends ConsumerState<SmartSproutApp> {
   @override
   Widget build(BuildContext context) {
     final goRouter = ref.watch(routerProvider);
+    final currentThemeMode = ref.watch(themeProvider);
 
     return MaterialApp.router(
       scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'Smart Sprout',
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: currentThemeMode,
       routerConfig: goRouter,
       debugShowCheckedModeBanner: false,
     );

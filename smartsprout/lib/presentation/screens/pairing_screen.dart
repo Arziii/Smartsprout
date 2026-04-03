@@ -124,16 +124,23 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
                                   child: Container(
                                     padding: const EdgeInsets.all(10),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.5),
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.white10
+                                          : Colors.white.withValues(alpha: 0.5),
                                       shape: BoxShape.circle,
                                       border: Border.all(
-                                          color: Colors.white.withValues(alpha: 0.8),
+                                          color: Colors.white
+                                              .withValues(alpha: 0.8),
                                           width: 1.5),
                                     ),
-                                    child: const Icon(
+                                    child: Icon(
                                       Icons.arrow_back_ios_new_rounded,
                                       size: 16,
-                                      color: Color(0xFF0F2027),
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.white
+                                          : const Color(0xFF0F2027),
                                     ),
                                   ),
                                 )
@@ -145,7 +152,10 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
                                 style: GoogleFonts.outfit(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w800,
-                                  color: const Color(0xFF0F2027),
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white
+                                      : const Color(0xFF0F2027),
                                   letterSpacing: -0.5,
                                 ),
                               ),
@@ -179,8 +189,7 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(65),
                             child: BackdropFilter(
-                              filter:
-                                  ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                               child: const Center(
                                 child: Icon(
                                   Icons.router_rounded,
@@ -203,7 +212,10 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
                           style: GoogleFonts.outfit(
                             fontSize: 28,
                             fontWeight: FontWeight.w800,
-                            color: const Color(0xFF0F2027),
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white
+                                    : const Color(0xFF0F2027),
                             letterSpacing: -0.5,
                           ),
                           textAlign: TextAlign.center,
@@ -245,8 +257,7 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(28),
                             child: BackdropFilter(
-                              filter:
-                                  ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                               child: Padding(
                                 padding: const EdgeInsets.all(24),
                                 child: Column(
@@ -293,8 +304,7 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
                                           () => _obscurePin = !_obscurePin),
                                       keyboardType: TextInputType.number,
                                       inputFormatters: [
-                                        FilteringTextInputFormatter
-                                            .digitsOnly,
+                                        FilteringTextInputFormatter.digitsOnly,
                                         LengthLimitingTextInputFormatter(8),
                                       ],
                                       validator: (v) =>
@@ -315,7 +325,10 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
                                             : _connect,
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor:
-                                              const Color(0xFF0F2027),
+                                              Theme.of(context).brightness ==
+                                                      Brightness.dark
+                                                  ? Colors.white
+                                                  : const Color(0xFF0F2027),
                                           foregroundColor: Colors.white,
                                           disabledBackgroundColor:
                                               const Color(0xFF0F2027)
@@ -452,7 +465,9 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
                 style: GoogleFonts.outfit(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF0F2027),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : const Color(0xFF0F2027),
                 ),
               ),
               Text(
@@ -476,7 +491,9 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
         fontSize: 11,
         fontWeight: FontWeight.w800,
         letterSpacing: 1.2,
-        color: const Color(0xFF0F2027),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Colors.white
+            : const Color(0xFF0F2027),
       ),
     );
   }
@@ -497,7 +514,10 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
       keyboardType: keyboardType,
       inputFormatters: inputFormatters,
       style: GoogleFonts.outfit(
-          fontWeight: FontWeight.w600, color: const Color(0xFF0F2027)),
+          fontWeight: FontWeight.w600,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : const Color(0xFF0F2027)),
       decoration: InputDecoration(
         hintText: hint,
         hintStyle:
@@ -523,23 +543,22 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide:
-              BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+          borderSide: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white10
+                  : Colors.white.withValues(alpha: 0.5)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide:
-              const BorderSide(color: Color(0xFF2BCC71), width: 1.5),
+          borderSide: const BorderSide(color: Color(0xFF2BCC71), width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide:
-              const BorderSide(color: Colors.redAccent, width: 1.5),
+          borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide:
-              const BorderSide(color: Colors.redAccent, width: 1.5),
+          borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
         ),
         contentPadding: const EdgeInsets.symmetric(vertical: 18),
       ),

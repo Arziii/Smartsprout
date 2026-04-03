@@ -25,7 +25,9 @@ class SystemSettingsDialog extends ConsumerWidget {
         content: Text(command == 'RESTART_APP'
             ? 'Restarting Dashboard...'
             : 'Command sent: $command'),
-        backgroundColor: const Color(0xFF0F2027),
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? Colors.white
+            : const Color(0xFF0F2027),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -57,11 +59,16 @@ class SystemSettingsDialog extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F2027).withValues(alpha: 0.05),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : const Color(0xFF0F2027).withValues(alpha: 0.05),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.settings_system_daydream_rounded,
-                    size: 48, color: Color(0xFF0F2027)),
+                child: Icon(Icons.settings_system_daydream_rounded,
+                    size: 48,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : const Color(0xFF0F2027)),
               ),
               const SizedBox(height: 24),
               Text(
@@ -69,7 +76,9 @@ class SystemSettingsDialog extends ConsumerWidget {
                 style: GoogleFonts.outfit(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,
-                  color: const Color(0xFF0F2027),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : const Color(0xFF0F2027),
                   letterSpacing: -0.5,
                 ),
               ),
@@ -87,6 +96,7 @@ class SystemSettingsDialog extends ConsumerWidget {
 
               // Restart Dashboard Button
               _buildControlButton(
+                context: context,
                 icon: Icons.refresh_rounded,
                 title: "Restart Dashboard",
                 subtitle: "Relaunches the Flutter UI only",
@@ -98,6 +108,7 @@ class SystemSettingsDialog extends ConsumerWidget {
 
               // Reboot Hardware Button
               _buildControlButton(
+                context: context,
                 icon: Icons.power_settings_new_rounded,
                 title: "Reboot Hardware",
                 subtitle: "Full Raspberry Pi core reboot",
@@ -125,6 +136,7 @@ class SystemSettingsDialog extends ConsumerWidget {
   }
 
   Widget _buildControlButton({
+    required BuildContext context,
     required IconData icon,
     required String title,
     required String subtitle,
@@ -163,7 +175,9 @@ class SystemSettingsDialog extends ConsumerWidget {
                       style: GoogleFonts.outfit(
                         fontWeight: FontWeight.w800,
                         fontSize: 18,
-                        color: const Color(0xFF0F2027),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : const Color(0xFF0F2027),
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -178,7 +192,8 @@ class SystemSettingsDialog extends ConsumerWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: color.withValues(alpha: 0.5)),
+              Icon(Icons.chevron_right_rounded,
+                  color: color.withValues(alpha: 0.5)),
             ],
           ),
         ),
@@ -196,7 +211,9 @@ class SystemSettingsDialog extends ConsumerWidget {
           'Confirm Hardware Reboot',
           style: GoogleFonts.outfit(
             fontWeight: FontWeight.w800,
-            color: const Color(0xFF0F2027),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : const Color(0xFF0F2027),
           ),
         ),
         content: Text(
