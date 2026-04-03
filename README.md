@@ -1,14 +1,16 @@
 # 🌱 Smart Sprout — IoT Garden Automation System
 
-A **Local-First, Cloud-Synced** smart garden system built with a Raspberry Pi controller and a cross-platform Flutter application. 
+A **Local-First, Cloud-Synced** smart garden system built with a Raspberry Pi 4 controller and a cross-platform Flutter application.
 
-Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibits local network discovery (no BLE, no local MQTT). All remote communication is fully encrypted and routed through Firebase Cloud Firestore, while local operations are air-gapped to the physical Raspberry Pi touchscreen (Kiosk Mode).
+Smart Sprout employs a **Zero-Trust, Pi-Bouncer Authentication Architecture**: all PIN validation is performed exclusively on the trusted hardware node (Raspberry Pi), never on the client device. Remote communication is fully encrypted and routed through Firebase Cloud Firestore while local operations are air-gapped to the physical Raspberry Pi touchscreen (Kiosk Mode).
 
 ---
 
 ## 📑 Table of Contents
 - [System Architecture](#-system-architecture)
+- [Authentication Flow — Pi-Bouncer](#-authentication-flow--pi-bouncer)
 - [Core Features](#-core-features)
+- [Security Model](#-security-model)
 - [Hardware Pin Mapping](#-hardware-pin-mapping)
 - [Quick Start Guide](#-quick-start-guide)
 - [Scaling & Deployment](#-scaling--deployment)
@@ -23,18 +25,20 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
                      Secure Encrypted Cloud Sync
                   ┌───────────────────────────────┐
                   ▼                               ▼
- ┌─────────────────────────┐          ┌──────────────────────────┐
- │                         │          │                          │
- │ Flutter App (Mobile/PC) │          │  Raspberry Pi (Python)   │
- │   "Secure IoT Mode"     │          │   "Local Offline Mode"   │
- │ (Concurrent Access)     │          │  + Flutter Kiosk UI      │
- └─────────────────────────┘          └────────────┬─────────────┘
+ ┌─────────────────────────┐          ┌──────────────────────────────────┐
+ │                         │          │                                  │
+ │ Flutter App (Mobile/PC) │          │  Raspberry Pi 4 (Python)         │
+ │  "Pi-Bouncer Auth"      │          │  ├─ Sensor & Telemetry Loop       │
+ │  + Riverpod State Mgmt  │          │  ├─ Auth Bouncer (auth_bouncer.py)│
+ │  + Custom Token Auth    │          │  ├─ Firebase Admin SDK            │
+ └─────────────────────────┘          │  └─ Flutter Kiosk UI             │
+                                      └────────────┬─────────────────────┘
                                                    │
                                       ┌────────────┴─────────────┐
-                                      │    Hardware Layer        │
-                                      │                          │
+                                      │    Hardware Layer         │
+                                      │                           │
                                       │ ADS1115  ─► 3x Soil      │
-                                      │ BME280   ─► Temp/Hum/Pres│
+                                      │ BME280   ─► Temp/Hum/Pres │
                                       │ XKC-Y26-V─► Tank Level   │
                                       │ 4ch Relay─► Pump/Valves  │
                                       └──────────────────────────┘
@@ -42,33 +46,99 @@ Smart Sprout employs a pristine **Zero-Trust Architecture**: it strictly prohibi
 
 ---
 
+## 🔐 Authentication Flow — Pi-Bouncer
+
+The Pi-Bouncer is the cornerstone of Smart Sprout's security model. Instead of comparing PINs client-side, the Raspberry Pi acts as a **hardware-rooted authentication server**.
+
+### Flow Diagram
+
+```
+Flutter App              Firestore              Raspberry Pi 4
+──────────               ─────────              ──────────────
+
+① Generate UUID
+  Write login_requests/
+  {requestId}:           ──── CREATE ──────►
+  { deviceId, pin,
+    status:"pending" }
+                                               ② on_snapshot fires
+                                                  Pi reads request
+                                               ③ Rate-limit check
+                                                  (In-memory store)
+                                               ④ SHA-256(pin) verify
+                                                  vs stored hash
+                                                  ✗ Fail →
+                         ◄─── status:"error" ─────────────────
+                                                  5th fail →
+                         ◄─ status:"rate_limited" ────────────
+                         locked_until:<epoch>
+                                                  ✓ Pass →
+                                               ⑤ mint Custom Token
+                                                  uid = deviceId
+                         ◄─ status:"approved" ────────────────
+                            token:"<JWT>"
+⑥ signInWithCustomToken()
+   Delete request doc
+   Navigate → Dashboard
+```
+
+### State Table
+
+| App State | Trigger | UI |
+|---|---|---|
+| `isLoading: true` | Login request written to Firestore | Spinner + "Contacting hardware..." |
+| `status: approved` | Pi validated PIN, token returned | Green snackbar → Dashboard |
+| `status: error` | Incorrect PIN | Red error banner |
+| `status: rate_limited` | 5 failed attempts | Amber countdown banner (15 min) |
+| Timeout (15s) | Pi offline / no response | "Hardware Offline" banner |
+| Quick Switch (Option B) | Firebase session still valid | Instant switch, no PIN needed |
+
+---
+
 ## ✨ Core Features
 
-*   **Zero-Trust Security**: Remote access is strictly credential-based (Device ID + PIN) via Firebase Authentication (Anonymous Sign-In) and Cloud Firestore validation. No local ports are exposed. Environment variables (`.env`) are used to manage secrets securely.
-*   **Dual Operation Modes**: 
-    *   **Secure IoT**: Monitor and control your garden globally via the iOS, Android, and Windows Desktop apps.
-    *   **Air-Gapped Local**: Full operation and calibration via the Raspberry Pi's physical touchscreen, independent of internet connectivity.
-*   **Centralized Power Distribution**: Utilizes a single 12V source with a 5V/5A Buck Module, providing clean 5.1V logic power via USB-C and isolated 5V motor power for pump noise suppression.
-*   **Advanced Irrigation Control**:
-    *   **Pulse & Soak**: Intelligent auto-watering that pulses water for 5s followed by a 20s soak period to ensure optimal absorption and prevent runoff.
-    *   **Manual Modes**: Dedicated controls for "Continuous Flow" (fixed duration) and "Pulse & Soak" manual triggers.
-*   **Safety & Lockdown**:
-    *   **Master Lockdown Switch**: A global safety switch that instantly kills all active watering and prevents new cycles until manually released.
-    *   **Normally Closed (NC) Safety**: All valves are NC, ensuring they fail-safe to a closed position during power or software failures.
-    *   **Pump Watchdog**: A dedicated GPIO-level Python daemon forces the water pump OFF if it runs longer than 120 seconds, preventing floods.
-*   **Hardware-Aware Maintenance Mode**: Gracefully handles I2C disconnects (Errno 5) and BME280 sensor faults. The UI displays a "Maintenance Required" wrench icon and hard-locks auto-watering for affected zones.
-*   **Eco-Mode, Caching & Dynamic Sync**: The backend separates physical hardware polling (every 3 seconds) from Firebase cloud pushes (every 30 minutes). To protect Cloud Quotas (staying well under 50,000 reads/day and 20,000 writes/day), the system uses extreme optimization:
-    *   **Differential Sync**: If significant environmental changes are detected (Δ>8% Moisture or Δ>3.0°C Temp), the system instantly pushes an update. It uses a strict 60-second cooldown to suppress electronic sensor jitter.
-    *   **1-Hour Analytics Cache & Limits**: Historical cloud queries are strictly capped at 500 documents and cached in-memory for 1 hour on the mobile device, preventing massive read spikes when users navigate between tabs.
-    *   **Persistent Maintenance**: Maintenance cleanups (deleting 30-day-old logs) persist their timestamps to the Pi's local disk, preventing redundant batch operations during reboots.
-    *   **Kiosk Polling Optimization**: The Linux Kiosk UI performs low-bandwidth REST polling every 30 seconds (saving ~14,000 reads/day) while native Mobile Apps use real-time listeners.
-    *   **Snappy 45s Offline Detection**: A Dead-Man's Switch monitors the mobile app's connection natively via a 10s heartbeat. If the hardware misses heartbeats for 45 seconds, the app instantly locks down, ensuring the pump kills itself instantly if internet drops during manual watering.
-*   **Advanced Device Management (v2.0)**:
-    *   **In-App Account Switching**: Facebook-style account switcher allows users to manage multiple devices (e.g., Garden 1, Garden 2) and switch between them instantly without disconnecting.
-    *   **In-App Device Provisioning**: Add new hardware units directly from the settings menu via a secure modal without leaving the app.
-    *   **Secure Renaming**: Devices map to permanent hardware IDs, but users can assign custom nicknames (e.g., "Front Porch") which persist across all logged-in sessions.
-    *   **Remote PIN Management**: Security-first PIN changes require verifying the current PIN before authorizing an update, preventing unauthorized access if a phone is left unlocked.
-*   **Physical Factory Reset**: A dedicated hardware button (BCM 24) with LED feedback (BCM 18) for secure persistence resets.
+- **Pi-Bouncer Zero-Trust Auth**: PIN validation runs exclusively on the Raspberry Pi via Firebase Admin SDK. The Flutter app never sees the stored hash. Rate limiting enforces a 15-minute lockout after 5 failed attempts.
+- **Firebase Custom Token Auth**: On success, the Pi mints a Custom Token (`uid = deviceId`). Firestore Security Rules use `request.auth.uid == deviceId` to restrict all device data to the authenticated owner.
+- **Session-Reuse Quick Switch**: Saved accounts use Option B logic — if a Firebase Custom Token session is still valid, the app switches instantly with zero network round-trip. Expired sessions prompt re-authentication.
+- **Dual Operation Modes**:
+  - **Secure IoT**: Monitor and control globally via iOS, Android, and Windows Desktop apps.
+  - **Air-Gapped Local**: Full operation via Pi's physical touchscreen, independent of internet.
+- **Eco-Mode + Differential Sync**: Hardware polling (3s) is decoupled from Firebase writes (30-min ceiling). Writes only fire on: ≥8% moisture delta, ≥3°C temperature delta, tank level change, system-status change, or manual FORCE_SYNC command.
+- **Pulse & Soak Auto-Watering**: Pulses water 5s → soaks 20s → re-reads moisture → repeats until target saturation reached or safety timeout fires.
+- **Dead-Man's Switch**: During manual watering, a 10s heartbeat is required from the mobile app. If missed for >5s, the Pi kills all pumps immediately.
+- **Pump Safety Watchdog**: GPIO-level daemon forces pump OFF if it runs >120 seconds.
+- **Physical Factory Reset**: Hardware button (BCM 24) with LED feedback (BCM 18).
+
+---
+
+## 🛡️ Security Model
+
+### Firestore Security Rules Summary
+
+| Collection | Create | Read | Update | Delete |
+|---|---|---|---|---|
+| `devices/{deviceId}` | Pi (Admin SDK) | `auth.uid == deviceId` | `auth.uid == deviceId` | Pi only |
+| `devices/{id}/telemetry` | Pi only | `auth.uid == deviceId` | Pi only | Pi only |
+| `devices/{id}/commands` | `auth.uid == deviceId` | `auth.uid == deviceId` | Pi only | Pi only |
+| `login_requests/{requestId}` | Anyone (validated payload) | Anyone (UUID secrecy) | Pi only | Anyone |
+
+### Rate Limiting
+
+| Parameter | Value |
+|---|---|
+| Max failed attempts | 5 |
+| Lockout duration | 15 minutes |
+| State storage | In-memory (resets on Pi reboot) |
+| Lockout signal | `status: "rate_limited"` + `locked_until` epoch |
+
+### PIN Security
+
+| Property | Detail |
+|---|---|
+| Storage | SHA-256 hash in `device_config.json` (plaintext auto-migrated on first boot) |
+| Comparison | Pi-side only — Flutter never reads stored hash |
+| Transmission | Raw PIN sent to `login_requests`, never to `devices/` |
+| Post-auth storage | PIN **not** stored locally on mobile (removed from `SavedDevice`) |
 
 ---
 
@@ -103,17 +173,19 @@ sudo apt-get update && sudo apt-get install -y i2c-tools python3-pip python3-dev
 cd /home/smartsprout/Smartsprout/smartsproutrasberry
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt adafruit-circuitpython-bme280 --break-system-packages
+pip install -r requirements.txt
 
-# 3. Configure Security & Credentials
-# Place your `firebase_credentials.json` in the `smartsproutrasberry/` directory.
-cp .env.example .env 
-# Update .env with your specific:
-# DEVICE_ID="SPROUT_XXXX"
-# DEVICE_PIN="1234"
-# FIREBASE_CREDENTIALS_PATH="firebase_credentials.json"
+# 3. Configure credentials
+cp .env.example .env
+# Edit .env — set DEVICE_ID and FIREBASE_CREDENTIALS_PATH
+# Place your firebase-adminsdk.json in smartsproutrasberry/
 
-# 4. Install the Reliability Watchdog (Systemd)
+# 4. IMPORTANT: On first boot, auth_bouncer.py auto-migrates the plaintext
+# 'password' field in device_config.json to a SHA-256 hash.
+# No manual action needed. Watch for this log line:
+#   [AUTH_BOUNCER] ✅ PIN migrated to SHA-256 hash. Plaintext removed.
+
+# 5. Install the Reliability Watchdog (Systemd)
 sudo cp smartsprout.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable smartsprout
@@ -125,34 +197,43 @@ sudo systemctl start smartsprout
 ```bash
 cd Smartsprout/smartsprout
 
-# 1. Install dependencies
+# 1. Install dependencies (includes uuid package)
 flutter pub get
 
 # 2. Run on your target device (iOS/Android)
 flutter run
 ```
 
+### 3. First-Time Device Registration
+
+1. Create a document in Firestore: `devices/{YOUR_DEVICE_ID}`
+2. Add a minimal document body:
+   ```json
+   { "device_name": "My Garden", "status": "offline" }
+   ```
+3. The Pi-Bouncer reads the PIN from `device_config.json` — **no PIN stored in Firestore**.
+
 ---
 
 ## 🚀 Scaling & Deployment
 
-The system is designed for **Zero-Touch Scaling**. To deploy multiple units (e.g., selling 10+ devices), you do NOT need to modify the source code or create separate app builds.
+The system is designed for **Zero-Touch Scaling**. To deploy multiple units:
 
 ### 1. Unified App Architecture
-The Flutter app is a **Universal Client**. It acts as a shell that connects to any hardware ID registered in your Firebase project. One APK/IPA works for all your customers.
+The Flutter app is a **Universal Client**. One APK/IPA works for all devices.
 
-### 2. The One-Line Config (Raspberry Pi)
-When preparing a new hardware unit for a customer:
-1.  **Clone** the `smartsproutrasberry` folder to the new Pi.
-2.  **Change exactly one line** in the `.env` file:
-    ```bash
-    # On Unit 2:
-    DEVICE_ID="SPROUT_002"
-    ```
-3.  **Register** `SPROUT_002` as a new document in your Firebase `devices` collection.
+### 2. Per-Unit Pi Configuration
+
+| Step | Action |
+|---|---|
+| 1 | Clone `smartsproutrasberry/` to the new Pi |
+| 2 | Set `DEVICE_ID="SPROUT_NNN"` in `.env` |
+| 3 | Set `password` in `device_config.json` (auto-hashed on first boot) |
+| 4 | Register `SPROUT_NNN` as a new document in Firestore `devices/` |
+| 5 | Provide customer with Device ID + default PIN |
 
 ### 3. Customer Experience
-The customer simply enters the **Device ID** and **Default PIN** provided with their hardware. The app automatically pulls the correct telemetry specifically for that hardware unit.
+The customer enters their unique **Device ID** and included **PIN**. The app routes through the Pi-Bouncer, receives a Custom Token, and connects exclusively to their device's data.
 
 ---
 
@@ -161,24 +242,31 @@ The customer simply enters the **Device ID** and **Default PIN** provided with t
 ```text
 Smartsprout/
 ├── README.md                   # This overview
-├── HARDWARE_SETUP.md           # Detailed physical wiring & sensor specs
-├── RASPBERRY_PI_GUIDE.md       # OS, Kiosk, and VNC setup guide
-├── Smart Sprout Flutter.md     # Comprehensive architectural thesis for the Mobile App
-├── DefensePreparation.md       # ⚠️ CRITICAL: Read for deep-dive Firebase operations, diagrams, and defense Q&A
+├── HARDWARE_SETUP.md           # Physical wiring & sensor specs
+├── RASPBERRY_PI_GUIDE.md       # OS, Kiosk, and deployment guide
+├── Smart Sprout Flutter.md     # Comprehensive Flutter architecture guide
+├── DefensePreparation.md       # Defense Q&A, Firebase ops, security diagrams
 │
 ├── smartsprout/                # Flutter UI (Mobile & Kiosk)
+│   ├── firestore.rules         # ← Zero-Trust security rules (Pi-Bouncer)
 │   ├── lib/
 │   │   ├── data/               # Firestore services, Models, Config parsing
-│   │   ├── presentation/       # Riverpod providers, UI flow
+│   │   ├── presentation/
+│   │   │   ├── providers/
+│   │   │   │   └── auth_provider.dart  # ← Pi-Bouncer login flow (Riverpod)
+│   │   │   └── screens/
+│   │   │       └── hardware_login_screen.dart  # ← Rate-limit UI & countdown
 │   │   └── screens/            # Dashboard, Calibration, Setup
 │   └── pubspec.yaml
 │
 └── smartsproutrasberry/        # Python Hardware Controller
     ├── main.py                 # Telemetry loop & differential sync
-    ├── firebase_manager.py     # Firestore interaction & heartbeats
+    ├── auth_bouncer.py         # ← Pi-Bouncer auth daemon (NEW)
+    ├── firebase_manager.py     # Firestore telemetry & heartbeats
     ├── pump_watchdog.py        # Hardware safety shutoff daemon
     ├── reset_button.py         # Factory reset logic & LED feedback
-    └── sensors.py              # Hardware abstraction (I2C, GPIO)
+    ├── sensors.py              # Hardware abstraction (I2C, GPIO)
+    └── device_config.json      # Stores hashed_pin (auto-migrated)
 ```
 
 ---

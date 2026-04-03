@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,9 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
   final _pinController = TextEditingController();
   late AnimationController _fadeController;
 
+  Timer? countdownTimer;
+  Duration _rateLimitRemaining = Duration.zero;
+
   @override
   void initState() {
     super.initState();
@@ -33,16 +37,32 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
     _deviceIdController.dispose();
     _pinController.dispose();
     _fadeController.dispose();
+    countdownTimer?.cancel();
     super.dispose();
+  }
+
+  void _startCountdown(DateTime expiry) {
+    countdownTimer?.cancel();
+    countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      final remaining = expiry.difference(DateTime.now());
+      if (!mounted) return;
+      if (remaining.isNegative || remaining.inSeconds <= 0) {
+        countdownTimer?.cancel();
+        ref.read(authProvider.notifier).clearRateLimit();
+        return;
+      }
+      setState(() => _rateLimitRemaining = remaining);
+    });
+    setState(() => _rateLimitRemaining = expiry.difference(DateTime.now()));
   }
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     final success = await ref.read(authProvider.notifier).login(
-      _deviceIdController.text.trim(),
-      _pinController.text.trim(),
-    );
+          _deviceIdController.text.trim(),
+          _pinController.text.trim(),
+        );
 
     if (success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -61,11 +81,20 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
 
+    // Start countdown when rate-limited
+    if (authState.isRateLimited && authState.rateLimitExpiry != null) {
+      final expiry = authState.rateLimitExpiry!;
+      final remaining = expiry.difference(DateTime.now());
+      if (!remaining.isNegative && remaining.inSeconds > 0 && (countdownTimer == null || !countdownTimer!.isActive)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _startCountdown(expiry));
+      }
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       body: Stack(
         children: [
-          // ── Gradient & Blob Background (Matches Dashboard) ──
+          // ── Gradient & Blob Background ──
           Positioned.fill(
             child: Container(
               decoration: const BoxDecoration(
@@ -88,49 +117,22 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _buildAnimatedElement(0, Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.5),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                          child: Icon(
-                            Icons.grass_rounded,
-                            size: 60,
-                            color: const Color(0xFF2BCC71),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        Text(
-                          'Smart Sprout',
-                          style: GoogleFonts.outfit(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF0F2027),
-                            letterSpacing: -1.0,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Secure Hardware Access',
-                          style: GoogleFonts.outfit(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: const Color(0xFF4A6164),
-                          ),
-                        ),
-                      ],
-                    )),
+                    _buildAnimatedElement(0, _buildHeader()),
                     const SizedBox(height: 48),
 
-                    if (authState.savedDevices.isNotEmpty) ...[
-                      _buildAnimatedElement(1, _buildSavedAccountsHorizontal(authState)),
-                      const SizedBox(height: 32),
+                    // ── Rate-Limit Banner (full screen, blocks login) ──
+                    if (authState.isRateLimited) ...[
+                      _buildAnimatedElement(1, _buildRateLimitBanner()),
+                      const SizedBox(height: 24),
                     ],
-                    _buildAnimatedElement(2, _buildLoginForm(authState)),
+
+                    if (!authState.isRateLimited) ...[
+                      if (authState.savedDevices.isNotEmpty) ...[
+                        _buildAnimatedElement(1, _buildSavedAccountsHorizontal(authState)),
+                        const SizedBox(height: 32),
+                      ],
+                      _buildAnimatedElement(2, _buildLoginForm(authState)),
+                    ],
                   ],
                 ),
               ),
@@ -141,7 +143,145 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
     );
   }
 
-  Widget _buildSavedAccountsHorizontal(authState) {
+  // ─────────────────────────────────────────────────────
+  // Header
+  // ─────────────────────────────────────────────────────
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.5),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+          ),
+          child: const Icon(Icons.grass_rounded, size: 60, color: Color(0xFF2BCC71)),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          'Smart Sprout',
+          style: GoogleFonts.outfit(
+            fontSize: 32,
+            fontWeight: FontWeight.w900,
+            color: const Color(0xFF0F2027),
+            letterSpacing: -1.0,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Secure Hardware Access',
+          style: GoogleFonts.outfit(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: const Color(0xFF4A6164),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Rate-Limit Banner with Live Countdown
+  // ─────────────────────────────────────────────────────
+  Widget _buildRateLimitBanner() {
+    final minutes = _rateLimitRemaining.inMinutes;
+    final seconds = _rateLimitRemaining.inSeconds.remainder(60);
+    final timeStr = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: const Color(0xFFFFB347).withOpacity(0.5), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withOpacity(0.1),
+            blurRadius: 30,
+            offset: const Offset(0, 15),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Column(
+            children: [
+              // Lock icon
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFB347).withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.lock_clock_rounded, size: 48, color: Color(0xFFE67E22)),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Too Many Attempts',
+                style: GoogleFonts.outfit(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF0F2027),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'This device has been temporarily locked\ndue to multiple incorrect PINs.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.outfit(
+                  fontSize: 14,
+                  color: const Color(0xFF4A6164),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 28),
+              // Countdown display
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F2027).withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFFFB347).withOpacity(0.3)),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'TRY AGAIN IN',
+                      style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                        color: const Color(0xFF4A6164),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      timeStr,
+                      style: GoogleFonts.outfit(
+                        fontSize: 48,
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFFE67E22),
+                        letterSpacing: -2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Saved Accounts Carousel
+  // ─────────────────────────────────────────────────────
+  Widget _buildSavedAccountsHorizontal(AuthState authState) {
     final devices = authState.savedDevices;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -166,6 +306,7 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
               final device = devices[index];
               return GestureDetector(
                 onTap: () async {
+                  // Option B: try session reuse first
                   final success = await ref.read(authProvider.notifier).quickSwitch(device.deviceId);
                   if (success && mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -177,53 +318,135 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                       ),
                     );
                     context.go('/dashboard');
+                  } else {
+                    // Session expired — pre-fill device ID and let user enter PIN
+                    _deviceIdController.text = device.deviceId;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Session expired for ${device.nickname}. Enter your PIN.'),
+                        backgroundColor: const Color(0xFF4A6164),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    );
                   }
                 },
-                child: Container(
-                  width: 90,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.7),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 15,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const CircleAvatar(
-                            radius: 20,
-                            backgroundColor: Color(0xFF2BCC71),
-                            child: Icon(Icons.grass_rounded, color: Colors.white, size: 20),
-                          ),
-                          const SizedBox(height: 8),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: Text(
-                              device.nickname,
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.outfit(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF0F2027),
-                              ),
-                            ),
+                child: Stack(
+                  children: [
+                    Container(
+                      width: 90,
+                      height: 100, // ensure explicit height
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 15,
+                            offset: const Offset(0, 5),
                           ),
                         ],
                       ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const CircleAvatar(
+                                radius: 20,
+                                backgroundColor: Color(0xFF2BCC71),
+                                child: Icon(Icons.grass_rounded, color: Colors.white, size: 20),
+                              ),
+                              const SizedBox(height: 8),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                child: Text(
+                                  device.nickname,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF0F2027),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: GestureDetector(
+                        onTap: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (context) {
+                              return AlertDialog(
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                backgroundColor: const Color(0xFFF0FDF4),
+                                title: Text(
+                                  'Remove Account',
+                                  style: GoogleFonts.outfit(
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF0F2027),
+                                  ),
+                                ),
+                                content: Text(
+                                  'Are you sure you want to remove ${device.nickname}?',
+                                  style: GoogleFonts.outfit(color: const Color(0xFF4A6164)),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, false),
+                                    child: Text(
+                                      'CANCEL',
+                                      style: GoogleFonts.outfit(color: const Color(0xFF4A6164), fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, true),
+                                    child: Text(
+                                      'REMOVE',
+                                      style: GoogleFonts.outfit(color: Colors.redAccent, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+
+                          if (confirm == true) {
+                            await ref.read(authProvider.notifier).removeSavedDevice(device.deviceId);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('${device.nickname} removed'),
+                                  backgroundColor: const Color(0xFFE67E22),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.transparent,
+                          ),
+                          child: const Icon(Icons.close_rounded, size: 16, color: Colors.black54),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               );
             },
@@ -233,7 +456,10 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
     );
   }
 
-  Widget _buildLoginForm(authState) {
+  // ─────────────────────────────────────────────────────
+  // Login Form
+  // ─────────────────────────────────────────────────────
+  Widget _buildLoginForm(AuthState authState) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.7),
@@ -258,30 +484,73 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                if (authState.error != null)
-                  _buildErrorBanner(authState.error!),
-                
-                _buildTextField(
-                  controller: _deviceIdController,
-                  label: 'Device ID',
-                  icon: Icons.router_rounded,
-                  hint: 'SPROUT_A1B2',
-                ),
-                const SizedBox(height: 20),
-                _buildTextField(
-                  controller: _pinController,
-                  label: 'Admin PIN',
-                  icon: Icons.lock_rounded,
-                  obscure: true,
-                  hint: '••••',
-                ),
-                const SizedBox(height: 32),
-                _buildLoginButton(authState.isLoading),
-              ],
+                  if (authState.error != null && !authState.isRateLimited)
+                    _buildErrorBanner(authState.error!),
+
+                  _buildTextField(
+                    controller: _deviceIdController,
+                    label: 'Device ID',
+                    icon: Icons.router_rounded,
+                    hint: 'SPROUT_A1B2',
+                  ),
+                  const SizedBox(height: 20),
+                  _buildTextField(
+                    controller: _pinController,
+                    label: 'Admin PIN',
+                    icon: Icons.lock_rounded,
+                    obscure: true,
+                    hint: '••••',
+                    maxLength: 4,
+                    keyboardType: TextInputType.number,
+                  ),
+
+                  // Pi-Bouncer status hint
+                  const SizedBox(height: 16),
+                  if (authState.isLoading)
+                    _buildWaitingBanner()
+                  else
+                    const SizedBox.shrink(),
+
+                  const SizedBox(height: 16),
+                  _buildLoginButton(authState.isLoading),
+                ],
+              ),
             ),
           ),
         ),
-        ),
+      ),
+    );
+  }
+
+  Widget _buildWaitingBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2BCC71).withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF2BCC71).withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: const Color(0xFF2BCC71),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            'Contacting hardware...',
+            style: GoogleFonts.outfit(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF2BCC71),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -292,6 +561,8 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
     required IconData icon,
     bool obscure = false,
     required String hint,
+    int? maxLength,
+    TextInputType? keyboardType,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -302,16 +573,19 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
             fontSize: 11,
             fontWeight: FontWeight.w800,
             letterSpacing: 1.2,
-            color: const Color(0xFF0F2027), // Full opacity, matching headings
+            color: const Color(0xFF0F2027),
           ),
         ),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
           obscureText: obscure,
+          maxLength: maxLength,
+          keyboardType: keyboardType,
           style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: const Color(0xFF0F2027)),
           decoration: InputDecoration(
             hintText: hint,
+            counterText: '',
             hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5)),
             prefixIcon: Icon(icon, color: const Color(0xFF2BCC71), size: 20),
             filled: true,
@@ -348,37 +622,43 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           elevation: 0,
         ),
-        child: isLoading
-            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-            : Text(
-                'CONNECT TO SYSTEM',
-                style: GoogleFonts.outfit(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
-                ),
-              ),
+        child: Text(
+          'CONNECT TO SYSTEM',
+          style: GoogleFonts.outfit(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.5,
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildErrorBanner(String message) {
+    // "Hardware Offline" gets a special amber treatment
+    final isOffline = message.contains('Offline') || message.contains('offline');
+    final color = isOffline ? const Color(0xFFE67E22) : Colors.redAccent;
+
     return Container(
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 24),
       decoration: BoxDecoration(
-        color: Colors.redAccent.withOpacity(0.1),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.redAccent.withOpacity(0.2)),
+        border: Border.all(color: color.withOpacity(0.2)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20),
+          Icon(
+            isOffline ? Icons.wifi_off_rounded : Icons.error_outline_rounded,
+            color: color,
+            size: 20,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
-              style: GoogleFonts.outfit(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w600),
+              style: GoogleFonts.outfit(color: color, fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -386,7 +666,14 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
     );
   }
 
-  Widget _buildBlob({double? top, double? left, double? right, double? bottom, required double size, required Color color}) {
+  Widget _buildBlob({
+    double? top,
+    double? left,
+    double? right,
+    double? bottom,
+    required double size,
+    required Color color,
+  }) {
     return Positioned(
       top: top,
       left: left,

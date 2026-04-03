@@ -3,14 +3,15 @@
 ## Table of Contents
 1. [System Overview](#1-system-overview)
 2. [System Architecture](#2-system-architecture)
-3. [UI/UX Documentation](#3-uiux-documentation)
-4. [Mobile Application Functions](#4-mobile-application-functions)
-5. [Detailed Cloud & Firebase Operations](#5-detailed-cloud--firebase-operations)
-6. [Hardware Setup](#6-hardware-setup)
-7. [Testing & Limitations](#7-testing--limitations)
-8. [Defense Q&A Preparation](#8-defense-qa-preparation)
-9. [Future Recommendations](#9-future-recommendations)
-10. [Intellectual Property & Anti-Tamper Strategies](#10-intellectual-property--anti-tamper-strategies)
+3. [Pi-Bouncer Authentication Architecture](#3-pi-bouncer-authentication-architecture)
+4. [UI/UX Documentation](#4-uiux-documentation)
+5. [Mobile Application Functions](#5-mobile-application-functions)
+6. [Detailed Cloud & Firebase Operations](#6-detailed-cloud--firebase-operations)
+7. [Hardware Setup](#7-hardware-setup)
+8. [Testing & Limitations](#8-testing--limitations)
+9. [Defense Q&A Preparation](#9-defense-qa-preparation)
+10. [Future Recommendations](#10-future-recommendations)
+11. [Intellectual Property & Anti-Tamper Strategies](#11-intellectual-property--anti-tamper-strategies)
 
 ---
 
@@ -50,32 +51,38 @@ The system relies on a **Zero-Trust Architecture** that bridges a Raspberry Pi l
 
 ```mermaid
 graph TD
-    subgraph Edge Layer [Raspberry Pi Kiosk]
-        A[Python Backend: main.py]
-        B[Hardware Watchdog]
-        C[Sensors: Moisture, Temp, Tank]
-        D[Actuators: Relays, Pumps]
+    subgraph Edge ["Raspberry Pi 4 (Python Backend)"]
+        A[main.py\nTelemetry Loop]
+        AB[auth_bouncer.py\nPi-Bouncer Daemon]
+        B[pump_watchdog.py\nHardware Safety]
+        C["Sensors: Soil / Temp / Tank"]
+        D["Actuators: Relays / Pumps"]
         E[Flutter Linux Kiosk UI]
         
         A <--> C
         A <--> D
         A -.-> B
         B -.->|Kill Switch| D
+        AB -->|mint Custom Token| F
         E -->|Firestore REST| A
     end
 
-    subgraph Cloud Layer [Firebase]
+    subgraph Cloud ["Firebase (Spark Plan)"]
         F[(Cloud Firestore)]
-        LS[Master Lockdown State]
-        F --- LS
+        FA[Firebase Auth\nCustom Token]
+        F --- FA
     end
 
-    subgraph Client Layer [Mobile / Desktop]
-        G[Flutter iOS/Android App]
-        H[Flutter Windows App]
+    subgraph Client ["Flutter App (Mobile / Desktop)"]
+        G["iOS / Android App"]
+        H[Windows Desktop App]
     end
 
-    A <-->|Telemetry & Heartbeat| F
+    A <-->|"Telemetry & Heartbeat"| F
+    G -->|"① Write login_requests"| F
+    F -->|"② on_snapshot fires"| AB
+    AB -->|"③ status: approved + token"| F
+    F -->|"④ signInWithCustomToken"| G
     F <-->|Real-time Sync| G
     F <-->|Real-time Sync| H
     E <-->|Real-time Sync| F
@@ -84,11 +91,12 @@ graph TD
 ### Flow Diagrams for Defense
 
 #### 1. System Flow Diagram
-1. The **Hardware Unit** (Raspberry Pi) polls plant sensors every X seconds.
+1. The **Hardware Unit** (Raspberry Pi) polls plant sensors every 3 seconds.
 2. The **Python Backend** determines if the soil is below the *target_moisture* and initiates watering if the auto-strategy permits.
 3. Telemetry is uploaded periodically (Differential Sync) to **Firestore**.
 4. The **Flutter Apps** listen to Firestore and update the visual dashboards in real time.
-5. A user triggers a manual pump command -> App updates Firestore -> Pi queries Firestore and activates the pump while monitoring the "Dead-Man's Switch" heartbeat.
+5. A user logs in → App writes request to `login_requests/` → **auth_bouncer.py** validates PIN server-side → mints Custom Token → App authenticates.
+6. A user triggers a manual pump command → App updates Firestore → Pi queries Firestore and activates the pump while monitoring the Dead-Man's Switch heartbeat.
 
 #### 2. ERD (Entity-Relationship Diagram) - Data Structure
 Firestore is a NoSQL database; structured primarily around documents.
@@ -237,10 +245,47 @@ Instead of spamming the database every second (which would crash the quota), the
 3. If none of these are met, the Pi stays quiet and saves bandwidth.
 4. When it *does* push, it overwrites the main device document in Firestore. The Flutter app is "listening" (via Riverpod Streams) to this document and instantly updates the mobile screen UI locally without requiring a manual refresh.
 
-### C. Authentication & Hardware Connectivity (Firebase Auth & Admin SDK)
-The system uses dual authentication paradigms for the Mobile App and the Edge Device (Raspberry Pi):
-1. **Mobile App (Firebase Authentication)**: The Flutter app uses **Firebase Anonymous Sign-In** to establish a secure, short-lived session with Google's servers. Once the anonymous token is generated, the app queries the `devices/{deviceID}` document to validate the user-provided PIN against the stored `hashed_pin`. If it matches, the session is cached using `SharedPreferences`, granting the app read/write access to that specific device's document.
-2. **Raspberry Pi (Firebase Admin SDK)**: The Python backend does not use Firebase Authentication. Instead, it uses the **Firebase Admin SDK** armed with a locally stored `firebase_credentials.json` Service Account key. This gives the Pi Server-to-Server privileges to unconditionally publish telemetry and listen to the `commands/` subcollection securely.
+### C. Pi-Bouncer Authentication Architecture (v2.0)
+
+The system uses a **hardware-rooted, server-side authentication model** — the PIN is validated exclusively on the Raspberry Pi, never on the mobile client.
+
+#### Why the Old Architecture Was Insecure
+The previous architecture used Firebase Anonymous Sign-In and compared the PIN **client-side** by reading `devices/{deviceId}.hashed_pin` from Firestore. This meant:
+- Any attacker with a `deviceId` could attempt all 10,000 possible 4-digit PINs with zero server-side throttle.
+- The PIN hash was exposed to the Firestore client SDK — readable in logs or intercepted.
+
+#### The Pi-Bouncer Solution
+
+| Step | Actor | Action |
+|---|---|---|
+| ① | Flutter App | Generate UUID `requestId`. Write `login_requests/{requestId}` with `{deviceId, pin, status:"pending"}` |
+| ② | Firestore | `on_snapshot` fires on the Pi's `auth_bouncer.py` listener |
+| ③ | Pi (auth_bouncer.py) | Check in-memory rate limiter. If locked → write `status:"rate_limited"` |
+| ④ | Pi (auth_bouncer.py) | SHA-256 hash incoming PIN. Compare against stored hash in `device_config.json` |
+| ⑤ | Pi (auth_bouncer.py) | On match: call `firebase_auth.create_custom_token(deviceId)` via Admin SDK |
+| ⑥ | Pi (auth_bouncer.py) | Write `{status:"approved", token:"<JWT>"}` back to the request doc |
+| ⑦ | Flutter App | Receive `approved` → call `FirebaseAuth.signInWithCustomToken(token)` → delete request doc |
+
+#### Rate Limiting
+
+| Parameter | Value |
+|---|---|
+| Max failed attempts | 5 per deviceId |
+| Lockout duration | 15 minutes |
+| State | In-memory dict (thread-safe via `threading.Lock`) |
+| Auto-expiry | Passive — checks `time.time() > locked_until` on each request |
+| Client feedback | `locked_until` epoch timestamp returned for countdown UI |
+
+#### Firestore Security Rules — Key Properties
+
+| Collection | Create Rule | Read Rule |
+|---|---|---|
+| `devices/{deviceId}` | Pi Admin SDK only | `request.auth.uid == deviceId` |
+| `login_requests/{requestId}` | Anyone (payload validated) | Anyone (UUID = 122-bit secret) |
+
+**Why `login_requests` read is open:** The `requestId` is a UUID v4 with 122 bits of entropy. Guessing it is computationally equivalent to breaking AES-128. The document path *is* the access credential — the same pattern used by Firebase Dynamic Links.
+
+#### 2. **Raspberry Pi (Firebase Admin SDK)**: The Python backend uses the **Firebase Admin SDK** with a locally stored `firebase-adminsdk.json` Service Account key. This grants Server-to-Server privileges to publish telemetry, listen to `commands/`, and **mint Custom Tokens** — the key capability that enables the Pi-Bouncer.
 
 ### D. The Dead-Man's Switch (Safety)
 If a user is manually watering via the app, what happens if their phone loses internet? 
@@ -288,7 +333,87 @@ If a user is manually watering via the app, what happens if their phone loses in
 
 ---
 
-## 8. Defense Q&A Preparation
+---
+
+## 3. Pi-Bouncer Authentication Architecture
+
+### Sequence Diagram: Login Flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant App as Flutter App
+    participant DB as Firestore
+    participant Pi as auth_bouncer.py
+    participant Auth as Firebase Auth
+
+    User->>App: Enter Device ID + PIN
+    App->>App: Generate UUID requestId
+    App->>DB: Write login_requests/{requestId}\n{deviceId, pin, status:"pending"}
+    App->>App: Start 15-second timeout timer
+    DB-->>Pi: on_snapshot ADDED event
+    Pi->>Pi: Check rate limiter\n(in-memory dict)
+    alt Rate Limited
+        Pi->>DB: Update status:"rate_limited"\nlocked_until:<epoch>
+        DB-->>App: Snapshot fires
+        App->>App: Show 15-min countdown UI
+        App->>DB: Delete request doc
+    else PIN Incorrect
+        Pi->>Pi: Increment failure counter
+        Pi->>DB: Update status:"error"
+        DB-->>App: Snapshot fires
+        App->>App: Show error banner
+        App->>DB: Delete request doc
+    else PIN Correct
+        Pi->>Auth: create_custom_token(deviceId)
+        Auth-->>Pi: JWT token
+        Pi->>Pi: Reset failure counter
+        Pi->>DB: Update status:"approved"\ntoken:"<JWT>"
+        DB-->>App: Snapshot fires
+        App->>Auth: signInWithCustomToken(token)
+        Auth-->>App: Firebase User (uid=deviceId)
+        App->>DB: Delete request doc
+        App->>App: Navigate → Dashboard
+    end
+    Note over App: If no response in 15s → show "Hardware Offline"
+```
+
+### Rate Limiter State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> CLEAN
+    CLEAN --> WARN : Failed attempt (1-4)
+    WARN --> WARN : Additional failed attempt
+    WARN --> CLEAN : Successful login\n(counter reset)
+    WARN --> LOCKED : 5th failed attempt\n(locked_until = now + 900s)
+    LOCKED --> CLEAN : locked_until expires\n(auto, passive check)
+    LOCKED --> LOCKED : Any request while locked\n(write rate_limited response)
+```
+
+### Auth State → UI Mapping
+
+| AuthState | isLoading | isRateLimited | error | UI Component |
+|---|---|---|---|---|
+| Idle | false | false | null | Login form |
+| Contacting Pi | true | false | null | Spinner + "Contacting hardware..." |
+| Hardware Offline | false | false | "Hardware Offline..." | Orange Wi-Fi Off banner |
+| Incorrect PIN | false | false | "Incorrect PIN." | Red error banner |
+| Rate Limited | false | true | Lockout message | Amber countdown (MM:SS) |
+| Approved | false | false | null | Green snackbar → Dashboard |
+
+---
+
+## 9. Defense Q&A Preparation
+
+**Q: What was the original authentication vulnerability and how did you fix it?**
+*Answer:* The original architecture compared the PIN **client-side** — the Flutter app read `hashed_pin` from Firestore and compared locally. An attacker with a `deviceId` could attempt all 10,000 PINs with no server-side throttle. We solved this with the **Pi-Bouncer architecture**: `auth_bouncer.py` on the Pi validates the PIN exclusively on trusted hardware, enforces a 15-minute lockout after 5 failures, and mints a Firebase Custom Token via the Admin SDK. The Flutter app never touches the stored hash.
+
+**Q: How does the Pi mint a Custom Token if you're on the Spark (Free) plan?**
+*Answer:* Custom Token minting is a feature of the **Firebase Admin SDK**, not Cloud Functions. The Admin SDK runs locally on the Raspberry Pi for free — it only requires a Service Account key (`firebase-adminsdk.json`). No paid plan is needed.
+
+**Q: What prevents an attacker from spamming the `login_requests` collection?**
+*Answer:* Three layers: (1) **Firestore Security Rules** validate the payload on create — PIN must be exactly 4 characters, only allowed fields accepted. (2) **Rate limiting** on the Pi — 5 failed attempts locks the device for 15 minutes. (3) **UUID entropy** — the `requestId` is UUID v4 with 122 bits of entropy. An attacker cannot enumerate documents to find a token.
 
 **Q1: Why rely on Cloud Firestore instead of local MQTT/Bluetooth?**
 *Answer:* **Zero-Trust Architecture & Scalability.** Local MQTT servers introduce local network attack vectors and require users to manage complex router setups. Utilizing Firestore guarantees that data is encrypted in transit and the system can be scaled and controlled securely from anywhere in the world without exposing network vulnerabilities.

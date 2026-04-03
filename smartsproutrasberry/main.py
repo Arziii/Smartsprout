@@ -11,11 +11,13 @@ import signal
 import threading
 import config
 import firebase_manager
+import auth_bouncer
 
 from sensors import SensorManager
 
 # ═══════════════════════════════════════════════════════
 # Global State
+_auth_bouncer_listener = None
 # ═══════════════════════════════════════════════════════
 _running = True
 _pump_locked = False  # True when XKC tank sensor reads LOW or FAULT (binary sensor, no percentage)
@@ -487,6 +489,10 @@ def main():
     # ── Connect Firebase ──
     if firebase_manager.init_firebase():
         firebase_manager.listen_for_commands(handle_firebase_command)
+        # ── Start Pi-Bouncer Auth Daemon ──
+        from firebase_admin import firestore as _fs
+        global _auth_bouncer_listener
+        _auth_bouncer_listener = auth_bouncer.start_auth_bouncer(_fs.client())
 
     interval = config.TELEMETRY_INTERVAL          # Local sensor read cadence (3 s)
     cloud_sync_interval = config.CLOUD_SYNC_INTERVAL  # Eco-Mode ceiling (1800 s = 30 min)
@@ -647,6 +653,12 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        if _auth_bouncer_listener:
+            try:
+                _auth_bouncer_listener.unsubscribe()
+                print("[AUTH_BOUNCER] Listener unsubscribed.")
+            except Exception:
+                pass
         firebase_manager.cleanup()
         if sensor_manager:
             sensor_manager.cleanup()

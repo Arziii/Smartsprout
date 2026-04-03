@@ -1,27 +1,30 @@
-import 'dart:io';
+import 'dart:async';
 import 'dart:convert';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
+// ═══════════════════════════════════════════════════════
+// SavedDevice Model
+// PIN field removed — Custom Token sessions replace PIN replay.
+// ═══════════════════════════════════════════════════════
 class SavedDevice {
   final String deviceId;
   final String nickname;
-  final String pin;
   final DateTime lastUsed;
 
   SavedDevice({
     required this.deviceId,
     required this.nickname,
-    required this.pin,
     required this.lastUsed,
   });
 
   Map<String, dynamic> toJson() => {
         'deviceId': deviceId,
         'nickname': nickname,
-        'pin': pin,
         'lastUsed': lastUsed.toIso8601String(),
       };
 
@@ -29,7 +32,6 @@ class SavedDevice {
     return SavedDevice(
       deviceId: json['deviceId'],
       nickname: json['nickname'] ?? json['deviceId'],
-      pin: json['pin'],
       lastUsed: DateTime.parse(json['lastUsed']),
     );
   }
@@ -38,20 +40,24 @@ class SavedDevice {
     return SavedDevice(
       deviceId: deviceId,
       nickname: nickname ?? this.nickname,
-      pin: pin,
       lastUsed: lastUsed ?? this.lastUsed,
     );
   }
 }
 
+// ═══════════════════════════════════════════════════════
+// AuthState
+// ═══════════════════════════════════════════════════════
 class AuthState {
   final bool isLoading;
   final String? deviceId;
-  /// Human-friendly display name stored as a field inside the Firestore doc.
-  /// Different from [deviceId] which is the permanent, immutable document ID.
   final String? deviceName;
   final String? error;
   final List<SavedDevice> savedDevices;
+
+  // Pi-Bouncer rate-limit state
+  final bool isRateLimited;
+  final DateTime? rateLimitExpiry;
 
   AuthState({
     this.isLoading = false,
@@ -59,6 +65,8 @@ class AuthState {
     this.deviceName,
     this.error,
     this.savedDevices = const [],
+    this.isRateLimited = false,
+    this.rateLimitExpiry,
   });
 
   AuthState copyWith({
@@ -68,6 +76,9 @@ class AuthState {
     String? error,
     bool clearError = false,
     List<SavedDevice>? savedDevices,
+    bool? isRateLimited,
+    DateTime? rateLimitExpiry,
+    bool clearRateLimit = false,
   }) {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
@@ -75,13 +86,22 @@ class AuthState {
       deviceName: deviceName ?? this.deviceName,
       error: clearError ? null : (error ?? this.error),
       savedDevices: savedDevices ?? this.savedDevices,
+      isRateLimited: clearRateLimit ? false : (isRateLimited ?? this.isRateLimited),
+      rateLimitExpiry: clearRateLimit ? null : (rateLimitExpiry ?? this.rateLimitExpiry),
     );
   }
 }
 
+// ═══════════════════════════════════════════════════════
+// AuthNotifier — Pi-Bouncer Architecture
+// ═══════════════════════════════════════════════════════
 class AuthNotifier extends Notifier<AuthState> {
   late final FirebaseAuth _auth = FirebaseAuth.instance;
   late final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static const _uuid = Uuid();
+
+  // Timeout before showing "Hardware Offline"
+  static const _piTimeoutSeconds = 15;
 
   @override
   AuthState build() {
@@ -111,6 +131,7 @@ class AuthNotifier extends Notifier<AuthState> {
       loadedDevices.sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
     }
 
+    // Option B: if a valid Firebase session exists, restore state directly
     if (savedDeviceId != null && _auth.currentUser != null) {
       state = AuthState(
         isLoading: false,
@@ -123,100 +144,232 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  // ─────────────────────────────────────────────────────
+  // Pi-Bouncer Login Flow
+  // ─────────────────────────────────────────────────────
   Future<bool> login(String deviceId, String pin) async {
     if (Platform.isLinux) return true;
 
-    state = state.copyWith(isLoading: true, clearError: true);
+    state = state.copyWith(isLoading: true, clearError: true, clearRateLimit: true);
+
+    final requestId = _uuid.v4();
+    StreamSubscription<DocumentSnapshot>? listener;
+    Timer? timeoutTimer;
+    bool completed = false;
+
+    // Cleanup helper — always called once
+    Future<void> cleanup({bool deleteDoc = true}) async {
+      timeoutTimer?.cancel();
+      listener?.cancel();
+      if (deleteDoc) {
+        try {
+          await _firestore.collection('login_requests').doc(requestId).delete();
+        } catch (_) {}
+      }
+    }
+
     try {
-      if (_auth.currentUser == null) {
-        await _auth.signInAnonymously();
-      }
+      // Step 1: Write the login request to Firestore
+      await _firestore.collection('login_requests').doc(requestId).set({
+        'deviceId':  deviceId,
+        'pin':       pin,
+        'status':    'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
 
-      final doc = await _firestore
-          .collection('devices')
-          .doc(deviceId)
-          .get(const GetOptions(source: Source.server));
+      final Completer<bool> completer = Completer();
 
-      if (!doc.exists) {
-        await _auth.signOut();
-        state = state.copyWith(isLoading: false, error: 'Device not found.');
-        return false;
-      }
-
-      final data = doc.data()!;
-      final storedPin = data['hashed_pin'] as String?;
-
-      if (storedPin == pin) {
-        // Read the human-friendly display name from cloud; allow it to be null
-        final cloudDeviceName = (data['device_name'] as String?)?.isNotEmpty == true
-            ? data['device_name'] as String
-            : null;
-
-        List<SavedDevice> updatedDevices = List.from(state.savedDevices);
-        final existingIndex = updatedDevices.indexWhere((d) => d.deviceId == deviceId);
-
-        String finalNickname;
-        if (existingIndex != -1) {
-          finalNickname = cloudDeviceName ?? updatedDevices[existingIndex].nickname;
-          updatedDevices[existingIndex] = updatedDevices[existingIndex].copyWith(
-            nickname: finalNickname,
-            lastUsed: DateTime.now(),
-          );
-        } else {
-          finalNickname = cloudDeviceName ?? deviceId;
-          updatedDevices.add(SavedDevice(
-            deviceId: deviceId,
-            nickname: finalNickname,
-            pin: pin,
-            lastUsed: DateTime.now(),
-          ));
-        }
-
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('device_id', deviceId);
-        await prefs.setString('device_name', finalNickname);
-
-        updatedDevices.sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
-        if (updatedDevices.length > 5) {
-          updatedDevices = updatedDevices.take(5).toList();
-        }
-
-        await prefs.setString(
-            'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
-
-        state = AuthState(
+      // Step 2: Start 15-second hardware offline timeout
+      timeoutTimer = Timer(const Duration(seconds: _piTimeoutSeconds), () async {
+        if (completed) return;
+        completed = true;
+        await cleanup();
+        state = state.copyWith(
           isLoading: false,
-          deviceId: deviceId,
-          deviceName: finalNickname,
-          savedDevices: updatedDevices,
+          error: 'Hardware Offline. Is your Garden powered on?',
         );
-        return true;
-      } else {
-        await _auth.signOut();
-        state = state.copyWith(isLoading: false, error: 'Incorrect PIN.');
-        return false;
-      }
+        if (!completer.isCompleted) completer.complete(false);
+      });
+
+      // Step 3: Listen for Pi's response on the request document
+      listener = _firestore
+          .collection('login_requests')
+          .doc(requestId)
+          .snapshots()
+          .listen((snap) async {
+        if (completed) return;
+        if (!snap.exists) return;
+
+        final data = snap.data() as Map<String, dynamic>?;
+        if (data == null) return;
+
+        final responseStatus = data['status'] as String? ?? 'pending';
+        if (responseStatus == 'pending') return; // Still processing
+
+        completed = true;
+        timeoutTimer?.cancel();
+        listener?.cancel();
+
+        switch (responseStatus) {
+          case 'approved':
+            final token = data['token'] as String?;
+            if (token != null && token.isNotEmpty) {
+              try {
+                await _auth.signInWithCustomToken(token);
+                await cleanup(); // Delete the request doc
+                _onLoginSuccess(deviceId, data);
+                if (!completer.isCompleted) completer.complete(true);
+              } catch (e) {
+                state = state.copyWith(isLoading: false, error: 'Auth failed: $e');
+                await cleanup();
+                if (!completer.isCompleted) completer.complete(false);
+              }
+            } else {
+              state = state.copyWith(isLoading: false, error: 'Token missing. Try again.');
+              await cleanup();
+              if (!completer.isCompleted) completer.complete(false);
+            }
+            break;
+
+          case 'rate_limited':
+            final lockedUntilEpoch = data['locked_until'] as int?;
+            final errorMsg = data['error'] as String? ?? 'Too many attempts. Wait 15 minutes.';
+            DateTime? expiry;
+            if (lockedUntilEpoch != null) {
+              expiry = DateTime.fromMillisecondsSinceEpoch(lockedUntilEpoch * 1000);
+            }
+            state = state.copyWith(
+              isLoading: false,
+              isRateLimited: true,
+              rateLimitExpiry: expiry,
+              error: errorMsg,
+            );
+            await cleanup();
+            if (!completer.isCompleted) completer.complete(false);
+            break;
+
+          case 'error':
+          default:
+            final errorMsg = data['error'] as String? ?? 'Incorrect PIN.';
+            state = state.copyWith(isLoading: false, error: errorMsg);
+            await cleanup();
+            if (!completer.isCompleted) completer.complete(false);
+            break;
+        }
+      });
+
+      return await completer.future;
+
     } catch (e) {
+      timeoutTimer?.cancel();
+      listener?.cancel();
       try {
-        await _auth.signOut();
+        await _firestore.collection('login_requests').doc(requestId).delete();
       } catch (_) {}
       state = state.copyWith(isLoading: false, error: e.toString());
       return false;
     }
   }
 
+  // ─────────────────────────────────────────────────────
+  // Option B: Quick Switch
+  // If Firebase session is still valid with matching UID → skip Pi round-trip.
+  // Otherwise signal UI to show login form with deviceId pre-filled.
+  // ─────────────────────────────────────────────────────
   Future<bool> quickSwitch(String deviceId) async {
-    final dev = state.savedDevices.firstWhere(
-      (d) => d.deviceId == deviceId,
-      orElse: () => throw Exception('Device not found'),
-    );
-    return await login(dev.deviceId, dev.pin);
+    if (Platform.isLinux) return true;
+
+    final user = _auth.currentUser;
+    if (user != null && user.uid == deviceId) {
+      // Session is still valid — restore local state, no Pi round-trip
+      final prefs = await SharedPreferences.getInstance();
+      final savedName = prefs.getString('device_name') ?? deviceId;
+
+      final updatedDevices = List<SavedDevice>.from(state.savedDevices);
+      final idx = updatedDevices.indexWhere((d) => d.deviceId == deviceId);
+      if (idx != -1) {
+        updatedDevices[idx] = updatedDevices[idx].copyWith(lastUsed: DateTime.now());
+        updatedDevices.sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
+        await prefs.setString(
+            'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+      }
+
+      state = AuthState(
+        isLoading: false,
+        deviceId: deviceId,
+        deviceName: savedName,
+        savedDevices: updatedDevices,
+      );
+      return true;
+    }
+
+    // Session expired — signal UI to show login form (returns false)
+    // The HardwareLoginScreen handles this by pre-filling the Device ID
+    return false;
   }
 
   void clearError() {
     state = state.copyWith(clearError: true);
   }
 
+  void clearRateLimit() {
+    state = state.copyWith(clearRateLimit: true, clearError: true);
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Post-login persistence
+  // ─────────────────────────────────────────────────────
+  Future<void> _onLoginSuccess(String deviceId, Map<String, dynamic> responseData) async {
+    // Fetch device name from Firestore devices doc
+    String finalNickname = deviceId;
+    try {
+      final doc = await _firestore.collection('devices').doc(deviceId).get();
+      if (doc.exists) {
+        final cloudName = doc.data()?['device_name'] as String?;
+        if (cloudName != null && cloudName.isNotEmpty) finalNickname = cloudName;
+      }
+    } catch (_) {}
+
+    List<SavedDevice> updatedDevices = List.from(state.savedDevices);
+    final existingIndex = updatedDevices.indexWhere((d) => d.deviceId == deviceId);
+
+    if (existingIndex != -1) {
+      finalNickname = updatedDevices[existingIndex].nickname.isNotEmpty
+          ? updatedDevices[existingIndex].nickname
+          : finalNickname;
+      updatedDevices[existingIndex] = updatedDevices[existingIndex].copyWith(
+        lastUsed: DateTime.now(),
+      );
+    } else {
+      updatedDevices.add(SavedDevice(
+        deviceId: deviceId,
+        nickname: finalNickname,
+        lastUsed: DateTime.now(),
+      ));
+    }
+
+    updatedDevices.sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
+    if (updatedDevices.length > 5) {
+      updatedDevices = updatedDevices.take(5).toList();
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('device_id', deviceId);
+    await prefs.setString('device_name', finalNickname);
+    await prefs.setString(
+        'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
+
+    state = AuthState(
+      isLoading: false,
+      deviceId: deviceId,
+      deviceName: finalNickname,
+      savedDevices: updatedDevices,
+    );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Device Management (unchanged behaviour, PIN removed)
+  // ─────────────────────────────────────────────────────
   Future<void> updateDeviceNickname(String deviceId, String newNickname) async {
     final prefs = await SharedPreferences.getInstance();
     List<SavedDevice> updatedDevices = List.from(state.savedDevices);
@@ -245,6 +398,10 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  // ─────────────────────────────────────────────────────
+  // Change PIN — now routes through Pi-Bouncer
+  // The Pi writes the new hash; Flutter just requests it via Firestore command.
+  // ─────────────────────────────────────────────────────
   Future<bool> changePin(String currentPin, String newPin) async {
     final currentDevice = state.deviceId;
     if (currentDevice == null) return false;
@@ -253,39 +410,20 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       state = state.copyWith(isLoading: true, clearError: true);
 
-      // 1. Verify current PIN against Firestore
-      final doc = await _firestore.collection('devices').doc(currentDevice).get();
-      if (!doc.exists) {
-        state = state.copyWith(isLoading: false, error: 'Device not found.');
-        return false;
-      }
-      final storedPin = doc.data()?['hashed_pin']?.toString() ?? '';
-      if (storedPin != currentPin) {
-        state = state.copyWith(isLoading: false, error: 'Incorrect current PIN.');
-        return false;
-      }
-
-      // 2. Update to new PIN
-      await _firestore.collection('devices').doc(currentDevice).update({
-        'hashed_pin': newPin,
+      // Write a change_pin command via the authenticated commands subcollection
+      await _firestore
+          .collection('devices')
+          .doc(currentDevice)
+          .collection('commands')
+          .add({
+        'command':     'change_pin',
+        'current_pin': currentPin,
+        'new_pin':     newPin,
+        'processed':   false,
+        'createdAt':   FieldValue.serverTimestamp(),
       });
 
-      // 3. Update the saved device's pin in local storage
-      final prefs = await SharedPreferences.getInstance();
-      List<SavedDevice> updatedDevices = List.from(state.savedDevices);
-      final idx = updatedDevices.indexWhere((d) => d.deviceId == currentDevice);
-      if (idx != -1) {
-        updatedDevices[idx] = SavedDevice(
-          deviceId: updatedDevices[idx].deviceId,
-          nickname: updatedDevices[idx].nickname,
-          pin: newPin,
-          lastUsed: updatedDevices[idx].lastUsed,
-        );
-        await prefs.setString(
-            'saved_devices', jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
-      }
-
-      state = state.copyWith(isLoading: false, savedDevices: updatedDevices);
+      state = state.copyWith(isLoading: false);
       return true;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: 'Failed to update PIN: $e');
@@ -294,8 +432,6 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   /// Renames the device by updating the [device_name] field directly in Firestore.
-  /// The document ID (hardware identifier) remains permanent and unchanged.
-  /// Requires current PIN for security verification.
   Future<String?> renameDevice(String currentPin, String newDeviceName) async {
     if (Platform.isLinux) return 'Not available on Kiosk';
 
@@ -304,28 +440,13 @@ class AuthNotifier extends Notifier<AuthState> {
 
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      // 1. Verify current PIN
-      final doc = await _firestore.collection('devices').doc(currentDeviceId).get();
-      if (!doc.exists) {
-        state = state.copyWith(isLoading: false, error: 'Device not found');
-        return 'Device not found';
-      }
-      final storedPin = doc.data()?['hashed_pin'] as String?;
-      if (storedPin != currentPin) {
-        state = state.copyWith(isLoading: false, error: 'Incorrect PIN');
-        return 'Incorrect PIN';
-      }
-
-      // 2. Update the device_name field in-place — no copying, no orphan documents
       await _firestore.collection('devices').doc(currentDeviceId).update({
         'device_name': newDeviceName,
       });
 
-      // 3. Update local storage
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('device_name', newDeviceName);
 
-      // 4. Update saved devices list nickname
       List<SavedDevice> updatedDevices = List.from(state.savedDevices);
       final idx = updatedDevices.indexWhere((d) => d.deviceId == currentDeviceId);
       if (idx != -1) {
@@ -339,7 +460,7 @@ class AuthNotifier extends Notifier<AuthState> {
         deviceName: newDeviceName,
         savedDevices: updatedDevices,
       );
-      return null; // success
+      return null;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: 'Rename failed: $e');
       return e.toString();

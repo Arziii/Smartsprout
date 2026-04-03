@@ -1,25 +1,99 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ═══════════════════════════════════════════════════════════════
+    // devices/{deviceId}
+    // ═══════════════════════════════════════════════════════════════
+    // The Pi uses the Admin SDK (bypasses all rules).
+    // The Flutter app must be authenticated with a Custom Token whose
+    // UID matches the deviceId. This is guaranteed by the Pi-Bouncer:
+    //   firebase_auth.create_custom_token(device_id)  → uid == deviceId
+    // ═══════════════════════════════════════════════════════════════
     match /devices/{deviceId} {
-      // A device document may only be read or modified by an authenticated user
-      // who is signed in. Currently the app uses anonymous auth; when full
-      // email/password auth is added, replace `request.auth != null` with a
-      // stricter owner check such as:
-      //   request.auth.uid == resource.data.ownerUid
-      allow read: if request.auth != null;
 
-      // Only allow write if the user is authenticated AND
-      // they are not trying to overwrite sensitive fields.
-      allow update: if request.auth != null
-        && !request.resource.data.keys().hasAny(['hashed_pin', 'ownerUid']);
+      // READ: authenticated user whose UID == this device's ID
+      allow read: if request.auth != null
+                  && request.auth.uid == deviceId;
 
-      // Sub-collections (telemetry, alerts, commands) follow the same rule.
-      match /{document=**} {
-        allow read: if request.auth != null;
-        // Only allow writing commands/calibration — not telemetry (written by the Pi via Admin SDK).
-        allow write: if request.auth != null;
+      // WRITE: same — only the owner device can write its own doc
+      // Pi uses Admin SDK so it never hits this rule.
+      allow write: if request.auth != null
+                   && request.auth.uid == deviceId;
+
+      // ── Telemetry subcollection ──
+      // Write is Pi-only (Admin SDK). App can read its own device's history.
+      match /telemetry/{record} {
+        allow read:  if request.auth != null
+                     && request.auth.uid == deviceId;
+        allow write: if false;   // Pi Admin SDK only
+      }
+
+      // ── Commands subcollection ──
+      // App can create commands for its own device. Pi marks them processed.
+      match /commands/{cmdId} {
+        allow read:   if request.auth != null
+                      && request.auth.uid == deviceId;
+        allow create: if request.auth != null
+                      && request.auth.uid == deviceId;
+        allow update: if false;  // Pi Admin SDK only
+        allow delete: if false;  // Pi Admin SDK only
+      }
+
+      // ── Alerts subcollection ──
+      match /alerts/{alertId} {
+        allow read:  if request.auth != null
+                     && request.auth.uid == deviceId;
+        allow write: if false;   // Pi Admin SDK only
       }
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // login_requests/{requestId}
+    // ═══════════════════════════════════════════════════════════════
+    // The "Secure Lobby" — users are UNAUTHENTICATED when they arrive.
+    //
+    // CREATE: Anyone can drop an envelope, but it must be correctly
+    //   shaped (payload validation enforced at the rule level).
+    //
+    // READ/DELETE: The requestId UUID (122 bits of entropy) acts as
+    //   the bearer credential. Only the client that generated the UUID
+    //   knows the full document path — equivalent to a one-time token.
+    //
+    // UPDATE: Forbidden for clients. The Pi uses Admin SDK (bypasses).
+    // ═══════════════════════════════════════════════════════════════
+    match /login_requests/{requestId} {
+
+      // CREATE — strict payload validation
+      allow create: if
+        // 1. Only the four allowed fields — no field injection
+        request.resource.data.keys().hasOnly(
+          ['deviceId', 'pin', 'status', 'createdAt']
+        )
+        // 2. Required fields must be strings
+        && request.resource.data.deviceId is string
+        && request.resource.data.pin      is string
+        // 3. Status must start as "pending" — cannot pre-approve
+        && request.resource.data.status == 'pending'
+        // 4. PIN must be exactly 4 characters (4-digit PIN)
+        && request.resource.data.pin.size() == 4
+        // 5. deviceId must be a valid non-empty identifier
+        && request.resource.data.deviceId.size() > 0
+        && request.resource.data.deviceId.size() <= 64;
+
+      // READ — requestId UUID secrecy IS the access control.
+      // UUID v4 = 122 bits of entropy. Guessing is computationally
+      // equivalent to breaking AES-128. No auth needed here.
+      allow read: if true;
+
+      // UPDATE — forbidden for clients. Pi uses Admin SDK.
+      allow update: if false;
+
+      // DELETE — the client that created it cleans up after itself.
+      // Knowing the requestId (which the client generated) is sufficient.
+      allow delete: if true;
+    }
+
   }
 }

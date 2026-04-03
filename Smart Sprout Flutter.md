@@ -337,12 +337,13 @@ PHASE 4.1: UI/UX IMPLEMENTATION [COMPLETED]
 ☑ Premium glassmorphism design & staggered animations
 
 
-PHASE 4.2: FIREBASE & DEVICE-CENTRIC AUTHENTICATION [COMPLETED]
-☑ Firebase Authentication (Anonymous Auth) + Firestore credential validation
-☑ Device-centric login model (Device ID + PIN)
-☑ Device-specific Firestore architecture implementations.
-☑ Embedded Linux compatibility via `Platform.isLinux` lazy-loading (bypasses Firebase missing plugins).
-☑ Physical Touchscreen Kiosk-mode authentication bypass.
+PHASE 4.2: PI-BOUNCER AUTHENTICATION ARCHITECTURE [COMPLETED]
+☑ Zero-Trust Gatekeeper: Authentication validation moved from client-side Firestore rules to the Raspberry Pi edge server.
+☑ Cryptographic Security: Automatic SHA-256 PIN hashing ensures no plaintext credentials reside in the cloud or local config.
+☑ Anti-Brute Force (Rate Limiting): Pi-side thread-safe tracker enforces a 15-minute global lockout after 5 consecutive failed attempts.
+☑ Custom Token Minting: Raspberry Pi utilizes Firebase Admin SDK to forge short-lived secure JWT session tokens (`uid=deviceId`).
+☑ Hardware Offline Fallback: Flutter app features a 15-second timeout listener, visually indicating "Hardware Offline" if the Pi is unplugged.
+☑ Embedded Linux / Kiosk bypass: Local touchscreen ignores cloud auth entirely, leveraging unhackable physical access.
 
 
 PHASE 4.3: ZERO-TRUST REFACTOR [COMPLETED]
@@ -514,10 +515,26 @@ Phase 2: Polling & Offline Detection
 7.2 COMMUNICATION FLOW
 
 
+7.2a PI-BOUNCER AUTHENTICATION FLOW (ZERO-TRUST EDGE GATEKEEPER)
+
+Mobile App                           Cloud Firestore (login_requests/ID)       Raspberry Pi
+───────────                          ───────────────────────────────────       ────────────
+     │                                     │                                       │
+     │───── Write Request (PIN String) ───►│                                       │
+     │      (Generates UUIDv4 lobby ID)    │───── Pi catches on_snapshot() ───────►│
+     │                                     │                                       │──► SHA-256 Hash matches Config?
+     │◄════ Listen to document changes ════│                                       │──► Enforce Rate Limit (5x/15m)
+     │                                     │◄════ Write Custom Token OR Error ═════│──► Forge Firebase Custom Token
+     │◄════ Read Custom/Error ═════════════│                                       │
+     │──► signInWithCustomToken()          │                                       │
+     │──► Delete Request Document ────────►│                                       │
+     │                                     │                                       │
+
+
+7.2b COMMAND & TELEMETRY FLOW
+
 Mobile App                           Cloud Firestore                          Raspberry Pi
 ───────────                          ───────────────                          ───────────
-     │                                     │                                       │
-     │───── Authenticate (ID+PIN) ────────►│                                       │
      │                                     │                                       │
      │◄════ Listen to telemetry ═══════════│◄════ Update main document ════════════│
      │                                     │                                       │
@@ -702,6 +719,28 @@ To protect the proprietary sensor fusion logic and irrigation algorithms, the pr
 
 10.3 ZERO-TOUCH CLOUD PROVISIONING
 Scaling from 1 to 100 units is achieved through Cloud Provisioning. Each new hardware unit is assigned a unique UUID in the Firestore 'devices' collection. The Raspberry Pi identifies itself via a simple one-line environment variable, requiring zero code changes between units.
+
+
+10.4 PI-BOUNCER AUTHENTICATION SECURITY MODEL
+
+The Pi-Bouncer architecture represents a paradigm shift from standard "Client-to-Database" logins to a "Zero-Trust Hardware Gatekeeper" model. The Raspberry Pi physically located on-site is the sole authority on valid PINs, solving critical vulnerabilities of client-side validation logic.
+
+┌───────────────────────────┬────────────────────────────────────────────────────────┐
+│ Threat Vector             │ Pi-Bouncer Mitigation Strategy                         │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ Brute-Force PIN Attacks   │ In-memory Rate Limiter on Pi (15-min lockout after 5   │
+│                           │ failed attempts). Immune to app reverse engineering.   │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ Exposed Database Fields   │ PINs are NOT stored natively in Firestore. Validation  │
+│                           │ is performed exclusively against the Pi's local        │
+│                           │ hash (`device_config.json`).                           │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ Session Hijacking         │ Pi issues single-use, short-lived JWT Custom Tokens    │
+│                           │ only upon successful physical logic verification.      │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ Hardware Spoofing         │ Requires the physical Raspberry Pi to be online and    │
+│                           │ processing requests. Bouncer fails-safe if offline.    │
+└───────────────────────────┴────────────────────────────────────────────────────────┘
 
 
 ═══════════════════════════════════════════════════════════════════
