@@ -543,12 +543,10 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
                   const SizedBox(height: 20),
                   _buildTextField(
                     controller: _pinController,
-                    label: 'Admin PIN',
+                    label: 'Admin Password',
                     icon: Icons.lock_rounded,
                     obscure: true,
-                    hint: '••••',
-                    maxLength: 4,
-                    keyboardType: TextInputType.number,
+                    hint: 'Min. 8 chars · A-Z · 0-9 · @#!',
                   ),
 
                   // Pi-Bouncer status hint
@@ -655,8 +653,10 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
             ),
             contentPadding: const EdgeInsets.symmetric(vertical: 18),
           ),
-          validator: (value) =>
-              value == null || value.trim().isEmpty ? 'Required' : null,
+          validator: (value) {
+              if (value == null || value.trim().isEmpty) return 'Required';
+              return null;
+            },
         ),
       ],
     );

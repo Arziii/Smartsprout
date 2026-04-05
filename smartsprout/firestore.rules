@@ -84,8 +84,9 @@ service cloud.firestore {
         && request.resource.data.pin      is string
         // 3. Status must start as "pending" — cannot pre-approve
         && request.resource.data.status == 'pending'
-        // 4. PIN must be exactly 4 characters (4-digit PIN)
-        && request.resource.data.pin.size() == 4
+        // 4. PIN must be a valid password length (up to 128 chars)
+        && request.resource.data.pin.size() >= 4
+        && request.resource.data.pin.size() <= 128
         // 5. deviceId must be a valid non-empty identifier
         && request.resource.data.deviceId.size() > 0
         && request.resource.data.deviceId.size() <= 64;

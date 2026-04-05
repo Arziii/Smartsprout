@@ -224,7 +224,11 @@ class AuthNotifier extends Notifier<AuthState> {
               try {
                 await _auth.signInWithCustomToken(token);
                 await cleanup(); // Delete the request doc
-                _onLoginSuccess(deviceId, data);
+                // Use the Firebase UID as the canonical device key.
+                // The Pi always mints tokens with HW_MAC_ID, so
+                // currentUser!.uid == HW_MAC_ID regardless of what alias was typed.
+                final canonicalUid = _auth.currentUser?.uid ?? deviceId;
+                _onLoginSuccess(canonicalUid, deviceId, data);
                 if (!completer.isCompleted) completer.complete(true);
               } catch (e) {
                 state =
@@ -259,6 +263,16 @@ class AuthNotifier extends Notifier<AuthState> {
             if (!completer.isCompleted) completer.complete(false);
             break;
 
+          case 'not_found':
+            // Pi immediately responded — the Device ID doesn't exist on this hardware.
+            state = state.copyWith(
+              isLoading: false,
+              error: 'No device found. Please check your Device ID.',
+            );
+            await cleanup();
+            if (!completer.isCompleted) completer.complete(false);
+            break;
+
           case 'error':
           default:
             final errorMsg = data['error'] as String? ?? 'Incorrect PIN.';
@@ -276,7 +290,17 @@ class AuthNotifier extends Notifier<AuthState> {
       try {
         await _firestore.collection('login_requests').doc(requestId).delete();
       } catch (_) {}
-      state = state.copyWith(isLoading: false, error: e.toString());
+      
+      String errorMessage = 'Connection error. Please try again.';
+      if (e is FirebaseException) {
+        if (e.code == 'permission-denied') {
+          errorMessage = 'Login request not allowed. Please check your Device ID and Password.';
+        } else {
+          errorMessage = 'Network or server error encountered. ${e.code}';
+        }
+      }
+
+      state = state.copyWith(isLoading: false, error: errorMessage);
       return false;
     }
   }
@@ -290,6 +314,8 @@ class AuthNotifier extends Notifier<AuthState> {
     if (Platform.isLinux) return true;
 
     final user = _auth.currentUser;
+    // Compare against user.uid (HW_MAC_ID), not the display alias stored in SavedDevice.nickname.
+    // SavedDevice.deviceId is always the canonical HW_MAC_ID after the alias login fix.
     if (user != null && user.uid == deviceId) {
       // Session is still valid — restore local state, no Pi round-trip
       final prefs = await SharedPreferences.getInstance();
@@ -330,25 +356,28 @@ class AuthNotifier extends Notifier<AuthState> {
   // ─────────────────────────────────────────────────────
   // Post-login persistence
   // ─────────────────────────────────────────────────────
+  // canonicalDeviceId: the Firebase UID (= HW_MAC_ID), used as Firestore key.
+  // displayedAlias   : the alias the user typed at login (used only for display/nickname fallback).
   Future<void> _onLoginSuccess(
-      String deviceId, Map<String, dynamic> responseData) async {
-    // Fetch device name from Firestore devices doc
-    String finalNickname = deviceId;
+      String canonicalDeviceId, String displayedAlias, Map<String, dynamic> responseData) async {
+    // Fetch the authoritative device_name from Firestore devices/{HW_MAC_ID}
+    String finalNickname = displayedAlias; // start with what the user typed
     try {
-      final doc = await _firestore.collection('devices').doc(deviceId).get();
+      final doc = await _firestore.collection('devices').doc(canonicalDeviceId).get();
       if (doc.exists) {
         final cloudName = doc.data()?['device_name'] as String?;
         if (cloudName != null && cloudName.isNotEmpty) {
-          finalNickname = cloudName;
+          finalNickname = cloudName; // prefer Firestore's authoritative name
         }
       }
     } catch (_) {}
 
     List<SavedDevice> updatedDevices = List.from(state.savedDevices);
     final existingIndex =
-        updatedDevices.indexWhere((d) => d.deviceId == deviceId);
+        updatedDevices.indexWhere((d) => d.deviceId == canonicalDeviceId);
 
     if (existingIndex != -1) {
+      // Keep saved nickname unless Firestore has a fresher one
       finalNickname = updatedDevices[existingIndex].nickname.isNotEmpty
           ? updatedDevices[existingIndex].nickname
           : finalNickname;
@@ -357,7 +386,7 @@ class AuthNotifier extends Notifier<AuthState> {
       );
     } else {
       updatedDevices.add(SavedDevice(
-        deviceId: deviceId,
+        deviceId: canonicalDeviceId, // always HW_MAC_ID
         nickname: finalNickname,
         lastUsed: DateTime.now(),
       ));
@@ -369,15 +398,15 @@ class AuthNotifier extends Notifier<AuthState> {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('device_id', deviceId);
+    await prefs.setString('device_id', canonicalDeviceId); // always HW_MAC_ID
     await prefs.setString('device_name', finalNickname);
     await prefs.setString('saved_devices',
         jsonEncode(updatedDevices.map((e) => e.toJson()).toList()));
 
     state = AuthState(
       isLoading: false,
-      deviceId: deviceId,
-      deviceName: finalNickname,
+      deviceId: canonicalDeviceId, // HW_MAC_ID
+      deviceName: finalNickname,   // alias / display name
       savedDevices: updatedDevices,
     );
   }

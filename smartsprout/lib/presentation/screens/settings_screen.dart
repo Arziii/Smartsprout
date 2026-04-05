@@ -877,7 +877,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
     if (!_formKey.currentState!.validate()) return;
     if (_pinController.text != _confirmController.text) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('PINs do not match'),
+          content: const Text('Passwords do not match'),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
@@ -898,7 +898,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
       if (success) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('PIN Successfully Changed!',
+            content: Text('Password Successfully Changed!',
                 style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
             backgroundColor: const Color(0xFF2BCC71),
             behavior: SnackBarBehavior.floating,
@@ -973,7 +973,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
                                         ? Colors.white
                                         : const Color(0xFF0F2027)))),
                         const Spacer(),
-                        Text('Change PIN',
+                        Text('Change Password',
                             style: GoogleFonts.outfit(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w800,
@@ -1002,7 +1002,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
                         child: const Icon(Icons.lock_rounded,
                             size: 40, color: Color(0xFF78909C))),
                     const SizedBox(height: 16),
-                    Text('Update Security PIN',
+                    Text('Update Admin Password',
                         style: GoogleFonts.outfit(
                             fontSize: 22,
                             fontWeight: FontWeight.w900,
@@ -1012,7 +1012,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
                                     : const Color(0xFF0F2027),
                             letterSpacing: -0.5)),
                     const SizedBox(height: 4),
-                    Text('Set a new numeric PIN',
+                    Text('8+ chars · uppercase · number · symbol',
                         style: GoogleFonts.outfit(
                             fontSize: 14,
                             color: const Color(0xFF4A6164),
@@ -1051,23 +1051,24 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
                                   ],
                                   _buildField(
                                       controller: _currentPinController,
-                                      label: 'Current PIN',
+                                      label: 'Current Password',
                                       icon: Icons.lock_rounded,
-                                      hint: '••••',
+                                      hint: 'Enter current password',
                                       obscure: true),
                                   const SizedBox(height: 18),
                                   _buildField(
                                       controller: _pinController,
-                                      label: 'New PIN',
+                                      label: 'New Password',
                                       icon: Icons.lock_outline_rounded,
-                                      hint: '••••',
-                                      obscure: true),
+                                      hint: 'Min. 8 · A-Z · 0-9 · @#!',
+                                      obscure: true,
+                                      isNewPassword: true),
                                   const SizedBox(height: 18),
                                   _buildField(
                                       controller: _confirmController,
-                                      label: 'Confirm New PIN',
+                                      label: 'Confirm New Password',
                                       icon: Icons.check_circle_outline_rounded,
-                                      hint: '••••',
+                                      hint: 'Re-enter new password',
                                       obscure: true),
                                   const SizedBox(height: 28),
                                   SizedBox(
@@ -1097,7 +1098,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
                                                   color: Theme.of(context).brightness == Brightness.dark
                                                       ? const Color(0xFF0F2027)
                                                       : Colors.white))
-                                          : Text('UPDATE PIN',
+                                          : Text('UPDATE PASSWORD',
                                               style: GoogleFonts.outfit(
                                                   fontSize: 14,
                                                   fontWeight: FontWeight.w800,
@@ -1126,7 +1127,8 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
       required String label,
       required IconData icon,
       required String hint,
-      bool obscure = false}) {
+      bool obscure = false,
+      bool isNewPassword = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1169,7 +1171,19 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
                   borderSide:
                       const BorderSide(color: Color(0xFF78909C), width: 1.5)),
               contentPadding: const EdgeInsets.symmetric(vertical: 18)),
-          validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+          validator: (v) {
+            if (v == null || v.trim().isEmpty) return 'Required';
+            if (isNewPassword) {
+              final pw = v.trim();
+              if (pw.length < 8) return 'At least 8 characters required';
+              if (!RegExp(r'[A-Z]').hasMatch(pw)) return 'Must contain an uppercase letter';
+              if (!RegExp(r'[a-z]').hasMatch(pw)) return 'Must contain a lowercase letter';
+              if (!RegExp(r'[0-9]').hasMatch(pw)) return 'Must contain a number';
+              if (!RegExp(r'[!@#%^&*()_+={}\[\];:.\-]').hasMatch(pw))
+                return 'Must contain a special character (!@#%^&*)';
+            }
+            return null;
+          },
         ),
       ],
     );

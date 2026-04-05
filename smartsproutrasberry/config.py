@@ -88,6 +88,13 @@ SOIL_WET = int(os.getenv("SOIL_SENSOR_WET", "13000"))
 
 # ── Firebase ──
 FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase-adminsdk.json")
+
+# HW_MAC_ID is the IMMUTABLE hardware identity baked into .env at provisioning time.
+# It is the canonical Firestore document key (devices/{HW_MAC_ID}) and the UID
+# used when minting Custom Tokens.  It NEVER changes, even when the user sets an alias.
+HW_MAC_ID = os.getenv("DEVICE_ID", "SPROUT_A1B2")
+
+# DEVICE_ID is kept for backward compat with the rest of main.py / telemetry.
 DEVICE_ID = get_device_id()
 
 # ── Timing ──
