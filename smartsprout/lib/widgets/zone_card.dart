@@ -228,9 +228,7 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                                 size: 14, color: Color(0xFF0277BD)),
                             const SizedBox(width: 4),
                             Text(
-                              (widget.isFault || widget.rawMoisture < 0)
-                                  ? '--%'
-                                  : '${widget.rawMoisture}%',
+                              '${widget.calibratedValue.round()}%',
                               style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 13,
