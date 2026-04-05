@@ -64,7 +64,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text('Calibration',
             style: GoogleFonts.outfit(
@@ -95,11 +95,13 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
             // Background Gradient
             Positioned.fill(
               child: Container(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                    colors: Theme.of(context).brightness == Brightness.dark
+                        ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
+                        : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
                   ),
                 ),
               ),
@@ -172,7 +174,9 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                             child: BackdropFilter(
                               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                               child: Container(
-                                color: Colors.white.withValues(alpha: 0.6),
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? const Color(0xFF1E1E1E).withValues(alpha: 0.6)
+                                    : Colors.white.withValues(alpha: 0.6),
                                 alignment: Alignment.center,
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
@@ -220,13 +224,14 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
   }
 
   Widget _buildInfoBanner() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.6),
+        color: isDark ? const Color(0xFF1E1E1E).withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(16),
         border:
-            Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.5),
+            Border.all(color: isDark ? Colors.white12 : Colors.white.withValues(alpha: 0.8), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: Theme.of(context).brightness == Brightness.dark
@@ -253,7 +258,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
             child: Text(
               'Set the Start Threshold (pump ON), Target Saturation (pump OFF), and Safety Timeout for each zone. Tap SET TRIGGER RULES to queue the command. The Pi confirms and syncs back.',
               style: GoogleFonts.outfit(
-                color: const Color(0xFF37474F),
+                color: isDark ? Colors.white70 : const Color(0xFF37474F),
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
               ),
@@ -265,6 +270,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
   }
 
   Widget _buildSectionHeader(String title) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(left: 8, bottom: 12),
       child: Text(
@@ -272,7 +278,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
         style: GoogleFonts.outfit(
           fontSize: 12,
           fontWeight: FontWeight.w800,
-          color: const Color(0xFF4A6164),
+          color: isDark ? Colors.white70 : const Color(0xFF4A6164),
           letterSpacing: 1.5,
         ),
       ),
@@ -296,12 +302,14 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
       moistureColor = const Color(0xFF2BCC71);
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.7),
+        color: isDark ? const Color(0xFF1E1E1E).withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white, width: 2),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
             color: Theme.of(context).brightness == Brightness.dark
@@ -448,13 +456,14 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
     final target = _localTargets[zone] ?? 65.0;
     final timeout = _localTimeouts[zone] ?? 30;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return AnimatedSize(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFF0F9F4),
+          color: isDark ? const Color(0xFF121212).withValues(alpha: 0.8) : const Color(0xFFF0F9F4),
           borderRadius: BorderRadius.circular(16),
           border:
               Border.all(color: const Color(0xFF2BCC71).withValues(alpha: 0.2)),
@@ -488,7 +497,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                     style: GoogleFonts.outfit(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
-                        color: const Color(0xFF37474F))),
+                        color: isDark ? Colors.white70 : const Color(0xFF37474F))),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -532,7 +541,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                     style: GoogleFonts.outfit(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
-                        color: const Color(0xFF37474F))),
+                        color: isDark ? Colors.white70 : const Color(0xFF37474F))),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -577,7 +586,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                     style: GoogleFonts.outfit(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
-                        color: const Color(0xFF37474F))),
+                        color: isDark ? Colors.white70 : const Color(0xFF37474F))),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -742,7 +751,9 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
       builder: (dialogCtx) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
         child: AlertDialog(
-          backgroundColor: Colors.white.withValues(alpha: 0.9),
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF1E1E1E).withValues(alpha: 0.9)
+              : Colors.white.withValues(alpha: 0.9),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           title: Text(
@@ -756,7 +767,11 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
           ),
           content: Text(
             'Please ensure all soil sensors are completely dry and exposed to air before running this calibration. This will reset the 0% reference for all zones.',
-            style: GoogleFonts.outfit(color: const Color(0xFF37474F)),
+            style: GoogleFonts.outfit(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white70
+                  : const Color(0xFF37474F),
+            ),
           ),
           actions: [
             TextButton(
@@ -888,7 +903,9 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
       builder: (dialogCtx) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
         child: AlertDialog(
-          backgroundColor: Colors.white.withValues(alpha: 0.9),
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF1E1E1E).withValues(alpha: 0.9)
+              : Colors.white.withValues(alpha: 0.9),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           title: Text(
@@ -902,7 +919,11 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
           ),
           content: Text(
             'Please submerge all soil sensors fully in water (or press them into saturated soil) before confirming. This will reset the 100% reference for all zones.',
-            style: GoogleFonts.outfit(color: const Color(0xFF37474F)),
+            style: GoogleFonts.outfit(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white70
+                  : const Color(0xFF37474F),
+            ),
           ),
           actions: [
             TextButton(

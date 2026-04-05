@@ -246,20 +246,27 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF121212)
+          : const Color(0xFFFAFAFA),
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text('Network Settings',
             style: GoogleFonts.outfit(
                 fontWeight: FontWeight.w800,
-                color: const Color(0xFF0F2027),
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : const Color(0xFF0F2027),
                 letterSpacing: -0.5)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: Color(0xFF0F2027), size: 20),
+          icon: Icon(Icons.arrow_back_ios_new_rounded,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F2027),
+              size: 20),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
@@ -268,11 +275,13 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
           // Background gradient
           Positioned.fill(
             child: Container(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                  colors: Theme.of(context).brightness == Brightness.dark
+                      ? [const Color(0xFF121212), const Color(0xFF1E1E1E)]
+                      : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
                 ),
               ),
             ),
@@ -455,7 +464,9 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
     final isConnected = net.ssid == _connectedSsid;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.8),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E1E1E)
+            : Colors.white.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(16),
         border: isConnected
             ? Border.all(color: const Color(0xFF2BCC71), width: 1.5)
@@ -486,7 +497,9 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
                   style: GoogleFonts.outfit(
                       fontWeight: FontWeight.w700,
                       fontSize: 15,
-                      color: const Color(0xFF0F2027))),
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : const Color(0xFF0F2027))),
             ),
             if (isConnected)
               Container(

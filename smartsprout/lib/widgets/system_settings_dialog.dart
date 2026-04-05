@@ -45,13 +45,19 @@ class SystemSettingsDialog extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.95),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF1E1E1E).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.95),
             borderRadius: BorderRadius.circular(32),
             boxShadow: const [
               BoxShadow(
                   color: Colors.black26, blurRadius: 30, offset: Offset(0, 10))
             ],
-            border: Border.all(color: Colors.white, width: 2),
+            border: Border.all(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white12
+                    : Colors.white,
+                width: 2),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -60,7 +66,7 @@ class SystemSettingsDialog extends ConsumerWidget {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white
+                      ? Colors.white12
                       : const Color(0xFF0F2027).withValues(alpha: 0.05),
                   shape: BoxShape.circle,
                 ),
@@ -205,7 +211,9 @@ class SystemSettingsDialog extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E1E1E)
+            : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Text(
           'Confirm Hardware Reboot',
@@ -218,7 +226,11 @@ class SystemSettingsDialog extends ConsumerWidget {
         ),
         content: Text(
           'Are you sure you want to reboot the Raspberry Pi? This will temporarily take the system offline and halt any active watering.',
-          style: GoogleFonts.outfit(color: const Color(0xFF37474F)),
+          style: GoogleFonts.outfit(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white70
+                : const Color(0xFF37474F),
+          ),
         ),
         actions: [
           TextButton(

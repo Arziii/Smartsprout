@@ -531,7 +531,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 0.5,
-                            color: const Color(0xFF4A6164),
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white54
+                                : const Color(0xFF4A6164),
                           ),
                         ),
                       ],
@@ -635,7 +637,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 0.5,
-                              color: const Color(0xFF4A6164),
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white54
+                                  : const Color(0xFF4A6164),
                             ),
                           ),
                           Text(
@@ -734,7 +738,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             : const Color(0xFFFFEBEE).withValues(alpha: isDark ? 0.1 : 1.0));
     final titleColor = isOffline
         ? (isDark ? Colors.grey.shade300 : Colors.grey.shade800)
-        : (isHealthy ? const Color(0xFF2BCC71) : Colors.redAccent);
+        : (isHealthy
+            ? (isDark ? const Color(0xFF86EFAC) : const Color(0xFF2BCC71))
+            : Colors.redAccent);
 
     return GestureDetector(
       onTap: () {
@@ -865,7 +871,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           margin: const EdgeInsets.symmetric(horizontal: 40),
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF1E1E1E)
+                : Colors.white,
             borderRadius: BorderRadius.circular(32),
             boxShadow: isLiteMode
                 ? null
@@ -898,7 +906,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               Text(subtitle,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: Colors.grey.shade600, fontSize: 14, height: 1.5)),
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white70
+                          : Colors.grey.shade600,
+                      fontSize: 14,
+                      height: 1.5)),
             ],
           ),
         ),

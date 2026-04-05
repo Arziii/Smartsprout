@@ -83,7 +83,9 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.95),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E1E1E).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         boxShadow: const [
           BoxShadow(
@@ -175,12 +177,16 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
                           decoration: BoxDecoration(
                             color: isActive
                                 ? const Color(0xFF2BCC71).withValues(alpha: 0.1)
-                                : Colors.white,
+                                : (Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white10
+                                    : Colors.white),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: isActive
                                   ? const Color(0xFF2BCC71)
-                                  : Colors.grey.shade200,
+                                  : (Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.white24
+                                      : Colors.grey.shade200),
                               width: 2,
                             ),
                           ),
@@ -365,13 +371,15 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut,
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+            colors: Theme.of(context).brightness == Brightness.dark
+                ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
+                : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
           ),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
         child: ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
@@ -452,9 +460,15 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.4),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+                            : Colors.white.withValues(alpha: 0.4),
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
+                        border: Border.all(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white12
+                                : Colors.white,
+                            width: 2),
                       ),
                       child: const Icon(
                         Icons.grass_rounded,
@@ -488,9 +502,15 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
                     // ── Login Form Card ──
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+                            : Colors.white.withValues(alpha: 0.7),
                         borderRadius: BorderRadius.circular(28),
-                        border: Border.all(color: Colors.white, width: 2),
+                        border: Border.all(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white12
+                                : Colors.white,
+                            width: 2),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.04),
@@ -581,7 +601,9 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
             hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5)),
             prefixIcon: Icon(icon, color: const Color(0xFF2BCC71), size: 20),
             filled: true,
-            fillColor: Colors.white.withValues(alpha: 0.5),
+            fillColor: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF121212).withValues(alpha: 0.5)
+                : Colors.white.withValues(alpha: 0.5),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide.none,
@@ -616,17 +638,22 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
           backgroundColor: Theme.of(context).brightness == Brightness.dark
               ? Colors.white
               : const Color(0xFF0F2027),
-          foregroundColor: Colors.white,
+          foregroundColor: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF0F2027)
+              : Colors.white,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           elevation: 0,
         ),
         child: isLoading
-            ? const SizedBox(
+            ? SizedBox(
                 width: 22,
                 height: 22,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white),
+                    strokeWidth: 2, 
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF0F2027)
+                        : Colors.white),
               )
             : Text(
                 'CONNECT TO SYSTEM',

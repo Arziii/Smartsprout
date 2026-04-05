@@ -555,12 +555,14 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet>
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut,
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)]),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+              colors: Theme.of(context).brightness == Brightness.dark
+                  ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
+                  : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)]),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
         child: ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
@@ -625,9 +627,15 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet>
                     Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.4),
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+                                : Colors.white.withValues(alpha: 0.4),
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2)),
+                            border: Border.all(
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white12
+                                    : Colors.white,
+                                width: 2)),
                         child: const Icon(
                             Icons.drive_file_rename_outline_rounded,
                             size: 40,
@@ -651,9 +659,15 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet>
                     const SizedBox(height: 32),
                     Container(
                       decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.7),
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+                              : Colors.white.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(28),
-                          border: Border.all(color: Colors.white, width: 2),
+                          border: Border.all(
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white12
+                                  : Colors.white,
+                              width: 2),
                           boxShadow: [
                             BoxShadow(
                                 color: Colors.black.withValues(alpha: 0.04),
@@ -700,18 +714,22 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet>
                                                       Brightness.dark
                                                   ? Colors.white
                                                   : const Color(0xFF0F2027),
-                                          foregroundColor: Colors.white,
+                                          foregroundColor: Theme.of(context).brightness == Brightness.dark
+                                              ? const Color(0xFF0F2027)
+                                              : Colors.white,
                                           shape: RoundedRectangleBorder(
                                               borderRadius:
                                                   BorderRadius.circular(18)),
                                           elevation: 0),
                                       child: _isLoading
-                                          ? const SizedBox(
+                                          ? SizedBox(
                                               width: 22,
                                               height: 22,
                                               child: CircularProgressIndicator(
                                                   strokeWidth: 2,
-                                                  color: Colors.white))
+                                                  color: Theme.of(context).brightness == Brightness.dark
+                                                      ? const Color(0xFF0F2027)
+                                                      : Colors.white))
                                           : Text('RENAME DEVICE',
                                               style: GoogleFonts.outfit(
                                                   fontSize: 14,
@@ -769,7 +787,9 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet>
               hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5)),
               prefixIcon: Icon(icon, color: const Color(0xFF7E57C2), size: 20),
               filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.5),
+              fillColor: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF121212).withValues(alpha: 0.5)
+                  : Colors.white.withValues(alpha: 0.5),
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide.none),
@@ -894,12 +914,14 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut,
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)]),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+              colors: Theme.of(context).brightness == Brightness.dark
+                  ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
+                  : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)]),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
         child: ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
@@ -964,9 +986,15 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
                     Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.4),
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+                                : Colors.white.withValues(alpha: 0.4),
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2)),
+                            border: Border.all(
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white12
+                                    : Colors.white,
+                                width: 2)),
                         child: const Icon(Icons.lock_rounded,
                             size: 40, color: Color(0xFF78909C))),
                     const SizedBox(height: 16),
@@ -988,9 +1016,15 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
                     const SizedBox(height: 32),
                     Container(
                       decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.7),
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+                              : Colors.white.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(28),
-                          border: Border.all(color: Colors.white, width: 2),
+                          border: Border.all(
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white12
+                                  : Colors.white,
+                              width: 2),
                           boxShadow: [
                             BoxShadow(
                                 color: Colors.black.withValues(alpha: 0.04),
@@ -1043,18 +1077,22 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
                                                       Brightness.dark
                                                   ? Colors.white
                                                   : const Color(0xFF0F2027),
-                                          foregroundColor: Colors.white,
+                                          foregroundColor: Theme.of(context).brightness == Brightness.dark
+                                              ? const Color(0xFF0F2027)
+                                              : Colors.white,
                                           shape: RoundedRectangleBorder(
                                               borderRadius:
                                                   BorderRadius.circular(18)),
                                           elevation: 0),
                                       child: _isLoading
-                                          ? const SizedBox(
+                                          ? SizedBox(
                                               width: 22,
                                               height: 22,
                                               child: CircularProgressIndicator(
                                                   strokeWidth: 2,
-                                                  color: Colors.white))
+                                                  color: Theme.of(context).brightness == Brightness.dark
+                                                      ? const Color(0xFF0F2027)
+                                                      : Colors.white))
                                           : Text('UPDATE PIN',
                                               style: GoogleFonts.outfit(
                                                   fontSize: 14,
@@ -1110,7 +1148,9 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
               hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5)),
               prefixIcon: Icon(icon, color: const Color(0xFF78909C), size: 20),
               filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.5),
+              fillColor: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF121212).withValues(alpha: 0.5)
+                  : Colors.white.withValues(alpha: 0.5),
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide.none),
