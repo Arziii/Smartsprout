@@ -247,7 +247,7 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF121212)
+          ? const Color(0xFF064E3B)
           : const Color(0xFFFAFAFA),
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -280,8 +280,8 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: Theme.of(context).brightness == Brightness.dark
-                      ? [const Color(0xFF121212), const Color(0xFF1E1E1E)]
-                      : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                      ? [const Color(0xFF064E3B), const Color(0xFF0F172A)]
+                      : const [Color(0xFFF0FDF4), Color(0xFFCCFBF1)],
                 ),
               ),
             ),
@@ -465,7 +465,7 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).brightness == Brightness.dark
-            ? const Color(0xFF1E1E1E)
+            ? const Color(0xFF0F172A)
             : Colors.white.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(16),
         border: isConnected

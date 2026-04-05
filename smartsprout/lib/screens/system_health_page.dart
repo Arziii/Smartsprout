@@ -72,10 +72,10 @@ class SystemHealthPage extends ConsumerWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: isDark
-                      ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
+                      ? [const Color(0xFF0F172A), const Color(0xFF064E3B)]
                       : const [
-                          Color(0xFFE0ECE9),
-                          Color(0xFFB4CDCA),
+                          Color(0xFFF0FDF4),
+                          Color(0xFFCCFBF1),
                         ],
                 ),
               ),
@@ -89,8 +89,16 @@ class SystemHealthPage extends ConsumerWidget {
               width: 300,
               height: 300,
               decoration: BoxDecoration(
-                  color: const Color(0xFF2BCC71).withValues(alpha: 0.15),
-                  shape: BoxShape.circle),
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF2BCC71).withValues(alpha: 0.15),
+                    const Color(0xFF2BCC71).withValues(alpha: 0.05),
+                    const Color(0xFF2BCC71).withValues(alpha: 0.0),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
             ),
           ),
           Positioned(
@@ -100,8 +108,16 @@ class SystemHealthPage extends ConsumerWidget {
               width: 400,
               height: 400,
               decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
-                  shape: BoxShape.circle),
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    Colors.blue.withValues(alpha: 0.1),
+                    Colors.blue.withValues(alpha: 0.03),
+                    Colors.blue.withValues(alpha: 0.0),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
             ),
           ),
 
@@ -213,7 +229,7 @@ class SystemHealthPage extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       decoration: BoxDecoration(
         color: isDark
-            ? const Color(0xFF1E1E1E).withValues(alpha: 0.9)
+            ? const Color(0xFF0F172A).withValues(alpha: 0.9)
             : Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(24),
         border:
@@ -267,7 +283,7 @@ class SystemHealthPage extends ConsumerWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: isDark
-            ? const Color(0xFF1E1E1E).withValues(alpha: isLiteMode ? 1.0 : 0.9)
+            ? const Color(0xFF0F172A).withValues(alpha: isLiteMode ? 1.0 : 0.9)
             : Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.9),
         borderRadius: BorderRadius.circular(24),
         border:
@@ -374,7 +390,7 @@ class SystemHealthPage extends ConsumerWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: isDark
-            ? const Color(0xFF1E1E1E).withValues(alpha: isLiteMode ? 1.0 : 0.9)
+            ? const Color(0xFF0F172A).withValues(alpha: isLiteMode ? 1.0 : 0.9)
             : Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.9),
         borderRadius: BorderRadius.circular(24),
         border:

@@ -42,7 +42,8 @@ TABLE OF CONTENTS
 9. PHASE 7: RESEARCH PAPER INTEGRATION
 10. COMMERCIAL SCALING & SECURITY
 11. DATA MANAGEMENT & QUOTA STRATEGY
-12. CONCLUSION
+12. ANALYTICS ENGINE
+13. CONCLUSION
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -314,8 +315,10 @@ lib/
 │ Calibration     │ Direct numeric input for Bed high/low     │ Cloud Only   │
 │                 │ thresholds with Optimistic UI updates     │              │
 ├─────────────────┼───────────────────────────────────────────┼──────────────┤
-│ Analytics       │ 7-day historical charts, efficiency       │ Cloud Only   │
-│                 │ metrics                                   │              │
+│ Analytics       │ Rolling 7-day line charts (Soil Moisture  │ Cloud Only   │
+│                 │ & Temperature). Gaps shown for days with  │              │
+│                 │ no Pi telemetry. X-axis: Mon→Today with   │              │
+│                 │ live calendar labels. 1-hour cache.       │              │
 ├─────────────────┼───────────────────────────────────────────┼──────────────┤
 │ Settings        │ App config, PIN change, Rename Device     │ Cloud Only   │
 │                 │ (Mobile), System Control Dialog, Logout   │              │
@@ -476,6 +479,18 @@ Phase 2: Polling & Offline Detection
 | **Adaptive Polling** | Increase Linux Kiosk REST polling from 5s to 30s. | 83% baseline reduction (~14,000 reads/day) |
 | **Heartbeat Frequency** | Reverted heartbeat to 10s for snappy UI detection, balanced with local caching. | N/A (Favors UX) |
 | **Efficient Offline Check** | Local UI timeout reduced to 45s ensuring fast UI lock without extra background network queries. | N/A (Safety/UX) |
+
+
+PHASE 4.22: ANALYTICS ENGINE — ROLLING 7-DAY SENSOR TRENDS [COMPLETED]
+☑ Rolling Window: Chart always covers the last 6 full calendar days + Today. Window shifts forward every midnight automatically.
+☑ Real Weekday Labels: X-axis shows actual day names (Mon, Tue, … Today) anchored to the current device date.
+☑ No-Data Gaps: Days with zero Firestore telemetry render as visible line gaps (FlSpot.nullSpot) instead of misleading zeros.
+☑ No-Data Indicators: Bottom axis shows a dimmed `—` dash under days with no data and a colored dot under days with real telemetry.
+☑ Sentinel Value Handling: Pi-reported fault value `-1.0` (sensor disconnect) is included in averages and renders at -1 on the chart — distinguishable from a gap.
+☑ Type-Safe Aggregation: All Firestore numeric fields normalized with `safeDouble(v) = (v as num?)?.toDouble() ?? 0.0` to prevent int/double TypeError crashes.
+☑ Caching: `AsyncNotifier` caches results for 1 hour — navigating away and back costs 0 additional Firestore reads.
+☑ Quota Guard: `.limit(500)` hard cap on the telemetry query prevents unbounded reads on large datasets.
+☑ Kiosk Bypass: `Platform.isLinux` guard returns synthetic no-data result — zero Firestore reads on the Pi touchscreen.
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -778,7 +793,134 @@ The system utilizes a 10-second "Heartbeat" interval for the Raspberry Pi and a 
 ═══════════════════════════════════════════════════════════════════
 
 
-12. CONCLUSION
+12. ANALYTICS ENGINE
+
+
+The Analytics Screen is the system's data transparency layer. It transforms raw Firestore telemetry history into a human-readable 7-day rolling trend, enabling users to spot soil dryness patterns, temperature spikes, and Pi offline periods at a glance.
+
+
+12.1 ROLLING WINDOW DEFINITION
+
+The window always covers the 6 days before today plus today itself, computed at query time:
+
+┌─────────────────┬──────────────────────────────┬─────────────────────────────────┐
+│ Variable        │ Formula                      │ Example (today = Sun Apr 6)     │
+├─────────────────┼──────────────────────────────┼─────────────────────────────────┤
+│ today           │ DateTime.now()               │ Sun Apr 6                       │
+│ cutoff          │ today − 6 days               │ Mon Mar 31                      │
+│ dayIndex 0      │ cutoff + 0                   │ Mon (oldest in window)          │
+│ dayIndex 1      │ cutoff + 1                   │ Tue                             │
+│ dayIndex 2      │ cutoff + 2                   │ Wed                             │
+│ dayIndex 3      │ cutoff + 3                   │ Thu                             │
+│ dayIndex 4      │ cutoff + 4                   │ Fri                             │
+│ dayIndex 5      │ cutoff + 5                   │ Sat                             │
+│ dayIndex 6      │ today                        │ Sun → labelled "Today" (bold)   │
+└─────────────────┴──────────────────────────────┴─────────────────────────────────┘
+
+The window slides forward every day with zero code changes. Tomorrow (Mon Apr 7),
+the window automatically becomes Tue Apr 1 → Mon Apr 7.
+
+
+12.2 AGGREGATION FORMULAS
+
+
+Average Soil Moisture for Day N
+
+Each Firestore telemetry document stores soil_moisture as a Map:
+  { "bed1": <value>, "bed2": <value>, "bed3": <value> }
+
+Step 1 — Per-document zone average:
+  soilAvg_doc = (bed1 + bed2 + bed3) / 3
+
+Step 2 — Daily average across M valid documents:
+              Σ( soilAvg_doc₁ + soilAvg_doc₂ + … + soilAvg_docₘ )
+  avgMoisture[N] = ─────────────────────────────────────────────────
+                                          M
+
+
+Average Temperature for Day N
+
+              Σ( temperature_doc₁ + temperature_doc₂ + … + temperature_docₘ )
+  avgTemp[N] = ─────────────────────────────────────────────────────────────────
+                                              M
+
+Type safety: All values pass through safeDouble(v) = (v as num?)?.toDouble() ?? 0.0
+before arithmetic, preventing the Firestore int/double TypeError crash.
+
+
+12.3 DATA PROCESSING PIPELINE
+
+┌────┬───────────────────────┬───────────────────────────────┬──────────────────────────────────────────────┐
+│ #  │ Step                  │ Component                     │ Detail                                       │
+├────┼───────────────────────┼───────────────────────────────┼──────────────────────────────────────────────┤
+│ 1  │ Query                 │ DataService                   │ WHERE timestamp >= cutoffSeconds              │
+│    │                       │ .fetchWeeklyAnalytics()        │ ORDER BY timestamp ASC  LIMIT 500            │
+├────┼───────────────────────┼───────────────────────────────┼──────────────────────────────────────────────┤
+│ 2  │ Group by day          │ data_service.dart             │ dayIndex = date.difference(cutoff).inDays    │
+│    │                       │                               │ Slots each doc into index 0–6                │
+├────┼───────────────────────┼───────────────────────────────┼──────────────────────────────────────────────┤
+│ 3  │ Normalize types       │ safeDouble() helper           │ (v as num?)?.toDouble() ?? 0.0               │
+│    │                       │                               │ Handles Firestore int/double/null            │
+├────┼───────────────────────┼───────────────────────────────┼──────────────────────────────────────────────┤
+│ 4  │ Zone average          │ Per-document inner loop       │ Σ(bed values) / count(beds) per document     │
+├────┼───────────────────────┼───────────────────────────────┼──────────────────────────────────────────────┤
+│ 5  │ Daily aggregate       │ Per-day outer loop            │ Σ(doc averages) / validDocs                  │
+├────┼───────────────────────┼───────────────────────────────┼──────────────────────────────────────────────┤
+│ 6  │ Gap detection         │ hasData flag                  │ false if docs.isEmpty OR validDocs == 0      │
+│    │                       │ (DailyAnalytics model)        │ (all docs threw parse TypeError)              │
+├────┼───────────────────────┼───────────────────────────────┼──────────────────────────────────────────────┤
+│ 7  │ Render                │ analytics_screen.dart         │ hasData=true  → FlSpot(dayIndex, value)      │
+│    │                       │                               │ hasData=false → FlSpot.nullSpot (gap)        │
+└────┴───────────────────────┴───────────────────────────────┴──────────────────────────────────────────────┘
+
+
+12.4 SENTINEL VALUE: -1.0
+
+When the Pi cannot read a sensor, it writes -1.0 to Firestore instead of 0.
+This intentionally distinguishes a hardware fault from "no data":
+
+┌────────────────────────┬───────────────────┬─────────────┬───────────────────────────────────┐
+│ Field                  │ Normal Range      │ Fault Value │ Root Cause                        │
+├────────────────────────┼───────────────────┼─────────────┼───────────────────────────────────┤
+│ temperature            │ 15.0 – 45.0 °C   │ -1.0        │ BME280 I2C read failure           │
+│ soil_moisture.bedN     │ 0.0 – 100.0 %    │ -1.0        │ ADS1115 ADC / sensor disconnect   │
+│ humidity               │ 10.0 – 100.0 %   │ -1.0        │ BME280 I2C read failure           │
+│ tank_level             │ True / False      │ N/A         │ XKC-Y26-V is binary digital GPIO  │
+└────────────────────────┴───────────────────┴─────────────┴───────────────────────────────────┘
+
+-1.0 is included in the daily average — a chart point at -1 means
+"Pi was running but sensors were offline", visually distinct from a gap.
+
+
+12.5 CHART BEHAVIOR REFERENCE
+
+┌────────────────────────────────────────┬──────────┬────────────────────────────┬──────────────────────────────┐
+│ Condition                              │ hasData  │ Chart Renders              │ X-Axis Bottom Label          │
+├────────────────────────────────────────┼──────────┼────────────────────────────┼──────────────────────────────┤
+│ Pi published docs, sensors healthy     │ true     │ Line segment + colored dot │ "Mon" + ● accent dot         │
+│ Pi published docs, sensors offline     │ true     │ Line at -1.0 + colored dot │ "Mon" + ● accent dot         │
+│ Pi was off — zero Firestore docs       │ false    │ Gap (no line segment)      │ "Mon" + — grey dash          │
+│ All docs on that day failed parsing    │ false    │ Gap (no line segment)      │ "Mon" + — grey dash          │
+│ dayIndex == 6 (today)                  │ either   │ Normal line rendering      │ "Today" in accent color bold │
+└────────────────────────────────────────┴──────────┴────────────────────────────┴──────────────────────────────┘
+
+
+12.6 QUOTA & CACHE DESIGN
+
+┌───────────────────────────────────────┬────────────────────────────────────────┬────────────────────────────┐
+│ Operation                             │ Trigger                                │ Firestore Reads            │
+├───────────────────────────────────────┼────────────────────────────────────────┼────────────────────────────┤
+│ Fresh analytics fetch                 │ Screen opened + cache expired (>1 hr)  │ 1 query × ≤500 doc reads   │
+│ Cache hit                             │ Screen re-opened within 1 hour         │ 0 reads                    │
+│ limit(500) guard                      │ Always enforced at query level         │ Prevents runaway reads     │
+│ Linux Kiosk (Platform.isLinux)        │ App boot on Raspberry Pi touchscreen   │ 0 reads (synthetic data)   │
+└───────────────────────────────────────┴────────────────────────────────────────┴────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════
+
+
+13. CONCLUSION
 
 
 ═══════════════════════════════════════════════════════════════════

@@ -76,8 +76,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: isDark
-                      ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
-                      : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                      ? [const Color(0xFF0F172A), const Color(0xFF064E3B)]
+                      : const [Color(0xFFF0FDF4), Color(0xFFCCFBF1)],
                 ),
               ),
             ),
@@ -256,7 +256,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         ? Colors.white60
         : const Color(0xFF4A6164).withValues(alpha: 0.7);
     final cardBgColor = isDark
-        ? const Color(0xFF1E1E1E).withValues(alpha: isLiteMode ? 0.95 : 0.4)
+        ? const Color(0xFF0F172A).withValues(alpha: isLiteMode ? 0.95 : 0.4)
         : Colors.white.withValues(alpha: isLiteMode ? 0.95 : 0.7);
     final borderColor = isDark ? Colors.white12 : Colors.white;
 
@@ -338,13 +338,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       child: Container(
         width: size,
         height: size,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        child: isLiteMode
-            ? null
-            : BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-                child: Container(color: Colors.transparent),
-              ),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [
+              color.withValues(alpha: 0.8),
+              color.withValues(alpha: 0.3),
+              color.withValues(alpha: 0.0),
+            ],
+            stops: const [0.0, 0.5, 1.0],
+          ),
+        ),
       ),
     );
   }
@@ -450,7 +454,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       bool isDestructive = false}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return AlertDialog(
-      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
       title: Text(title,
           style: GoogleFonts.outfit(
@@ -560,8 +564,8 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: Theme.of(context).brightness == Brightness.dark
-                  ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
-                  : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)]),
+                  ? [const Color(0xFF0F172A), const Color(0xFF064E3B)]
+                  : const [Color(0xFFF0FDF4), Color(0xFFCCFBF1)]),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
         child: ClipRRect(
@@ -628,7 +632,7 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet>
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                             color: Theme.of(context).brightness == Brightness.dark
-                                ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+                                ? const Color(0xFF0F172A).withValues(alpha: 0.8)
                                 : Colors.white.withValues(alpha: 0.4),
                             shape: BoxShape.circle,
                             border: Border.all(
@@ -660,7 +664,7 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet>
                     Container(
                       decoration: BoxDecoration(
                           color: Theme.of(context).brightness == Brightness.dark
-                              ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+                              ? const Color(0xFF0F172A).withValues(alpha: 0.8)
                               : Colors.white.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(28),
                           border: Border.all(
@@ -788,7 +792,7 @@ class _RenameDeviceSheetState extends ConsumerState<_RenameDeviceSheet>
               prefixIcon: Icon(icon, color: const Color(0xFF7E57C2), size: 20),
               filled: true,
               fillColor: Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFF121212).withValues(alpha: 0.5)
+                  ? const Color(0xFF064E3B).withValues(alpha: 0.5)
                   : Colors.white.withValues(alpha: 0.5),
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -919,8 +923,8 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: Theme.of(context).brightness == Brightness.dark
-                  ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
-                  : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)]),
+                  ? [const Color(0xFF0F172A), const Color(0xFF064E3B)]
+                  : const [Color(0xFFF0FDF4), Color(0xFFCCFBF1)]),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
         child: ClipRRect(
@@ -987,7 +991,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                             color: Theme.of(context).brightness == Brightness.dark
-                                ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+                                ? const Color(0xFF0F172A).withValues(alpha: 0.8)
                                 : Colors.white.withValues(alpha: 0.4),
                             shape: BoxShape.circle,
                             border: Border.all(
@@ -1017,7 +1021,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
                     Container(
                       decoration: BoxDecoration(
                           color: Theme.of(context).brightness == Brightness.dark
-                              ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+                              ? const Color(0xFF0F172A).withValues(alpha: 0.8)
                               : Colors.white.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(28),
                           border: Border.all(
@@ -1149,7 +1153,7 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
               prefixIcon: Icon(icon, color: const Color(0xFF78909C), size: 20),
               filled: true,
               fillColor: Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFF121212).withValues(alpha: 0.5)
+                  ? const Color(0xFF064E3B).withValues(alpha: 0.5)
                   : Colors.white.withValues(alpha: 0.5),
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),

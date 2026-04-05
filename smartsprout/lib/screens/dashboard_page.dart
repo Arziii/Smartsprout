@@ -112,7 +112,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Stack(
         children: [
-          // ── Gradient & Blob Background ──
+          // ── Gradient & Lively Animated Flowing Background ──
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
@@ -120,27 +120,39 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: isDark
-                      ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
-                      : const [
-                          Color(0xFFE0ECE9),
-                          Color(0xFFB4CDCA),
-                        ],
+                      ? [const Color(0xFF0F172A), const Color(0xFF064E3B)]
+                      : [const Color(0xFFF0FDF4), const Color(0xFFCCFBF1)],
                 ),
               ),
             ),
           ),
 
-          // Background Blobs for depth
-          _buildBlob(
-              top: -100,
-              right: -50,
-              size: 300,
-              color: const Color(0xFF2BCC71).withValues(alpha: 0.15)),
-          _buildBlob(
-              bottom: 100,
-              left: -100,
-              size: 400,
-              color: Colors.blue.withValues(alpha: 0.1)),
+          // Animated Background Blobs for depth and smart gardening vibe
+          AnimatedBuilder(
+            animation: _pulseController,
+            builder: (context, child) {
+              final scale = _pulseController.value;
+              return Stack(
+                children: [
+                  _buildBlob(
+                      top: -100,
+                      right: -100,
+                      size: 400 * scale,
+                      color: const Color(0xFF10B981).withValues(alpha: isDark ? 0.25 : 0.35)),
+                  _buildBlob(
+                      bottom: 50,
+                      left: -150,
+                      size: 500 * (1.6 - scale),
+                      color: const Color(0xFF3B82F6).withValues(alpha: isDark ? 0.2 : 0.25)),
+                  _buildBlob(
+                      top: MediaQuery.of(context).size.height * 0.35,
+                      left: MediaQuery.of(context).size.width * 0.2,
+                      size: 300 * scale,
+                      color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.1 : 0.15)),
+                ],
+              );
+            },
+          ),
 
           // ── Main dashboard content ──
           // Windows: wrap in Scrollbar for mouse/keyboard UX
@@ -341,15 +353,15 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: color,
           shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [
+              color,
+              color.withValues(alpha: 0.0),
+            ],
+            stops: const [0.0, 1.0],
+          ),
         ),
-        child: isLiteMode
-            ? null
-            : BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-                child: Container(color: Colors.transparent),
-              ),
       ),
     );
   }
@@ -476,7 +488,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             decoration: BoxDecoration(
               color: tankLevelStr == 'HIGH'
                   ? (Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF1E1E1E).withValues(alpha: 0.9)
+                      ? const Color(0xFF0F172A).withValues(alpha: 0.9)
                       : Colors.white.withValues(alpha: 0.9))
                   : tankColor.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(24),
@@ -583,12 +595,12 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                 end: Alignment.bottomRight,
                 colors: Theme.of(context).brightness == Brightness.dark
                     ? [
-                        const Color(0xFF1E1E1E).withValues(alpha: 0.95),
-                        const Color(0xFF121212).withValues(alpha: 0.85)
+                        const Color(0xFF0F172A).withValues(alpha: 0.95),
+                        const Color(0xFF064E3B).withValues(alpha: 0.85)
                       ]
                     : [
                         Colors.white.withValues(alpha: 0.95),
-                        const Color(0xFFE0ECE9).withValues(alpha: 0.85)
+                        const Color(0xFFF0FDF4).withValues(alpha: 0.85)
                       ],
               ),
               borderRadius: BorderRadius.circular(24),
@@ -754,14 +766,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             end: Alignment.bottomRight,
             colors: isDark
                 ? [
-                    const Color(0xFF1E1E1E)
+                    const Color(0xFF0F172A)
                         .withValues(alpha: isLiteMode ? 1.0 : 0.95),
-                    const Color(0xFF121212)
+                    const Color(0xFF064E3B)
                         .withValues(alpha: isLiteMode ? 1.0 : 0.85)
                   ]
                 : [
                     Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.95),
-                    const Color(0xFFE0ECE9)
+                    const Color(0xFFF0FDF4)
                         .withValues(alpha: isLiteMode ? 1.0 : 0.85),
                   ],
           ),
@@ -872,7 +884,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
             color: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF1E1E1E)
+                ? const Color(0xFF0F172A)
                 : Colors.white,
             borderRadius: BorderRadius.circular(32),
             boxShadow: isLiteMode

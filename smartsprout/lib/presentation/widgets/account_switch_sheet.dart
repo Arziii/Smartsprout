@@ -84,7 +84,7 @@ class _AccountSwitchSheetState extends ConsumerState<AccountSwitchSheet> {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).brightness == Brightness.dark
-            ? const Color(0xFF1E1E1E).withValues(alpha: 0.95)
+            ? const Color(0xFF0F172A).withValues(alpha: 0.95)
             : Colors.white.withValues(alpha: 0.95),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         boxShadow: const [
@@ -376,8 +376,8 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: Theme.of(context).brightness == Brightness.dark
-                ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
-                : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                ? [const Color(0xFF0F172A), const Color(0xFF064E3B)]
+                : const [Color(0xFFF0FDF4), Color(0xFFCCFBF1)],
           ),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
@@ -461,7 +461,7 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: Theme.of(context).brightness == Brightness.dark
-                            ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+                            ? const Color(0xFF0F172A).withValues(alpha: 0.8)
                             : Colors.white.withValues(alpha: 0.4),
                         shape: BoxShape.circle,
                         border: Border.all(
@@ -503,7 +503,7 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
                     Container(
                       decoration: BoxDecoration(
                         color: Theme.of(context).brightness == Brightness.dark
-                            ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+                            ? const Color(0xFF0F172A).withValues(alpha: 0.8)
                             : Colors.white.withValues(alpha: 0.7),
                         borderRadius: BorderRadius.circular(28),
                         border: Border.all(
@@ -602,7 +602,7 @@ class _AddAccountSheetState extends ConsumerState<_AddAccountSheet>
             prefixIcon: Icon(icon, color: const Color(0xFF2BCC71), size: 20),
             filled: true,
             fillColor: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF121212).withValues(alpha: 0.5)
+                ? const Color(0xFF064E3B).withValues(alpha: 0.5)
                 : Colors.white.withValues(alpha: 0.5),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),

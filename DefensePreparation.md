@@ -6,12 +6,13 @@
 3. [Pi-Bouncer Authentication Architecture](#3-pi-bouncer-authentication-architecture)
 4. [UI/UX Documentation](#4-uiux-documentation)
 5. [Mobile Application Functions](#5-mobile-application-functions)
-6. [Detailed Cloud & Firebase Operations](#6-detailed-cloud--firebase-operations)
-7. [Hardware Setup](#7-hardware-setup)
-8. [Testing & Limitations](#8-testing--limitations)
-9. [Defense Q&A Preparation](#9-defense-qa-preparation)
-10. [Future Recommendations](#10-future-recommendations)
-11. [Intellectual Property & Anti-Tamper Strategies](#11-intellectual-property--anti-tamper-strategies)
+6. [Analytics Engine](#6-analytics-engine)
+7. [Detailed Cloud & Firebase Operations](#7-detailed-cloud--firebase-operations)
+8. [Hardware Setup](#8-hardware-setup)
+9. [Testing & Limitations](#9-testing--limitations)
+10. [Defense Q&A Preparation](#10-defense-qa-preparation)
+11. [Future Recommendations](#11-future-recommendations)
+12. [Intellectual Property & Anti-Tamper Strategies](#12-intellectual-property--anti-tamper-strategies)
 
 ---
 
@@ -222,7 +223,96 @@ The Flutter mobile application serves as the primary remote control interface fo
 
 ---
 
-## 5. Detailed Cloud & Firebase Operations (How it runs every function)
+## 6. Analytics Engine
+
+The Analytics Screen gives users a **rolling 7-day visual trend** of soil moisture and temperature using historical Firestore telemetry data. It is the only screen that performs a *batch historical query* rather than listening to a real-time stream.
+
+### 6.1 Rolling Window
+
+The window always covers the last **6 full days + today**, shifting forward automatically every midnight.
+
+| Variable | Formula | Example (if today = Sun Apr 6) |
+|---|---|---|
+| `today` | `DateTime.now()` | Sun Apr 6 |
+| `cutoff` | `today − 6 days` | Mon Mar 31 |
+| `dayIndex 0` | `cutoff` | Mon (oldest) |
+| `dayIndex 1` | `cutoff + 1` | Tue |
+| `dayIndex 5` | `cutoff + 5` | Sat |
+| `dayIndex 6` | `today` | Sun ("Today") |
+
+> Tomorrow (Mon Apr 7) the window automatically becomes **Tue Apr 1 → Mon Apr 7**. No code change needed.
+
+### 6.2 Formulas
+
+#### Average Soil Moisture for Day N
+
+Each telemetry document stores `soil_moisture` as a Firestore **Map** (`{bed1, bed2, bed3}`). The formula first averages within each document, then averages across all documents for the day:
+
+```
+Step 1 — Per-document zone average:
+  soilAvg_doc = (bed1 + bed2 + bed3) / 3
+
+Step 2 — Daily average across M valid documents:
+  avgMoisture[N] = Σ(soilAvg_doc₁ + soilAvg_doc₂ + … + soilAvg_docₘ)
+                  ────────────────────────────────────────────────────
+                                      M
+```
+
+#### Average Temperature for Day N
+
+```
+  avgTemp[N] = Σ(temperature_doc₁ + temperature_doc₂ + … + temperature_docₘ)
+               ────────────────────────────────────────────────────────────────
+                                           M
+```
+
+> **Type Safety Note:** Firestore returns `int` for whole numbers (e.g., `-1`, `0`) and `double` for decimals. All fields are normalized through `safeDouble(v) = (v as num?)?.toDouble() ?? 0.0` before any arithmetic to prevent `TypeError` at runtime.
+
+### 6.3 Data Processing Pipeline
+
+| # | Step | Component | Detail |
+|---|---|---|---|
+| 1 | **Query** | `DataService.fetchWeeklyAnalytics()` | Firestore query: `timestamp >= cutoffSeconds`, ordered ascending, `.limit(500)` hard cap |
+| 2 | **Group by day** | `data_service.dart` | `dayIndex = date.difference(cutoff).inDays` — maps each doc to slot 0–6 |
+| 3 | **Normalize types** | `safeDouble()` helper | Converts Firestore `int`/`double`/`null` → `double` safely |
+| 4 | **Zone average** | Per-document inner loop | `Σ(bed values) / count(beds)` per document |
+| 5 | **Daily aggregate** | Per-day outer loop | `Σ(doc averages) / validDocs` |
+| 6 | **Gap detection** | `hasData` flag | `false` if `docs.isEmpty` OR `validDocs == 0` (all parse errors) |
+| 7 | **Render** | `analytics_screen.dart` | `hasData=true` → `FlSpot(x, y)`; `hasData=false` → `FlSpot.nullSpot` (chart gap) |
+
+### 6.4 Sentinel Value: `-1.0`
+
+The Pi writes `-1.0` when it cannot read a sensor (I2C bus failure, sensor unplugged, BME280 timeout). This value is **intentional** — it signals a hardware fault rather than disguising the failure as `0`.
+
+| Field | Normal Range | Fault Value | Root Cause |
+|---|---|---|---|
+| `temperature` | 15.0 – 45.0 °C | `-1.0` | BME280 I2C read failure |
+| `soil_moisture.bedN` | 0.0 – 100.0 % | `-1.0` | ADS1115 ADC / capacitive sensor disconnect |
+| `humidity` | 10.0 – 100.0 % | `-1.0` | BME280 I2C read failure |
+| `tank_level` | `True` / `False` | N/A | XKC-Y26-V is binary (digital GPIO) |
+
+### 6.5 Chart Behavior Reference
+
+| Condition | `hasData` | Line on Chart | X-Axis Bottom Label |
+|---|---|---|---|
+| Pi published data, sensors healthy | `true` | Segment at real value + colored dot | `Mon` + ● accent dot |
+| Pi published data, sensors offline | `true` | Segment at `-1.0` + colored dot | `Mon` + ● accent dot |
+| Pi was off — zero Firestore docs | `false` | Gap (invisible) | `Mon` + `—` grey dash |
+| All docs on day failed parse | `false` | Gap (invisible) | `Mon` + `—` grey dash |
+| dayIndex == 6 (today) | either | Normal rendering | `Today` in accent color (bold) |
+
+### 6.6 Quota & Cache Design
+
+| Operation | Trigger | Firestore Reads |
+|---|---|---|
+| Fresh analytics fetch | Screen opened (first time or cache expired) | 1 query × up to 500 doc reads |
+| Cache hit | Screen re-opened within 1 hour | **0 reads** |
+| `limit(500)` guard | Always enforced | Prevents runaway reads on large telemetry collections |
+| Linux Kiosk | Platform check `Platform.isLinux` | Always returns synthetic `hasData: false` data — **0 Firestore reads** |
+
+---
+
+## 7. Detailed Cloud & Firebase Operations (How it runs every function)
 
 To prepare for your defense, it is critical to understand **exactly** how the Cloud connects the User to the Hardware. The system operates on an asynchronous NoSQL database called Google Cloud Firestore.
 
@@ -405,6 +495,12 @@ stateDiagram-v2
 ---
 
 ## 9. Defense Q&A Preparation
+
+**Q: How does the Analytics screen display a 7-day rolling window of soil moisture and temperature?**
+*Answer:* The `DataService.fetchWeeklyAnalytics()` method queries the `telemetry` subcollection for documents with a `timestamp` ≥ today minus 6 days (the "cutoff"), hard-capped at 500 documents. Each document is assigned to a `dayIndex` (0 = 6 days ago, 6 = today) by computing `date.difference(cutoff).inDays`. For each day, the method averages all zone soil moisture values per document, then averages those across all valid documents for the day. The same is done for temperature. If a day has zero Firestore documents, it receives `hasData: false` and the chart renders a visible **gap** (using `FlSpot.nullSpot`) instead of a misleading `0`. The X-axis always spans all 7 positions (`minX: 0, maxX: 6`) with real calendar day names so the chart is always readable.
+
+**Q: Why does the analytics chart sometimes show `-1` instead of `0`?**
+*Answer:* `-1.0` is a **sentinel fault value** written by the Pi when a sensor read fails (e.g., BME280 I2C timeout, capacitive sensor unplugged). It intentionally distinguishes a *hardware fault* (`-1`) from *no data at all* (gap). A `0` in the chart would falsely imply dry soil or freezing temperature, while `-1` clearly indicates a Pi-was-running-but-sensor-was-offline state.
 
 **Q: What was the original authentication vulnerability and how did you fix it?**
 *Answer:* The original architecture compared the PIN **client-side** — the Flutter app read `hashed_pin` from Firestore and compared locally. An attacker with a `deviceId` could attempt all 10,000 PINs with no server-side throttle. We solved this with the **Pi-Bouncer architecture**: `auth_bouncer.py` on the Pi validates the PIN exclusively on trusted hardware, enforces a 15-minute lockout after 5 failures, and mints a Firebase Custom Token via the Admin SDK. The Flutter app never touches the stored hash.

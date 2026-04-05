@@ -59,8 +59,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: isDark
-                      ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
-                      : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                      ? [const Color(0xFF0F172A), const Color(0xFF064E3B)]
+                      : const [Color(0xFFF0FDF4), Color(0xFFCCFBF1)],
                 ),
               ),
             ),
@@ -86,14 +86,24 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                       child: Text('Error loading analytics: $e',
                           style: const TextStyle(color: Colors.red))),
                   data: (data) {
-                    // Generate UI FlSpots
+                    // Anchor day labels to today: dayIndex 0 = 6 days ago, 6 = today
+                    final today = DateTime.now();
+                    final cutoff = DateTime(today.year, today.month, today.day)
+                        .subtract(const Duration(days: 6));
+
+                    // Generate UI FlSpots — use FlSpot.nullSpot for days with
+                    // no Pi telemetry so fl_chart renders a gap in the line.
                     final moistureSpots = data
-                        .map(
-                            (d) => FlSpot(d.dayIndex.toDouble(), d.avgMoisture))
+                        .map((d) => d.hasData
+                            ? FlSpot(d.dayIndex.toDouble(), d.avgMoisture)
+                            : FlSpot.nullSpot)
                         .toList();
                     final tempSpots = data
-                        .map((d) => FlSpot(d.dayIndex.toDouble(), d.avgTemp))
+                        .map((d) => d.hasData
+                            ? FlSpot(d.dayIndex.toDouble(), d.avgTemp)
+                            : FlSpot.nullSpot)
                         .toList();
+                    final hasAnyData = data.any((d) => d.hasData);
 
                     return SingleChildScrollView(
                       padding: const EdgeInsets.symmetric(
@@ -109,16 +119,22 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                                 color: const Color(0xFF8D6E63),
                                 icon: Icons.grass_rounded,
                                 spots: moistureSpots,
+                                cutoff: cutoff,
+                                hasAnyData: hasAnyData,
+                                dataPoints: data,
                               )),
                           const SizedBox(height: 24),
                           _buildAnimatedItem(
                               1,
                               _buildChartCard(
-                                title: 'Temperature Trend',
+                                title: 'Temperature Trend (7 Days)',
                                 subtitle: 'Daily average in °C',
                                 color: const Color(0xFFFF7043),
                                 icon: Icons.thermostat_rounded,
                                 spots: tempSpots,
+                                cutoff: cutoff,
+                                hasAnyData: hasAnyData,
+                                dataPoints: data,
                               )),
                           const SizedBox(height: 100),
                         ],
@@ -132,19 +148,34 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
     );
   }
 
+  /// Returns the short weekday name for [dayIndex] relative to [cutoff].
+  /// dayIndex 0 = cutoff (6 days ago), dayIndex 6 = today.
+  String _dayLabel(int dayIndex, DateTime cutoff) {
+    final date = cutoff.add(Duration(days: dayIndex));
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return days[date.weekday - 1]; // DateTime.weekday: 1=Mon, 7=Sun
+  }
+
+  bool _isToday(int dayIndex) => dayIndex == 6;
+
   Widget _buildChartCard({
     required String title,
     required String subtitle,
     required Color color,
     required IconData icon,
     required List<FlSpot> spots,
+    required DateTime cutoff,
+    required bool hasAnyData,
+    required List dataPoints,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Count how many days have gaps in this 7-day window
+    final missingCount = dataPoints.where((d) => !(d.hasData as bool)).length;
 
     return Container(
       decoration: BoxDecoration(
         color: isDark
-            ? const Color(0xFF1E1E1E).withValues(alpha: 0.8)
+            ? const Color(0xFF0F172A).withValues(alpha: 0.8)
             : Colors.white.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(24),
         border:
@@ -201,11 +232,40 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                     ),
                   ],
                 ),
-                const SizedBox(height: 30),
+                // ── No-data legend chip ──
+                if (missingCount > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10.0),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 22,
+                          height: 2,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(1),
+                            color: Colors.grey.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '$missingCount day${missingCount == 1 ? '' : 's'} with no sensor data (shown as gaps)',
+                          style: GoogleFonts.outfit(
+                            fontSize: 11,
+                            color: isDark ? Colors.white38 : Colors.grey.shade500,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 20),
                 SizedBox(
-                  height: 200,
+                  height: 220,
                   child: LineChart(
                     LineChartData(
+                      // ── Always span all 7 days so every label renders ──
+                      minX: 0,
+                      maxX: 6,
                       gridData: FlGridData(
                         show: true,
                         drawVerticalLine: false,
@@ -245,18 +305,62 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                           sideTitles: SideTitles(
                             showTitles: true,
                             interval: 1,
+                            reservedSize: 52,
                             getTitlesWidget: (value, meta) {
                               if (value != value.toInt()) {
                                 return const SizedBox.shrink();
                               }
+                              final idx = value.toInt();
+                              if (idx < 0 || idx > 6) return const SizedBox.shrink();
+                              final isToday = _isToday(idx);
+                              final label = isToday ? 'Today' : _dayLabel(idx, cutoff);
+                              final dayHasData = dataPoints[idx].hasData as bool;
                               return Padding(
-                                padding: const EdgeInsets.only(top: 8.0),
-                                child: Text('D${value.toInt() + 1}',
-                                    style: GoogleFonts.outfit(
-                                        fontSize: 12,
-                                        color: const Color(0xFF4A6164)
-                                            .withValues(alpha: 0.7),
-                                        fontWeight: FontWeight.w600)),
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      label,
+                                      style: GoogleFonts.outfit(
+                                        fontSize: isToday ? 11 : 12,
+                                        height: 1.2,
+                                        color: isToday
+                                            ? color
+                                            : (isDark
+                                                ? Colors.white54
+                                                : const Color(0xFF4A6164)
+                                                    .withValues(alpha: 0.7)),
+                                        fontWeight: isToday
+                                            ? FontWeight.w900
+                                            : FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    // ── No-data indicator dot under the label ──
+                                    if (!dayHasData)
+                                      Text(
+                                        '—',
+                                        style: GoogleFonts.outfit(
+                                          fontSize: 10,
+                                          height: 1.0,
+                                          color: isDark
+                                              ? Colors.white24
+                                              : Colors.grey.shade400,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      )
+                                    else
+                                      Container(
+                                        width: 5,
+                                        height: 5,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: color.withValues(alpha: 0.7),
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               );
                             },
                           ),
@@ -320,10 +424,16 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
       child: Container(
         width: size,
         height: size,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-          child: Container(color: Colors.transparent),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [
+              color.withValues(alpha: 0.8),
+              color.withValues(alpha: 0.3),
+              color.withValues(alpha: 0.0),
+            ],
+            stops: const [0.0, 0.5, 1.0],
+          ),
         ),
       ),
     );

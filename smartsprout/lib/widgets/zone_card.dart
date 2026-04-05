@@ -53,6 +53,7 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
     final statusColor = getMoodColor();
     final plantImageAsync = ref.watch(plantImageProvider(widget.zoneId));
     final plantImageName = plantImageAsync.value;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return MouseRegion(
       onEnter:
@@ -83,7 +84,9 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
           duration: const Duration(milliseconds: 100),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.9),
+              color: isDark
+                  ? const Color(0xFF1A2C2E)
+                  : Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.9),
               borderRadius: BorderRadius.circular(28),
               boxShadow: isLiteMode
                   ? null
@@ -109,7 +112,7 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                         ),
                     ],
               border: Border.all(
-                color: Theme.of(context).brightness == Brightness.dark
+                color: isDark
                     ? Colors.white10
                     : Colors.white.withValues(alpha: 0.5),
                 width: 1.5,
@@ -207,7 +210,9 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.9),
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.12)
+                              : Colors.white.withValues(alpha: 0.9),
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: [
                             BoxShadow(
@@ -226,10 +231,12 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                               (widget.isFault || widget.rawMoisture < 0)
                                   ? '--%'
                                   : '${widget.rawMoisture}%',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 13,
-                                color: Color(0xFF0277BD),
+                                color: isDark
+                                    ? Colors.white
+                                    : const Color(0xFF0277BD),
                               ),
                             ),
                           ],
@@ -241,7 +248,9 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.9),
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.12)
+                              : Colors.white.withValues(alpha: 0.9),
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: [
                             BoxShadow(
@@ -258,10 +267,12 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                             const SizedBox(width: 4),
                             Text(
                               '${widget.targetMoisture.round()}%',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 13,
-                                color: Color(0xFF1B8E4F),
+                                color: isDark
+                                    ? Colors.white
+                                    : const Color(0xFF1B8E4F),
                               ),
                             ),
                           ],

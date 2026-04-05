@@ -551,24 +551,59 @@ class DataService {
       }
 
       List<DailyAnalytics> results = [];
+
+      // Safe helper: Firestore returns int for whole numbers (e.g. -1, 0),
+      // never cast directly as double — always go through num first.
+      double safeDouble(dynamic v) => (v as num?)?.toDouble() ?? 0.0;
+
       for (int i = 0; i < 7; i++) {
         final docs = grouped[i]!;
         if (docs.isEmpty) {
-          results.add(DailyAnalytics(dayIndex: i, avgMoisture: 0, avgTemp: 0));
+          results.add(DailyAnalytics(
+              dayIndex: i,
+              avgMoisture: 0,
+              avgTemp: 0,
+              hasData: false)); // No telemetry docs for this day
         } else {
-          double totalMoisture = 0;
-          double totalTemp = 0;
+          double totalMoisture = 0.0;
+          double totalTemp = 0.0;
+          int validDocs = 0;
           for (var d in docs) {
-            final soil = List<num>.from(d['soil_moisture'] ?? [0, 0, 0]);
-            final avgSoil =
-                soil.isEmpty ? 0 : soil.reduce((a, b) => a + b) / soil.length;
-            totalMoisture += avgSoil;
-            totalTemp += (d['temperature'] ?? 0.0);
+            try {
+              // ── soil_moisture is written by the Pi as Map<String, dynamic>
+              // e.g. {"bed1": 45.2, "bed2": 51, "bed3": 38.6}
+              // Firestore returns int for whole numbers, so we always cast
+              // through num? → toDouble() to avoid the combine-type mismatch.
+              final rawSoil = d['soil_moisture'];
+              List<double> soil;
+              if (rawSoil is Map) {
+                soil = rawSoil.values
+                    .map<double>((v) => safeDouble(v))
+                    .toList();
+              } else if (rawSoil is List) {
+                soil = rawSoil.map<double>((v) => safeDouble(v)).toList();
+              } else {
+                soil = [0.0, 0.0, 0.0];
+              }
+
+              final avgSoil = soil.isEmpty
+                  ? 0.0
+                  : soil.reduce((a, b) => a + b) / soil.length;
+
+              totalMoisture += avgSoil;
+              totalTemp += safeDouble(d['temperature']);
+              validDocs++;
+            } on TypeError catch (te) {
+              debugPrint(
+                  '[ANALYTICS_PARSE] TypeError on doc data — raw payload: $d');
+              debugPrint('[ANALYTICS_PARSE] TypeError detail: $te');
+            }
           }
           results.add(DailyAnalytics(
               dayIndex: i,
-              avgMoisture: totalMoisture / docs.length,
-              avgTemp: totalTemp / docs.length));
+              avgMoisture: validDocs == 0 ? 0.0 : totalMoisture / validDocs,
+              avgTemp: validDocs == 0 ? 0.0 : totalTemp / validDocs,
+              hasData: validDocs > 0)); // false if all docs threw parse errors
         }
       }
       return results;

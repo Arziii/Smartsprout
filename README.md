@@ -10,6 +10,7 @@ Smart Sprout employs a **Zero-Trust, Pi-Bouncer Authentication Architecture**: a
 - [System Architecture](#-system-architecture)
 - [Authentication Flow — Pi-Bouncer](#-authentication-flow--pi-bouncer)
 - [Core Features](#-core-features)
+- [Analytics Engine](#-analytics-engine)
 - [Security Model](#-security-model)
 - [Hardware Pin Mapping](#-hardware-pin-mapping)
 - [Quick Start Guide](#-quick-start-guide)
@@ -108,6 +109,86 @@ Flutter App              Firestore              Raspberry Pi 4
 - **Dead-Man's Switch**: During manual watering, a 10s heartbeat is required from the mobile app. If missed for >5s, the Pi kills all pumps immediately.
 - **Pump Safety Watchdog**: GPIO-level daemon forces pump OFF if it runs >120 seconds.
 - **Physical Factory Reset**: Hardware button (BCM 24) with LED feedback (BCM 18).
+
+---
+
+## 📊 Analytics Engine
+
+The Analytics Screen provides a **rolling 7-day trend** of soil moisture and temperature, computed directly from Firestore telemetry history documents.
+
+### Rolling Window Definition
+
+| Variable | Value | Description |
+|---|---|---|
+| `today` | `DateTime.now()` | Current device time |
+| `cutoff` | `today − 6 days` | Oldest day in the window |
+| `dayIndex 0` | `cutoff` | 6 days ago |
+| `dayIndex 6` | `today` | Always "Today" |
+
+The window **slides forward every day automatically** — no manual refresh needed. On Monday the window is Mon→Sun (previous), on Tuesday it shifts to Tue→Mon, etc.
+
+### Formula: Average Soil Moisture per Day
+
+```
+For each telemetry document on day N:
+
+  soil_values = [bed1, bed2, bed3]   (from Firestore Map)
+  avgSoil_doc = Σ(soil_values) / count(soil_values)
+
+For the full day:
+
+  avgMoisture[N] = Σ(avgSoil_doc for all docs in day N)
+                  ─────────────────────────────────────
+                         count(valid docs in day N)
+```
+
+### Formula: Average Temperature per Day
+
+```
+avgTemp[N] = Σ(temperature for all valid docs in day N)
+             ────────────────────────────────────────────
+                     count(valid docs in day N)
+```
+
+### Data Processing Pipeline
+
+| Step | Location | Action |
+|---|---|---|
+| 1. Query | `DataService.fetchWeeklyAnalytics()` | Fetch telemetry docs where `timestamp ≥ cutoffSeconds`, limited to 500 docs |
+| 2. Group | `data_service.dart` | Assign each doc to `dayIndex` via `date.difference(cutoff).inDays` |
+| 3. Normalize types | `safeDouble()` helper | Cast Firestore `int`/`double`/`null` → `double` safely using `(v as num?)?.toDouble() ?? 0.0` |
+| 4. Aggregate | Per-day loop | Sum moisture & temperature across all documents, divide by `validDocs` |
+| 5. Flag gaps | `hasData` field | Set `hasData: false` if day has zero docs OR all docs threw parse errors |
+| 6. Render | `analytics_screen.dart` | `hasData == true` → `FlSpot(x, y)`; `hasData == false` → `FlSpot.nullSpot` (visible gap) |
+
+### Sentinel Value: `-1.0`
+
+When the Pi cannot read a sensor (disconnected, I2C fault, BME280 failure), it writes **`-1.0`** instead of a real value. This is the Pi's fault indicator:
+
+| Field | Normal Range | Fault Value | Meaning |
+|---|---|---|---|
+| `temperature` | 15.0 – 45.0 °C | `-1.0` | BME280 read failure |
+| `soil_moisture.bedN` | 0.0 – 100.0 % | `-1.0` | ADS1115 / sensor disconnect |
+| `humidity` | 10.0 – 100.0 % | `-1.0` | BME280 read failure |
+
+> **Note:** `-1.0` is included in the daily average calculation. If the Pi was running but all sensors were disconnected, the chart correctly shows `-1` for that day — which is visually distinguishable from `0` (no data/gap).
+
+### Chart Behavior Reference
+
+| Condition | `hasData` | Chart Renders | Bottom Label |
+|---|---|---|---|
+| Pi published docs, sensors OK | `true` | Line segment with dot | Day name + ● colored dot |
+| Pi published docs, sensors faulty | `true` | Line at `-1` | Day name + ● colored dot |
+| Pi was off / no docs in Firestore | `false` | Gap (no line) | Day name + `—` grey dash |
+| All docs on that day failed parsing | `false` | Gap (no line) | Day name + `—` grey dash |
+
+### Firestore Quota Impact
+
+| Operation | Frequency | Cost |
+|---|---|---|
+| Analytics fetch | On screen open + 1-hour cache | 1 read per query (max 500 docs counted) |
+| Cache hit (navigating back) | Any time within 1 hour | **0 reads** |
+| `limit(500)` cap | Always enforced | Prevents unbounded reads on large datasets |
 
 ---
 

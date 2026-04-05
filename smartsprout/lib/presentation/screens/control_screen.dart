@@ -286,8 +286,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: isDark
-                      ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
-                      : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                      ? [const Color(0xFF0F172A), const Color(0xFF064E3B)]
+                      : const [Color(0xFFF0FDF4), Color(0xFFCCFBF1)],
                 ),
               ),
             ),
@@ -1390,7 +1390,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).brightness == Brightness.dark
-            ? const Color(0xFF1E1E1E).withValues(alpha: 0.7)
+            ? const Color(0xFF0F172A).withValues(alpha: 0.7)
             : Colors.white.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
@@ -1434,10 +1434,16 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       child: Container(
         width: size,
         height: size,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-          child: Container(color: Colors.transparent),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [
+              color.withValues(alpha: 0.8),
+              color.withValues(alpha: 0.3),
+              color.withValues(alpha: 0.0),
+            ],
+            stops: const [0.0, 0.5, 1.0],
+          ),
         ),
       ),
     );

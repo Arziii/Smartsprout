@@ -78,7 +78,7 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                  colors: [Color(0xFFF0FDF4), Color(0xFFCCFBF1)],
                 ),
               ),
             ),

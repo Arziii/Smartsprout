@@ -100,8 +100,8 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: Theme.of(context).brightness == Brightness.dark
-                        ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
-                        : const [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                        ? [const Color(0xFF0F172A), const Color(0xFF064E3B)]
+                        : const [Color(0xFFF0FDF4), Color(0xFFCCFBF1)],
                   ),
                 ),
               ),
@@ -175,7 +175,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                               child: Container(
                                 color: Theme.of(context).brightness == Brightness.dark
-                                    ? const Color(0xFF1E1E1E).withValues(alpha: 0.6)
+                                    ? const Color(0xFF0F172A).withValues(alpha: 0.6)
                                     : Colors.white.withValues(alpha: 0.6),
                                 alignment: Alignment.center,
                                 child: Column(
@@ -228,7 +228,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E).withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.6),
+        color: isDark ? const Color(0xFF0F172A).withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(16),
         border:
             Border.all(color: isDark ? Colors.white12 : Colors.white.withValues(alpha: 0.8), width: 1.5),
@@ -307,7 +307,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E).withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.7),
+        color: isDark ? const Color(0xFF0F172A).withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: isDark ? Colors.white12 : Colors.white, width: 2),
         boxShadow: [
@@ -337,33 +337,6 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                       : const Color(0xFF0F2027),
                 ),
               ),
-              if (offsetValue != null && offsetValue != 0.0)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF29B6F6).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: const Color(0xFF29B6F6).withValues(alpha: 0.3)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.tune_rounded,
-                          size: 12, color: Color(0xFF0277BD)),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${offsetValue >= 0 ? "+" : ""}${offsetValue.toStringAsFixed(1)}%',
-                        style: GoogleFonts.outfit(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                          color: const Color(0xFF0277BD),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
             ],
           ),
           const SizedBox(height: 12),
@@ -463,7 +436,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF121212).withValues(alpha: 0.8) : const Color(0xFFF0F9F4),
+          color: isDark ? const Color(0xFF064E3B).withValues(alpha: 0.8) : const Color(0xFFF0F9F4),
           borderRadius: BorderRadius.circular(16),
           border:
               Border.all(color: const Color(0xFF2BCC71).withValues(alpha: 0.2)),
@@ -752,7 +725,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
         filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
         child: AlertDialog(
           backgroundColor: Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF1E1E1E).withValues(alpha: 0.9)
+              ? const Color(0xFF0F172A).withValues(alpha: 0.9)
               : Colors.white.withValues(alpha: 0.9),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -904,7 +877,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
         filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
         child: AlertDialog(
           backgroundColor: Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF1E1E1E).withValues(alpha: 0.9)
+              ? const Color(0xFF0F172A).withValues(alpha: 0.9)
               : Colors.white.withValues(alpha: 0.9),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
