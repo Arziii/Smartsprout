@@ -237,7 +237,7 @@ Document Structure:
 
 Local Configuration File: device_config.json
   • device_id: string (e.g., "SPROUT_A1B2")
-  • password: string (e.g., "1234")
+  • password: string (e.g., "pbkdf2:5f2a...:9b4c...")
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -342,7 +342,8 @@ PHASE 4.1: UI/UX IMPLEMENTATION [COMPLETED]
 
 PHASE 4.2: PI-BOUNCER AUTHENTICATION ARCHITECTURE [COMPLETED]
 ☑ Zero-Trust Gatekeeper: Authentication validation moved from client-side Firestore rules to the Raspberry Pi edge server.
-☑ Cryptographic Security: Automatic SHA-256 PIN hashing ensures no plaintext credentials reside in the cloud or local config.
+☑ Cryptographic Security: Migrated to Enterprise PBKDF2-HMAC-SHA256 (600,000 iterations) with per-device random salting. Hashes are securely stored.
+☑ Strict Alias Login: Enforced alias-based login where Raw Hardware MAC IDs are rejected as credentials when a custom device alias is set.
 ☑ Anti-Brute Force (Rate Limiting): Pi-side thread-safe tracker enforces a 15-minute global lockout after 5 consecutive failed attempts.
 ☑ Custom Token Minting: Raspberry Pi utilizes Firebase Admin SDK to forge short-lived secure JWT session tokens (`uid=deviceId`).
 ☑ Hardware Offline Fallback: Flutter app features a 15-second timeout listener, visually indicating "Hardware Offline" if the Pi is unplugged.
@@ -738,23 +739,26 @@ Scaling from 1 to 100 units is achieved through Cloud Provisioning. Each new har
 
 10.4 PI-BOUNCER AUTHENTICATION SECURITY MODEL
 
-The Pi-Bouncer architecture represents a paradigm shift from standard "Client-to-Database" logins to a "Zero-Trust Hardware Gatekeeper" model. The Raspberry Pi physically located on-site is the sole authority on valid PINs, solving critical vulnerabilities of client-side validation logic.
+The Pi-Bouncer architecture represents a paradigm shift from standard "Client-to-Database" logins to a "Zero-Trust Hardware Gatekeeper" model. The Raspberry Pi physically located on-site is the sole authority on valid passwords, solving critical vulnerabilities of client-side validation logic.
 
 ┌───────────────────────────┬────────────────────────────────────────────────────────┐
 │ Threat Vector             │ Pi-Bouncer Mitigation Strategy                         │
 ├───────────────────────────┼────────────────────────────────────────────────────────┤
-│ Brute-Force PIN Attacks   │ In-memory Rate Limiter on Pi (15-min lockout after 5   │
-│                           │ failed attempts). Immune to app reverse engineering.   │
+│ Offline Hash Cracking     │ Upgraded from SHA-256 to PBKDF2-HMAC-SHA256 with 600k  │
+│                           │ iterations and random per-device salting to slow down  │
+│                           │ dictionary and rainbow table offline attacks.          │
 ├───────────────────────────┼────────────────────────────────────────────────────────┤
-│ Exposed Database Fields   │ PINs are NOT stored natively in Firestore. Validation  │
-│                           │ is performed exclusively against the Pi's local        │
-│                           │ hash (`device_config.json`).                           │
+│ Timing Attacks            │ Uses constant-time `hmac.compare_digest` to validate   │
+│                           │ hashes, hiding processing time cues from attackers.    │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ Brute-Force Password      │ In-memory Rate Limiter on Pi (15-min lockout after 5   │
+│ Attacks                   │ failed attempts). Immune to app reverse engineering.   │
+├───────────────────────────┼────────────────────────────────────────────────────────┤
+│ Hardware Spoofing &       │ Strict Alias enforcement permanently blocks access via │
+│ Credential Leakage        │ Factory MAC IDs once a user defines a secure Alias.    │
 ├───────────────────────────┼────────────────────────────────────────────────────────┤
 │ Session Hijacking         │ Pi issues single-use, short-lived JWT Custom Tokens    │
 │                           │ only upon successful physical logic verification.      │
-├───────────────────────────┼────────────────────────────────────────────────────────┤
-│ Hardware Spoofing         │ Requires the physical Raspberry Pi to be online and    │
-│                           │ processing requests. Bouncer fails-safe if offline.    │
 └───────────────────────────┴────────────────────────────────────────────────────────┘
 
 

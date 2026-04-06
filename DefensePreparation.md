@@ -109,6 +109,7 @@ erDiagram
         timestamp manual_heartbeat "Timestamp"
         map target_moisture "e.g., bed1: 65.0"
         map max_pump_runtime "e.g., bed1: 30"
+        string device_name "Alias (e.g. Reyche01)"
     }
     
     TELEMETRY_HISTORY {
@@ -437,9 +438,9 @@ sequenceDiagram
     participant Pi as auth_bouncer.py
     participant Auth as Firebase Auth
 
-    User->>App: Enter Device ID + PIN
+    User->>App: Enter Device ID/Alias + Password
     App->>App: Generate UUID requestId
-    App->>DB: Write login_requests/{requestId}\n{deviceId, pin, status:"pending"}
+    App->>DB: Write login_requests/{requestId}\n{deviceId, password, status:"pending"}
     App->>App: Start 15-second timeout timer
     DB-->>Pi: on_snapshot ADDED event
     Pi->>Pi: Check rate limiter\n(in-memory dict)
@@ -448,13 +449,13 @@ sequenceDiagram
         DB-->>App: Snapshot fires
         App->>App: Show 15-min countdown UI
         App->>DB: Delete request doc
-    else PIN Incorrect
+    else Password Incorrect
         Pi->>Pi: Increment failure counter
         Pi->>DB: Update status:"error"
         DB-->>App: Snapshot fires
         App->>App: Show error banner
         App->>DB: Delete request doc
-    else PIN Correct
+    else Password Correct
         Pi->>Auth: create_custom_token(deviceId)
         Auth-->>Pi: JWT token
         Pi->>Pi: Reset failure counter
@@ -486,9 +487,8 @@ stateDiagram-v2
 | AuthState | isLoading | isRateLimited | error | UI Component |
 |---|---|---|---|---|
 | Idle | false | false | null | Login form |
-| Contacting Pi | true | false | null | Spinner + "Contacting hardware..." |
 | Hardware Offline | false | false | "Hardware Offline..." | Orange Wi-Fi Off banner |
-| Incorrect PIN | false | false | "Incorrect PIN." | Red error banner |
+| Incorrect Password | false | false | "Incorrect Password." | Red error banner |
 | Rate Limited | false | true | Lockout message | Amber countdown (MM:SS) |
 | Approved | false | false | null | Green snackbar → Dashboard |
 
@@ -503,13 +503,16 @@ stateDiagram-v2
 *Answer:* `-1.0` is a **sentinel fault value** written by the Pi when a sensor read fails (e.g., BME280 I2C timeout, capacitive sensor unplugged). It intentionally distinguishes a *hardware fault* (`-1`) from *no data at all* (gap). A `0` in the chart would falsely imply dry soil or freezing temperature, while `-1` clearly indicates a Pi-was-running-but-sensor-was-offline state.
 
 **Q: What was the original authentication vulnerability and how did you fix it?**
-*Answer:* The original architecture compared the PIN **client-side** — the Flutter app read `hashed_pin` from Firestore and compared locally. An attacker with a `deviceId` could attempt all 10,000 PINs with no server-side throttle. We solved this with the **Pi-Bouncer architecture**: `auth_bouncer.py` on the Pi validates the PIN exclusively on trusted hardware, enforces a 15-minute lockout after 5 failures, and mints a Firebase Custom Token via the Admin SDK. The Flutter app never touches the stored hash.
+*Answer:* The original architecture compared a 4-digit PIN **client-side** — the Flutter app read `hashed_pin` from Firestore and compared locally. An attacker with a leaked `deviceId` could trivially intercept this and attempt all 10,000 PINs with no server-side throttle. We solved this with the **Pi-Bouncer architecture v2**: 
+1. We upgraded from 4-digit PINs to Enterprise Passwords (8+ chars, upper/lower, numbers, symbols) stored on the Pi using **PBKDF2-HMAC-SHA256 (600k iterations)** with random per-device salting to defeat offline dictionary attacks.
+2. We implemented **Strict Alias Login**, meaning if the user sets an alias (e.g., "Reyche01"), the Pi rejects attempts using the raw Hardware MAC ID, mitigating factory hardware ID leaks.
+3. `auth_bouncer.py` validates passwords exclusively on trusted hardware using constant-time verification (`hmac.compare_digest`) to prevent timing attacks, enforces a 15-minute lockout after 5 failures, and mints a Firebase Custom Token. The Flutter app never touches the stored hash.
 
 **Q: How does the Pi mint a Custom Token if you're on the Spark (Free) plan?**
 *Answer:* Custom Token minting is a feature of the **Firebase Admin SDK**, not Cloud Functions. The Admin SDK runs locally on the Raspberry Pi for free — it only requires a Service Account key (`firebase-adminsdk.json`). No paid plan is needed.
 
 **Q: What prevents an attacker from spamming the `login_requests` collection?**
-*Answer:* Three layers: (1) **Firestore Security Rules** validate the payload on create — PIN must be exactly 4 characters, only allowed fields accepted. (2) **Rate limiting** on the Pi — 5 failed attempts locks the device for 15 minutes. (3) **UUID entropy** — the `requestId` is UUID v4 with 122 bits of entropy. An attacker cannot enumerate documents to find a token.
+*Answer:* Three layers: (1) **Firestore Security Rules** validate the payload on create — enforcing strict length validation on the password (max 128 chars to prevent DB bloat), and rejecting malformed payloads. (2) **Rate limiting** on the Pi — 5 failed attempts locks the device for 15 minutes. (3) **UUID entropy** — the `requestId` is UUID v4 with 122 bits of entropy. An attacker cannot enumerate documents to find a token.
 
 **Q1: Why rely on Cloud Firestore instead of local MQTT/Bluetooth?**
 *Answer:* **Zero-Trust Architecture & Scalability.** Local MQTT servers introduce local network attack vectors and require users to manage complex router setups. Utilizing Firestore guarantees that data is encrypted in transit and the system can be scaled and controlled securely from anywhere in the world without exposing network vulnerabilities.

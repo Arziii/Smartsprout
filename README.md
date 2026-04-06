@@ -49,36 +49,40 @@ Smart Sprout employs a **Zero-Trust, Pi-Bouncer Authentication Architecture**: a
 
 ## 🔐 Authentication Flow — Pi-Bouncer
 
-The Pi-Bouncer is the cornerstone of Smart Sprout's security model. Instead of comparing PINs client-side, the Raspberry Pi acts as a **hardware-rooted authentication server**.
+The Pi-Bouncer is the cornerstone of Smart Sprout's security model. Instead of comparing passwords client-side, the Raspberry Pi acts as a **hardware-rooted authentication server** with enterprise-grade PBKDF2-HMAC-SHA256 hashing.
 
 ### Flow Diagram
 
-```
+```text
 Flutter App              Firestore              Raspberry Pi 4
 ──────────               ─────────              ──────────────
 
 ① Generate UUID
   Write login_requests/
   {requestId}:           ──── CREATE ──────►
-  { deviceId, pin,
+  { deviceId:"MyAlias",
+    pin:"SecurePass1!",
     status:"pending" }
                                                ② on_snapshot fires
                                                   Pi reads request
-                                               ③ Rate-limit check
+                                               ③ Strict Alias Resolving
+                                                  Does deviceId match Alias?
+                                                  ✗ Fail → "not_found"
+                                               ④ Rate-limit check
                                                   (In-memory store)
-                                               ④ SHA-256(pin) verify
-                                                  vs stored hash
+                                               ⑤ PBKDF2 vs stored hash
+                                                  (Salting + 600k Iterations)
                                                   ✗ Fail →
                          ◄─── status:"error" ─────────────────
                                                   5th fail →
                          ◄─ status:"rate_limited" ────────────
                          locked_until:<epoch>
                                                   ✓ Pass →
-                                               ⑤ mint Custom Token
-                                                  uid = deviceId
+                                               ⑥ mint Custom Token
+                                                  uid = HW_MAC_ID (Immutable)
                          ◄─ status:"approved" ────────────────
                             token:"<JWT>"
-⑥ signInWithCustomToken()
+⑦ signInWithCustomToken()
    Delete request doc
    Navigate → Dashboard
 ```
@@ -88,18 +92,21 @@ Flutter App              Firestore              Raspberry Pi 4
 | App State | Trigger | UI |
 |---|---|---|
 | `isLoading: true` | Login request written to Firestore | Spinner + "Contacting hardware..." |
-| `status: approved` | Pi validated PIN, token returned | Green snackbar → Dashboard |
-| `status: error` | Incorrect PIN | Red error banner |
+| `status: approved` | Pi validated password, Token returned | Green snackbar → Dashboard |
+| `status: error` | Incorrect password | Red error banner |
 | `status: rate_limited` | 5 failed attempts | Amber countdown banner (15 min) |
+| `status: not_found` | Alias/ID mismatch on hardware | "Device not found" banner |
 | Timeout (15s) | Pi offline / no response | "Hardware Offline" banner |
-| Quick Switch (Option B) | Firebase session still valid | Instant switch, no PIN needed |
+| Quick Switch (Option B) | Firebase session still valid | Instant switch, no password needed |
 
 ---
 
 ## ✨ Core Features
 
-- **Pi-Bouncer Zero-Trust Auth**: PIN validation runs exclusively on the Raspberry Pi via Firebase Admin SDK. The Flutter app never sees the stored hash. Rate limiting enforces a 15-minute lockout after 5 failed attempts.
-- **Firebase Custom Token Auth**: On success, the Pi mints a Custom Token (`uid = deviceId`). Firestore Security Rules use `request.auth.uid == deviceId` to restrict all device data to the authenticated owner.
+- **Pi-Bouncer Zero-Trust Auth**: Password validation runs exclusively on the Raspberry Pi via Firebase Admin SDK. The Flutter app never sees the stored hash. Rate limiting enforces a 15-minute lockout after 5 failed attempts (defending against brute force).
+- **Strict Alias Login**: If a custom device name (e.g., "Reyche's Garden") is set, the hardware explicitly disables the raw Hardware MAC ID for logins. This prevents unauthorized access even if the factory MAC is known, requiring an attacker to know both the private alias and the password.
+- **Enterprise Password Standard**: Enforces complex passwords (uppercase, lowercase, numbers, symbols) rather than legacy 4-digit PINs. Verification utilizes constant-time `hmac`-based comparisons to mitigate timing attacks.
+- **Firebase Custom Token Auth**: On success, the Pi mints a Custom Token (`uid = HW_MAC_ID`). Firestore Security Rules use `request.auth.uid == deviceId` to restrict all device data to the authenticated owner.
 - **Session-Reuse Quick Switch**: Saved accounts use Option B logic — if a Firebase Custom Token session is still valid, the app switches instantly with zero network round-trip. Expired sessions prompt re-authentication.
 - **Dual Operation Modes**:
   - **Secure IoT**: Monitor and control globally via iOS, Android, and Windows Desktop apps.
@@ -212,14 +219,16 @@ When the Pi cannot read a sensor (disconnected, I2C fault, BME280 failure), it w
 | State storage | In-memory (resets on Pi reboot) |
 | Lockout signal | `status: "rate_limited"` + `locked_until` epoch |
 
-### PIN Security
+### Password Security
 
 | Property | Detail |
 |---|---|
-| Storage | SHA-256 hash in `device_config.json` (plaintext auto-migrated on first boot) |
-| Comparison | Pi-side only — Flutter never reads stored hash |
-| Transmission | Raw PIN sent to `login_requests`, never to `devices/` |
-| Post-auth storage | PIN **not** stored locally on mobile (removed from `SavedDevice`) |
+| **Hashing Algorithm** | PBKDF2-HMAC-SHA256 (600,000 iterations) with Per-Device Random Salting |
+| **Verification** | Constant-time `hmac.compare_digest` to prevent Timing Attacks |
+| **Storage Format** | `pbkdf2:<salt>:<hash>` in `device_config.json` (auto-migrated from legacy formats) |
+| **Comparison** | Pi-side only — Flutter never evaluates hashing or logic locally. |
+| **Transmission** | Raw password transmitted encrypted over TLS to `login_requests`, never directly written to `devices/` |
+| **Post-auth Storage** | Password **not** stored locally on mobile (clean memory state) |
 
 ---
 
@@ -262,9 +271,9 @@ cp .env.example .env
 # Place your firebase-adminsdk.json in smartsproutrasberry/
 
 # 4. IMPORTANT: On first boot, auth_bouncer.py auto-migrates the plaintext
-# 'password' field in device_config.json to a SHA-256 hash.
+# 'password' or legacy 'hashed_pin' field in device_config.json to PBKDF2.
 # No manual action needed. Watch for this log line:
-#   [AUTH_BOUNCER] ✅ PIN migrated to SHA-256 hash. Plaintext removed.
+#   [AUTH_BOUNCER] ✅ PIN silently upgraded from SHA-256 to PBKDF2-HMAC-SHA256.
 
 # 5. Install the Reliability Watchdog (Systemd)
 sudo cp smartsprout.service /etc/systemd/system/
