@@ -15,6 +15,7 @@ class ZoneCard extends ConsumerStatefulWidget {
   final int temp;
   final Animation<double> pulseAnim;
   final bool isFault;
+  final VoidCallback? onCalibrate;
 
   const ZoneCard({
     super.key,
@@ -26,6 +27,7 @@ class ZoneCard extends ConsumerStatefulWidget {
     required this.temp,
     required this.pulseAnim,
     this.isFault = false,
+    this.onCalibrate,
   });
 
   @override
@@ -280,58 +282,125 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                   ),
                 ),
 
-                // ── BOTTOM FAULT BANNER ──
-                if (widget.isFault || widget.rawMoisture < 0)
-                  Positioned(
-                    bottom: 12,
-                    left: 12,
-                    right: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF3E0)
-                            .withValues(alpha: 0.95), // Light warm orange
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                            color: Colors.orange.shade200, width: 1.5),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.warning_amber_rounded,
-                              color: Colors.orange, size: 28),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'FAULT',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 16,
-                                    color: Colors.orange,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                                Text(
-                                  'Sensor disconnected',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 11,
-                                    color: Colors.orange,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
+                // ── BOTTOM: Moisture value OR Fault banner ──
+                Positioned(
+                  bottom: 12,
+                  left: 12,
+                  right: 12,
+                  child: widget.isFault || widget.rawMoisture < 0
+                      // ── FAULT state ──
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3E0)
+                                .withValues(alpha: 0.95),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                                color: Colors.orange.shade200, width: 1.5),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.warning_amber_rounded,
+                                  color: Colors.orange, size: 28),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'FAULT',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 16,
+                                        color: Colors.orange,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Sensor disconnected',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 11,
+                                        color: Colors.orange,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      // ── CONNECTED state: live moisture + calibrate button ──
+                      : Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white.withValues(alpha: 0.1)
+                                      : Colors.white.withValues(alpha: 0.92),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                      color: const Color(0xFF2BCC71)
+                                          .withValues(alpha: 0.4),
+                                      width: 1.2),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.water_drop_rounded,
+                                        color: Color(0xFF2BCC71), size: 16),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        '${widget.rawMoisture}% moisture',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 12,
+                                          color: Color(0xFF1B8E4F),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            if (widget.onCalibrate != null) ...[  
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: widget.onCalibrate,
+                                behavior: HitTestBehavior.opaque,
+                                child: Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.white.withValues(alpha: 0.1)
+                                        : Colors.white.withValues(alpha: 0.92),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                        color: const Color(0xFF29B6F6)
+                                            .withValues(alpha: 0.4),
+                                        width: 1.2),
+                                  ),
+                                  child: const Icon(Icons.tune_rounded,
+                                      size: 18,
+                                      color: Color(0xFF0277BD)),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                ),
               ],
             ),
           ),

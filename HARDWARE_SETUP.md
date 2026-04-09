@@ -64,8 +64,10 @@ All software implementation must reference the **BCM (Broadcom)** numbering used
 | Hardware Component | Device Pin / Color | Raspberry Pi Pin (BCM / Physical) | Power Source & Wiring Logic |
 | :--- | :--- | :--- | :--- |
 | **Main Power** | Homesaya USB Jack | **Pi 4 USB-C Port** | From 8A XL4016 Buck Output |
-| **I2C Bus (Sensors)** | SDA | **BCM 2** (Pin 3) | 3.3V from Pi (Pin 1) |
+| **I2C Bus (BME & ADS)** | SDA | **BCM 2** (Pin 3) | 3.3V from Pi (Pin 1) |
 | | SCL | **BCM 3** (Pin 5) | Shared GND with Pi |
+| **ADS1115 ADC** | VDD / GND | **3.3V / GND** | Powers the ADC |
+| | ADDR | **GND** | Sets I2C to 0x48 |
 | **Soil Moisture (Z1)** | Sensor 1 Signal | **ADS1115 A0** | Capacitive v1.2 (Analog) |
 | **Soil Moisture (Z2)** | Sensor 2 Signal | **ADS1115 A1** | Capacitive v1.2 (Analog) |
 | **Soil Moisture (Z3)** | Sensor 3 Signal | **ADS1115 A2** | Capacitive v1.2 (Analog) |

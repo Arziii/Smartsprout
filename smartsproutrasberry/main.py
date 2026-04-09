@@ -12,6 +12,7 @@ import threading
 import config
 import firebase_manager
 import auth_bouncer
+import local_db
 
 from sensors import SensorManager
 
@@ -376,9 +377,10 @@ def collect_telemetry() -> dict:
 # These are intentionally conservative to suppress sensor jitter/noise.
 # A 3% moisture threshold caused 28,800+ writes/day due to ADC noise.
 # New thresholds: moisture=8%, temperature=3°C — only genuine changes push.
-_DIFF_MOISTURE_THRESHOLD = 8.0   # % points — filters ADC jitter
-_DIFF_TEMP_THRESHOLD     = 3.0   # °C — filters ambient fluctuation
-_MIN_PUSH_INTERVAL       = 60    # seconds — absolute minimum between any two cloud writes
+_DIFF_MOISTURE_THRESHOLD       = 8.0   # % points — filters ADC jitter
+_DIFF_MOISTURE_URGENT_THRESHOLD = 25.0  # % points — bypasses 60s cooldown entirely
+_DIFF_TEMP_THRESHOLD           = 3.0   # °C — filters ambient fluctuation
+_MIN_PUSH_INTERVAL             = 60    # seconds — minimum between small/gradual changes
 
 
 def _should_differential_push(current: dict) -> bool:
@@ -387,8 +389,11 @@ def _should_differential_push(current: dict) -> bool:
     compared to the last cloud-pushed telemetry. This triggers an immediate
     sync even if the Eco-Mode timer hasn't expired.
 
-    Thresholds are tuned to suppress sensor noise (jitter) while still
-    catching real changes caused by active watering or environment shifts.
+    Two-tier moisture threshold:
+      - URGENT (>25%): Bypasses the 60s cooldown entirely. A drop from 100→8%
+        is always pushed immediately regardless of when the last push was.
+      - NORMAL (>8%): Respects the 60s cooldown. Catches gradual real changes
+        but blocks the ADC jitter noise (~1-3%).
     """
     global _last_sent_telemetry, _last_push_time, _pump_running
 
@@ -401,25 +406,38 @@ def _should_differential_push(current: dict) -> bool:
     if not _last_sent_telemetry:
         return False  # First reading — let the normal sync handle it
 
-    # ── Minimum Push Cooldown ──
-    # Even if a threshold is crossed, do NOT push more than once per minute.
-    # This is the final safety net against sensor jitter burning the quota.
-    if (time.time() - _last_push_time) < _MIN_PUSH_INTERVAL:
-        return False
-
-    # ── Tank Level Change (immediate — highest priority safety event) ──
+    # ── Tank Level Change (immediate — highest priority, never rate-limited) ──
     last_tank = _last_sent_telemetry.get("tank_level", "FAULT")
     curr_tank = current.get("tank_level", "FAULT")
     if curr_tank != last_tank:
         print(f"[DIFF_SYNC] Tank level change detected: {last_tank}→{curr_tank}")
         return True
 
-    # ── System Status Change (e.g. sensor_fault → ok) ──
+    # ── System Status Change (e.g. sensor_fault → ok) — never rate-limited ──
     last_status = _last_sent_telemetry.get("system_status", "ok")
     curr_status = current.get("system_status", "ok")
     if curr_status != last_status:
         print(f"[DIFF_SYNC] System status change detected: {last_status}→{curr_status}")
         return True
+
+    # ── URGENT Soil Moisture Delta > 25% — bypasses 60s cooldown ──
+    # A genuine event like pulling a probe from water (100%→8%) is a 92% swing.
+    # This must NEVER be blocked by the cooldown timer.
+    last_soil = _last_sent_telemetry.get("soil_moisture", {})
+    curr_soil = current.get("soil_moisture", {})
+    for bed in curr_soil:
+        last_val = last_soil.get(bed, 0)
+        curr_val = curr_soil.get(bed, 0)
+        if isinstance(curr_val, (int, float)) and isinstance(last_val, (int, float)):
+            delta = abs(curr_val - last_val)
+            if delta > _DIFF_MOISTURE_URGENT_THRESHOLD:
+                print(f"[DIFF_SYNC] URGENT soil change on {bed}: {last_val}→{curr_val}% (Δ{delta:.1f}%) — cooldown bypassed")
+                return True
+
+    # ── Minimum Push Cooldown ──
+    # For gradual/small changes only. Prevents jitter from burning quota.
+    if (time.time() - _last_push_time) < _MIN_PUSH_INTERVAL:
+        return False
 
     # ── Temperature Delta > 3°C ──
     last_temp = _last_sent_telemetry.get("temperature", 0)
@@ -428,10 +446,8 @@ def _should_differential_push(current: dict) -> bool:
         print(f"[DIFF_SYNC] Temperature change detected: {last_temp}→{curr_temp}°C")
         return True
 
-    # ── Soil Moisture Delta > 8% (any bed) ──
-    # 8% ensures a real watering event is detected, but ADC noise (~1-2%) is ignored.
-    last_soil = _last_sent_telemetry.get("soil_moisture", {})
-    curr_soil = current.get("soil_moisture", {})
+    # ── Normal Soil Moisture Delta > 8% (gradual changes, rate-limited) ──
+    # Catches real watering/drying cycles while blocking ADC noise (~1-3%).
     for bed in curr_soil:
         last_val = last_soil.get(bed, 0)
         curr_val = curr_soil.get(bed, 0)
@@ -447,7 +463,7 @@ def _should_differential_push(current: dict) -> bool:
 # Main Loop
 # ═══════════════════════════════════════════════════════
 def main():
-    global sensor_manager
+    global sensor_manager, _last_sent_telemetry, _last_push_time, _force_sync
     print("═" * 55)
     print("  🌱 Smart Sprout — Raspberry Pi Controller v1.0")
     print("═" * 55)
@@ -457,6 +473,17 @@ def main():
     sensor_manager = SensorManager()
     sensor_manager.setup_relays()
     print("[INIT] Hardware initialized.")
+
+    # ── Initialize Local SQLite Database ──
+    # Must run before the main loop so the persistence layer is ready
+    # to accept readings even if Firebase is unavailable at boot.
+    local_db.init_db()
+    local_db.purge_old_records()  # Trim rows older than 7 days
+    stats = local_db.get_stats()
+    print(f"[LOCAL_DB] Startup stats — "
+          f"Total: {stats.get('total_records', 0)} rows, "
+          f"Unsynced: {stats.get('unsynced_records', 0)} rows, "
+          f"Size: {stats.get('db_size_kb', 0)} KB")
 
     # ── Start Hardware Reset Button Monitor ──
     import reset_button
@@ -502,32 +529,44 @@ def main():
     interval = max(interval, 3.0)
     cloud_sync_interval = max(cloud_sync_interval, 1800.0)
 
-    # ── Seed the clock and diff baseline BEFORE entering the loop ──
-    # Initialising to time.time() (not 0) prevents an immediate Firebase write
-    # on the very first iteration. The first real push will happen once one of
-    # the three gate conditions becomes True organically.
-    last_cloud_sync = time.time()
+    # ── Boot Init ──
+    # DO NOT pre-seed _last_sent_telemetry here. Leaving it empty ensures
+    # _should_differential_push() skips differential checks on the first loop.
+    # The first push is handled by eco_due (last_cloud_sync=0 triggers immediately).
+    # _last_sent_telemetry is only set AFTER a confirmed successful push so the
+    # baseline always reflects what the cloud actually has — not what the sensor read
+    # at an arbitrary boot moment (which may differ from the cloud's last value).
+    last_cloud_sync = 0
+    _last_sent_telemetry = {}  # Empty — forces eco_due push on first loop
 
-    # Seed the differential-sync baseline with a real sensor reading so the
-    # diff logic does not compare against an empty dict and fire immediately.
-    print("[MAIN] Seeding differential-sync baseline...")
-    try:
-        _last_sent_telemetry = collect_telemetry()
-    except Exception as _seed_err:
-        print(f"[WARN] Could not seed telemetry baseline: {_seed_err}")
-        _last_sent_telemetry = {}
+    # Give Firebase a moment to stabilize after init before the first push
+    print("[MAIN] Waiting 5s for Firebase connection to stabilize...")
+    time.sleep(5)
 
     print(f"[MAIN] Starting local polling loop (every {interval}s)...")
     print(f"[MAIN] Cloud sync interval set to {cloud_sync_interval}s ({cloud_sync_interval/60:.0f} min). "
-          f"Differential threshold: 3% moisture / 1.5°C.\n")
+          f"Differential threshold: 8% moisture, urgent bypass at 25%.\n")
 
     # ── Main Polling Loop ──
     try:
         while _running:
-            global _force_sync
             try:
                 current_time = time.time()
                 telemetry = collect_telemetry()
+
+                # ── Write Local Cache for Linux Kiosk ──
+                # The kiosk UI reads this file every 3s to display live sensor data
+                # without any Firebase quota usage (direct sensor → UI).
+                try:
+                    import json as _json_mod
+                    import tempfile, os
+                    _cache_path = '/tmp/smartsprout_telemetry.json'
+                    _tmp_path = _cache_path + '.tmp'
+                    with open(_tmp_path, 'w') as _f:
+                        _json_mod.dump(telemetry, _f)
+                    os.replace(_tmp_path, _cache_path)  # Atomic swap — prevents partial reads
+                except Exception as _cache_err:
+                    print(f"[WARN] Failed to write local telemetry cache: {_cache_err}")
 
                 # ── Cloud Push Gate ── (Eco-Mode + Differential Sync + FORCE_SYNC)
                 # Local sensor reads happen every 3 s (TELEMETRY_INTERVAL).
@@ -554,25 +593,55 @@ def main():
                         # DIFFERENTIAL_SYNC only updates the current-status document —
                         # it does NOT add a history record, cutting subcollection writes by ~90%.
                         write_history = (_force_sync or eco_due)
-                        firebase_manager.push_telemetry(telemetry, write_history=write_history)
 
-                        # Publish alerts separately to Firebase
-                        if telemetry["alerts"]:
-                            firebase_manager.push_alerts(telemetry["alerts"])
+                        # ── STORE-FIRST (Offline Resilience) ──
+                        # Save this reading to SQLite BEFORE attempting the cloud push.
+                        # This guarantees the data is preserved even if Firebase is
+                        # unreachable. The row starts as synced=0 (unsynced).
+                        local_row_id = None
+                        if write_history:
+                            local_row_id = local_db.save_reading(telemetry)
 
-                        # ── Storage Management ──
-                        # Cleanup old data (older than 30 days by default)
-                        firebase_manager.perform_storage_cleanup()
+                        push_ok = firebase_manager.push_telemetry(telemetry, write_history=write_history)
 
-                        last_cloud_sync = current_time
-                        _last_push_time = current_time   # Update cooldown guard
-                        _force_sync = False
-                        _last_sent_telemetry = telemetry.copy()  # Update baseline for differential sync
-                        mins_until_next = cloud_sync_interval / 60
-                        print(f"[FIREBASE] Telemetry synced ✓ (history={'YES' if write_history else 'STATUS-ONLY'}) "
-                              f"(next Eco-Mode push in {mins_until_next:.0f} min unless diff/force fires first).")
+                        if not push_ok:
+                            # Cloud write failed — do NOT update any local state.
+                            # eco_due stays True (last_cloud_sync unchanged), so
+                            # the next loop will automatically retry the push.
+                            print(f"[FIREBASE] Push FAILED — baseline NOT updated. Will retry next cycle.")
+                        else:
+                            # ── Mark current reading as synced ──
+                            if local_row_id is not None:
+                                local_db.mark_synced([local_row_id])
+
+                            # ── RECOVERY ENGINE ──
+                            if write_history:
+                                unsynced = local_db.get_unsynced_records(limit=50)
+                                if unsynced:
+                                    print(f"[RECOVERY] Found {len(unsynced)} offline reading(s) — "
+                                          f"backfilling to Firebase...")
+                                    recovered_ids = firebase_manager.push_history_batch(unsynced)
+                                    if recovered_ids:
+                                        local_db.mark_synced(recovered_ids)
+
+                            # Publish alerts separately to Firebase
+                            if telemetry["alerts"]:
+                                firebase_manager.push_alerts(telemetry["alerts"])
+
+                            # ── Storage Management ──
+                            firebase_manager.perform_storage_cleanup()
+
+                            # ── Update guards ONLY after confirmed success ──
+                            last_cloud_sync = current_time
+                            _last_push_time = current_time
+                            _force_sync = False
+                            _last_sent_telemetry = telemetry.copy()  # Baseline = what cloud now has
+                            print(f"[DIFF_SYNC] Baseline updated: soil={telemetry.get('soil_moisture')}, temp={telemetry.get('temperature')}")
+                            mins_until_next = cloud_sync_interval / 60
+                            print(f"[FIREBASE] Telemetry synced ✓ (history={'YES' if write_history else 'STATUS-ONLY'}) "
+                                  f"(next Eco-Mode push in {mins_until_next:.0f} min unless diff/force fires first).")
                     except Exception as e:
-                        print(f"[FIREBASE] Push FAILED — will retry on next trigger. Error: {e}")
+                        print(f"[FIREBASE] Unexpected push error: {e}")
 
                 print(
                     f"[TEL] Soil={telemetry['soil_moisture']} | "

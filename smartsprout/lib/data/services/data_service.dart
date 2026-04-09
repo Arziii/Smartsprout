@@ -89,30 +89,39 @@ class DataService {
   // Telemetry Stream
   // ═══════════════════════════════════════════════════════
 
-  /// Streams the latest telemetry from the device's main document.
+  /// Streams the latest telemetry.
+  ///
+  /// - **Linux kiosk (Pi):** Reads the local `/tmp/smartsprout_telemetry.json`
+  ///   cache file that `main.py` writes on every 3s sensor cycle.
+  ///   This gives true live data with ZERO Firebase quota usage.
+  ///   Falls back to offline state if the file is missing.
+  ///
+  /// - **Mobile (Android/iOS):** Uses a native Firestore real-time listener
+  ///   (.snapshots()) for live cloud-pushed updates.
   Stream<SensorData> get telemetryStream {
     if (Platform.isLinux) {
-      // PHASE 2 FIX: Increased from 5s → 30s to reduce REST API reads.
-      // At 5s: 720 reads/hr (17,280/day) just from the Linux kiosk.
-      // At 30s: 120 reads/hr (2,880/day) — 83% reduction.
-      // The 30s interval still provides near-real-time sensor feedback.
-      return Stream.periodic(const Duration(seconds: 30)).asyncMap((_) async {
+      // Read the local telemetry cache written by main.py every 3 seconds.
+      // No internet required — direct sensor data, zero quota cost.
+      return Stream.periodic(const Duration(seconds: 3)).asyncMap((_) async {
         try {
-          final response = await _authenticatedGet('$_baseUrl?key=$_apiKey');
-          if (response.statusCode == 200) {
-            final data = json.decode(response.body);
-            return _parseRestData(data);
-          } else {
-            debugPrint(
-                '[REST_ERROR] status ${response.statusCode}: ${response.body}');
+          final file = File('/tmp/smartsprout_telemetry.json');
+          if (!await file.exists()) {
+            return const SensorData(systemStatus: 'offline');
           }
+          final contents = await file.readAsString();
+          final data = json.decode(contents) as Map<String, dynamic>;
+          final parsed = SensorData.fromJson(data);
+          if (parsed.isControllerDisconnected) {
+            return parsed.copyWith(systemStatus: 'offline');
+          }
+          return parsed;
         } catch (e) {
-          debugPrint('[REST_ERROR] fetch telemetry: $e');
+          debugPrint('[LOCAL_TELEMETRY] Failed to read cache: $e');
+          return const SensorData(systemStatus: 'offline');
         }
-        return const SensorData(systemStatus: 'offline');
       });
     } else {
-      // Native Firebase on Mobile
+      // Native Firebase on Mobile — real-time Firestore listener.
       return _firestore
           .collection('devices')
           .doc(deviceId)
@@ -130,92 +139,7 @@ class DataService {
     }
   }
 
-  /// Parses Firestore REST JSON payload into SensorData
-  SensorData _parseRestData(Map<String, dynamic> doc) {
-    if (!doc.containsKey('fields')) {
-      return const SensorData(systemStatus: 'offline');
-    }
-    final fields = doc['fields'] as Map<String, dynamic>;
 
-    dynamic getField(String key) {
-      if (!fields.containsKey(key)) return null;
-      final val = fields[key];
-      if (val.containsKey('stringValue')) return val['stringValue'];
-      if (val.containsKey('doubleValue')) return val['doubleValue'];
-      if (val.containsKey('integerValue')) {
-        return double.tryParse(val['integerValue'].toString());
-      }
-      if (val.containsKey('booleanValue')) return val['booleanValue'];
-
-      if (val.containsKey('arrayValue')) {
-        final arr = val['arrayValue']['values'] as List?;
-        if (arr == null) return [];
-        return arr.map((e) {
-          if (e.containsKey('doubleValue')) return e['doubleValue'];
-          if (e.containsKey('integerValue')) {
-            return double.tryParse(e['integerValue'].toString()) ?? 0.0;
-          }
-          if (e.containsKey('stringValue')) return e['stringValue'];
-          return 0.0;
-        }).toList();
-      }
-
-      // Handle Firestore REST mapValue (e.g., soil_moisture: {bed1: ..., bed2: ..., bed3: ...})
-      if (val.containsKey('mapValue')) {
-        final mapFields = val['mapValue']['fields'] as Map<String, dynamic>?;
-        if (mapFields == null) return {};
-        final result = <String, dynamic>{};
-        mapFields.forEach((k, v) {
-          if (v is Map) {
-            if (v.containsKey('doubleValue')) {
-              result[k] = v['doubleValue'];
-            } else if (v.containsKey('integerValue')) {
-              result[k] = double.tryParse(v['integerValue'].toString()) ?? 0.0;
-            } else if (v.containsKey('stringValue')) {
-              result[k] = v['stringValue'];
-            }
-          }
-        });
-        return result;
-      }
-      return null;
-    }
-
-    final soilCal = getField('soil_moisture') as List?;
-    final soilRaw = getField('soil_moisture_raw') as List?;
-    final soilOffsets = getField('soil_offsets') as List?;
-    final alertsRaw = getField('alerts') as List?;
-
-    // Parse timestamp fields for heartbeat
-    dynamic lastHb;
-    if (fields.containsKey('last_heartbeat')) {
-      final hbVal = fields['last_heartbeat'];
-      if (hbVal.containsKey('timestampValue')) {
-        final ts = DateTime.tryParse(hbVal['timestampValue']);
-        if (ts != null) lastHb = ts;
-      }
-    }
-
-    Map<String, dynamic> mapped = {
-      'system_status': getField('system_status') ?? 'offline',
-      'tank_level': getField('tank_level') ?? 0.0,
-      'pump_locked': getField('pump_locked') ?? false,
-      'pump_status_zone1': getField('pump_status_zone1') ?? false,
-      'pump_status_zone2': getField('pump_status_zone2') ?? false,
-      'pump_status_zone3': getField('pump_status_zone3') ?? false,
-      'temperature': getField('temperature') ?? 0.0,
-      'humidity': getField('humidity') ?? 0.0,
-      'soil_moisture': soilCal,
-      'soil_moisture_raw': soilRaw,
-      'soil_offsets': soilOffsets,
-      'start_threshold': getField('start_threshold'),
-      'target_moisture': getField('target_moisture'),
-      'max_pump_runtime': getField('max_pump_runtime'),
-      'alerts': alertsRaw,
-      'last_heartbeat': lastHb,
-    };
-    return SensorData.fromJson(mapped);
-  }
 
   // ═══════════════════════════════════════════════════════
   // Commands
@@ -317,6 +241,20 @@ class DataService {
       'command': 'FORCE_SYNC',
       'requested_at': DateTime.now().toUtc().toIso8601String(),
     });
+  }
+
+  /// Triggers dry calibration for a specific zone on the Pi.
+  /// The probe must be in open air (0% reference) when this is called.
+  /// Pi command handler: 'dry_calibrate' with optional 'zone' key.
+  Future<void> runDryCalibration(int zone) async {
+    await sendCommand({'command': 'dry_calibrate', 'zone': zone});
+  }
+
+  /// Triggers wet calibration for a specific zone on the Pi.
+  /// The probe must be fully submerged in water (100% reference) when this is called.
+  /// Pi command handler: 'run_wet_calibration' with optional 'zone' key.
+  Future<void> runWetCalibration(int zone) async {
+    await sendCommand({'command': 'run_wet_calibration', 'zone': zone});
   }
 
   /// Writes calibration offsets directly to the device document in Firestore.

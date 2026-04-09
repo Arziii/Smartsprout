@@ -192,8 +192,11 @@ authenticate with the same Device ID and PIN to provide:
 │                  │ Cloud Firestore     │ robust device-centric    │
 │                  │                     │ secure login             │
 ├──────────────────┼─────────────────────┼──────────────────────────┤
-│ Local Database   │ Hive/Isar           │ Fast, offline-first app  │
-│                  │                     │ state storage            │
+│ Local Database   │ Hive/Isar (Mobile)  │ Fast, offline-first app  │
+│                  │ + SQLite (Pi)       │ state storage. Pi uses   │
+│                  │                     │ SQLite (local_db.py) for │
+│                  │                     │ Store-and-Forward offline│
+│                  │                     │ telemetry buffering.     │
 ├──────────────────┼─────────────────────┼──────────────────────────┤
 │ Local Hardware UI│ Flutter Desktop     │ Kiosk-mode GUI for       │
 │                  │                     │ physical touchscreen     │
@@ -235,9 +238,18 @@ Subcollection: zones/{zoneId}
 Document Structure:
   • plant_image_name: string (e.g., "aloe_vera.jpg")
 
-Local Configuration File: device_config.json
-  • device_id: string (e.g., "SPROUT_A1B2")
-  • password: string (e.g., "pbkdf2:5f2a...:9b4c...")
+Local Configuration Files (Raspberry Pi):
+  device_config.json
+    • device_id: string (e.g., "SPROUT_A1B2")
+    • password: string (e.g., "pbkdf2:5f2a...:9b4c...")
+  calibration_offsets.json
+    • Per-zone dry/wet raw ADC values & manual offsets.
+  .last_cleanup
+    • Unix timestamp of last Firebase storage cleanup run.
+  telemetry.db   ← NEW (SQLite)
+    • Schema: id, timestamp, moisture_b1/b2/b3, temperature, humidity, synced
+    • Retains 7 days of history locally for offline-resilient analytics.
+    • synced=0 rows are uploaded to Firebase when internet is restored.
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -477,7 +489,7 @@ Phase 1: High Impact (Analytics & Cleanup)
 Phase 2: Polling & Offline Detection
 | Task | Action | Estimated Savings |
 | :--- | :--- | :--- |
-| **Adaptive Polling** | Increase Linux Kiosk REST polling from 5s to 30s. | 83% baseline reduction (~14,000 reads/day) |
+| **Zero-Cost Polling** | Transitioned Linux Kiosk to read directly from local telemetry cache file instead of REST API. | 100% elimination of local read quotas (~17,280 reads/day saved) |
 | **Heartbeat Frequency** | Reverted heartbeat to 10s for snappy UI detection, balanced with local caching. | N/A (Favors UX) |
 | **Efficient Offline Check** | Local UI timeout reduced to 45s ensuring fast UI lock without extra background network queries. | N/A (Safety/UX) |
 
@@ -493,6 +505,29 @@ PHASE 4.22: ANALYTICS ENGINE — ROLLING 7-DAY SENSOR TRENDS [COMPLETED]
 ☑ Quota Guard: `.limit(500)` hard cap on the telemetry query prevents unbounded reads on large datasets.
 ☑ Kiosk Bypass: `Platform.isLinux` guard returns synthetic no-data result — zero Firestore reads on the Pi touchscreen.
 
+
+PHASE 4.23: SQLITE OFFLINE ANALYTICS PERSISTENCE [COMPLETED]
+☑ Store-and-Forward Module: Created `local_db.py` — a self-contained SQLite wrapper that saves every Eco-Mode reading locally BEFORE attempting the Firebase push.
+☑ WAL (Write-Ahead Logging): SQLite opened with `PRAGMA journal_mode=WAL` and `PRAGMA synchronous=NORMAL` for SD card crash safety on sudden power loss.
+☑ Synced Flag Pattern: Each row has a `synced` column (0=unsynced, 1=uploaded). This allows the system to precisely know which hours were missed during any outage.
+☑ Save-First Integration: In `main.py`, `local_db.save_reading(telemetry)` is called BEFORE `firebase_manager.push_telemetry()`. The data is always on disk, regardless of internet state.
+☑ Recovery Engine: On every successful Eco-Mode push, `local_db.get_unsynced_records()` is queried. Any unsynced rows (gaps from outages) are uploaded via `firebase_manager.push_history_batch()` and then marked `synced=1`.
+☑ 7-Day Auto-Purge: `local_db.purge_old_records()` runs at startup, deleting rows older than 7 days to keep the database tiny (~50KB) and protect the SD card from bloat.
+☑ Startup Diagnostics: Pi prints local DB stats on boot: total rows, unsynced rows, and file size in KB.
+☑ Recovery Tagging: Backfilled Firebase documents are tagged with `_source: "local_db_recovery"` to distinguish them from live pushes for auditability.
+
+
+
+PHASE 4.24: LINUX KIOSK LOCAL TELEMETRY CACHE [COMPLETED]
+☑ Zero Quota Cost: Transitioned the Linux Kiosk UI to read directly from a local `telemetry_cache.json` file written by the Pi backend.
+☑ Real-Time Responsiveness: The UI achieves true real-time syncing (<1s) without relying on Firebase API.
+☑ Decoupled Architecture: Solves the critical data synchronization failure where significant soil moisture changes were previously bottlenecked by the REST API interval.
+
+PHASE 4.25: ADVANCED UI OPTIMIZATIONS [COMPLETED]
+☑ Persistent Dark Mode: Integrated a fully centralized, theme-aware Dark Mode system affecting all dialogs, bottom sheets, and status overlays.
+☑ Deprecation Resolution: Stabilized the Flutter codebase by completing the migration from `.withOpacity()` to `.withValues()` preventing future visual regressions.
+☑ SnackBar Polish: Reduced notification overlay durations to 1.5 seconds for a snappy and non-obtrusive feedback loop.
+☑ UI Cleanup: Removed the redundant "Edit Nickname" feature from the account switching screen logic, focusing purely on device rename actions in the Settings menu.
 
 ═══════════════════════════════════════════════════════════════════
 
@@ -525,6 +560,12 @@ PHASE 4.22: ANALYTICS ENGINE — ROLLING 7-DAY SENSOR TRENDS [COMPLETED]
 ├────────────────────┼─────────────────────┼─────────────────────────┤
 │ Calibration Data   │ calibration_offsets │ Per-zone dry/wet raw    │
 │                    │ .json               │ values & manual offsets │
+├────────────────────┼─────────────────────┼─────────────────────────┤
+│ Offline Analytics  │ telemetry.db        │ SQLite WAL-mode DB for  │
+│ Buffer (NEW)       │ (local_db.py)       │ Store-and-Forward. Pre- │
+│                    │                     │ serves sensor readings  │
+│                    │                     │ during internet outages │
+│                    │                     │ and syncs when online.  │
 └────────────────────┴─────────────────────┴─────────────────────────┘
 
 
@@ -794,6 +835,32 @@ The system utilizes a 10-second "Heartbeat" interval for the Raspberry Pi and a 
 • Snappy Offline Detection: By setting the Mobile App's warning timer to 25s, the UI detects a disconnected device after only 2 missed heartbeats, providing a "Professional-tier" response time without increasing database costs.
 
 
+11.6 STORE-AND-FORWARD OFFLINE PERSISTENCE (SQLite) [NEW]
+To eliminate analytics gaps caused by internet outages, the Raspberry Pi now implements a "Store-and-Forward" pattern using a local SQLite database (`telemetry.db`).
+
+Data Flow:
+  1. RECORD:  Every 30-minute Eco-Mode cycle, `local_db.save_reading()` writes the
+             current telemetry to `telemetry.db` (synced=0) BEFORE hitting Firebase.
+  2. ONLINE:  If Firebase push succeeds, the row is marked synced=1 immediately.
+  3. OFFLINE: If Firebase is unreachable, the row stays synced=0. The Pi continues
+             writing new rows every 30 minutes with no loss of local history.
+  4. RECOVER: On the next successful Eco-Mode push after reconnection, the Recovery
+             Engine (`local_db.get_unsynced_records()`) finds all synced=0 rows and
+             batch-uploads them to the Firebase `telemetry` subcollection, filling
+             any gaps in the 7-day analytics chart automatically.
+
+Storage Impact:
+  • ~2 rows/hour × 24 hours × 7 days = 336 rows max
+  • Each row ≈ 100 bytes → total DB size ≈ 33KB (negligible for SD card).
+  • Auto-purge on startup removes rows older than 7 days.
+  • WAL mode prevents database corruption on sudden power loss.
+
+Design Constraints:
+  • Only Eco-Mode (30-min) and FORCE_SYNC readings are stored in SQLite.
+    Differential Sync (sensor jitter events) are NOT stored, maintaining quota discipline.
+  • Recovery uploads are capped at 50 records per cycle to avoid sudden Firebase write spikes.
+
+
 ═══════════════════════════════════════════════════════════════════
 
 
@@ -919,6 +986,38 @@ This intentionally distinguishes a hardware fault from "no data":
 │ limit(500) guard                      │ Always enforced at query level         │ Prevents runaway reads     │
 │ Linux Kiosk (Platform.isLinux)        │ App boot on Raspberry Pi touchscreen   │ 0 reads (synthetic data)   │
 └───────────────────────────────────────┴────────────────────────────────────────┴────────────────────────────┘
+
+
+12.7 STORE-AND-FORWARD OFFLINE PIPELINE (local_db.py)
+
+When the Pi is offline, readings are saved to SQLite. When it reconnects, the
+Recovery Engine automatically backfills Firebase, making the chart continuous:
+
+┌──────────┬──────────────────────────┬──────────────────────────────────────────────────┐
+│ Stage    │ Component                │ Action                                           │
+├──────────┼──────────────────────────┼──────────────────────────────────────────────────┤
+│ 1. Save  │ local_db.save_reading()  │ Writes row to telemetry.db (synced=0).           │
+│          │ (main.py, Eco-Mode)      │ Runs BEFORE Firebase push — always on disk.      │
+├──────────┼──────────────────────────┼──────────────────────────────────────────────────┤
+│ 2. Push  │ firebase_manager         │ Attempt cloud push. If success, mark synced=1.   │
+│          │ .push_telemetry()        │ If failure → row stays synced=0, no data lost.   │
+├──────────┼──────────────────────────┼──────────────────────────────────────────────────┤
+│ 3. Check │ local_db                 │ On every Eco-Mode success, query all synced=0    │
+│          │ .get_unsynced_records()  │ rows (gap records from past outages). Cap: 50.   │
+├──────────┼──────────────────────────┼──────────────────────────────────────────────────┤
+│ 4. Batch │ firebase_manager         │ Upload gap records to Firebase telemetry sub-     │
+│          │ .push_history_batch()    │ collection. Tagged with _source=local_db_recovery│
+├──────────┼──────────────────────────┼──────────────────────────────────────────────────┤
+│ 5. Mark  │ local_db.mark_synced()   │ Update successfully uploaded rows to synced=1.   │
+│          │                          │ Rows NOT uploaded stay synced=0 for next cycle.  │
+├──────────┼──────────────────────────┼──────────────────────────────────────────────────┤
+│ 6. Purge │ local_db                 │ On Pi startup, delete rows older than 7 days to  │
+│          │ .purge_old_records()     │ keep telemetry.db tiny and protect SD card.      │
+└──────────┴──────────────────────────┴──────────────────────────────────────────────────┘
+
+Result: The 7-day Analytics chart in the Flutter app will have NO GAPS even if
+the Pi was disconnected from the internet for hours or days. Data is guaranteed
+to appear retroactively once the connection is restored.
 
 
 ═══════════════════════════════════════════════════════════════════

@@ -8,7 +8,6 @@ class SensorData {
   final List<double> targetMoisture; // 3 zone saturation targets (stop pump)
   final List<int> maxPumpRuntime; // 3 zone safety timeouts (seconds)
   final double temperature;
-  final double humidity;
   final String tankLevel;
   final double flowRate;
   final bool pumpLocked;
@@ -28,7 +27,6 @@ class SensorData {
     this.targetMoisture = const [65.0, 65.0, 65.0],
     this.maxPumpRuntime = const [30, 30, 30],
     this.temperature = 0.0,
-    this.humidity = 0.0,
     this.tankLevel = 'FAULT',
     this.flowRate = 0.0,
     this.pumpLocked = false,
@@ -152,7 +150,6 @@ class SensorData {
       targetMoisture: List.from(targets),
       maxPumpRuntime: List.from(runtimes),
       temperature: (json['temperature'] as num?)?.toDouble() ?? -1.0,
-      humidity: (json['humidity'] as num?)?.toDouble() ?? -1.0,
       tankLevel: json['tank_level']?.toString() ?? 'FAULT',
       flowRate: (json['flow_rate'] as num?)?.toDouble() ?? 0.0,
       pumpLocked: json['pump_locked'] as bool? ?? false,
@@ -186,11 +183,17 @@ class SensorData {
 
   /// Returns true if the bed has a hardware fault flag OR its raw sensor reads
   /// the -1 sentinel (disconnected / open-circuit sensor).
+  /// Returns true only when the Pi has explicitly flagged this bed as 'fault'.
+  /// Falls back to the raw -1 sentinel ONLY when the Pi has never sent a
+  /// hardware_status entry for this bed (e.g. first-boot before telemetry arrives).
   bool hasBedFault(int index) {
-    final hwFault = hardwareStatus['bed${index + 1}'] == 'fault';
-    final rawFault =
-        index < soilMoistureRaw.length && soilMoistureRaw[index] < 0;
-    return hwFault || rawFault;
+    final bedKey = 'bed${index + 1}';
+    // Primary: trust the Pi's explicit hardware_status flag
+    if (hardwareStatus.containsKey(bedKey)) {
+      return hardwareStatus[bedKey] == 'fault';
+    }
+    // Fallback (no status received yet): treat -1 raw sentinel as fault
+    return index < soilMoistureRaw.length && soilMoistureRaw[index] < 0;
   }
 
   bool get isTankFault =>
@@ -209,7 +212,6 @@ class SensorData {
     List<double>? targetMoisture,
     List<int>? maxPumpRuntime,
     double? temperature,
-    double? humidity,
     String? tankLevel,
     double? flowRate,
     bool? pumpLocked,
@@ -228,7 +230,6 @@ class SensorData {
       targetMoisture: targetMoisture ?? this.targetMoisture,
       maxPumpRuntime: maxPumpRuntime ?? this.maxPumpRuntime,
       temperature: temperature ?? this.temperature,
-      humidity: humidity ?? this.humidity,
       tankLevel: tankLevel ?? this.tankLevel,
       flowRate: flowRate ?? this.flowRate,
       pumpLocked: pumpLocked ?? this.pumpLocked,

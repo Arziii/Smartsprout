@@ -109,9 +109,9 @@ Flutter App              Firestore              Raspberry Pi 4
 - **Firebase Custom Token Auth**: On success, the Pi mints a Custom Token (`uid = HW_MAC_ID`). Firestore Security Rules use `request.auth.uid == deviceId` to restrict all device data to the authenticated owner.
 - **Session-Reuse Quick Switch**: Saved accounts use Option B logic — if a Firebase Custom Token session is still valid, the app switches instantly with zero network round-trip. Expired sessions prompt re-authentication.
 - **Dual Operation Modes**:
-  - **Secure IoT**: Monitor and control globally via iOS, Android, and Windows Desktop apps.
-  - **Air-Gapped Local**: Full operation via Pi's physical touchscreen, independent of internet.
-- **Eco-Mode + Differential Sync**: Hardware polling (3s) is decoupled from Firebase writes (30-min ceiling). Writes only fire on: ≥8% moisture delta, ≥3°C temperature delta, tank level change, system-status change, or manual FORCE_SYNC command.
+  - **Secure IoT**: Monitor and control globally via iOS, Android, and Windows Desktop apps. Features a beautifully persistent, theme-aware Dark Mode and optimized Snackbars for rapid, non-obtrusive feedback (1.5s).
+  - **Air-Gapped Local**: Full operation via Pi's physical touchscreen, independent of internet, bypassing Firebase to use the local memory telemetry cache.
+- **Eco-Mode + Differential Sync**: Hardware polling (3s) is decoupled from Firebase writes (30-min ceiling). Writes only fire on: ≥8% moisture delta, ≥3°C temperature delta, tank level change, system-status change, or manual FORCE_SYNC command. The Linux Kiosk UI reads directly from a local telemetry cache (`telemetry_cache.json`) to achieve zero-API-cost real-time responsiveness.
 - **Pulse & Soak Auto-Watering**: Pulses water 5s → soaks 20s → re-reads moisture → repeats until target saturation reached or safety timeout fires.
 - **Dead-Man's Switch**: During manual watering, a 10s heartbeat is required from the mobile app. If missed for >5s, the Pi kills all pumps immediately.
 - **Pump Safety Watchdog**: GPIO-level daemon forces pump OFF if it runs >120 seconds.

@@ -2,7 +2,7 @@
 # Install: pip install -r requirements.txt
 
 # Sensor Drivers
-adafruit-circuitpython-bme280==2.6.18
+adafruit-circuitpython-bmp280==3.3.21
 adafruit-circuitpython-ads1x15==2.2.23
 gpiozero==2.0.1
 

@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../core/utils/platform_utils.dart';
 import '../presentation/providers/sensor_provider.dart';
 import '../widgets/zone_card.dart';
+import 'calibration_page.dart';
 import 'system_health_page.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
@@ -58,13 +59,15 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     final sensorData = ref.watch(sensorDataProvider);
     final triggers = ref.watch(triggerSettingsProvider);
 
-    final rawSoil = sensorData.soilMoistureRaw;
+    // Use calibrated soil moisture for zone card display.
+    // soilMoistureRaw may be absent from Firestore on first boot or if the Pi
+    // hasn't pushed it yet — soilMoisture (calibrated) is always present.
+    final rawSoil = sensorData.soilMoisture;
     final startThresholds = triggers
         .startThreshold; // locally persisted — updates immediately on SET
     final targets = triggers.targetMoisture; // locally persisted
     final tankLevelStr = sensorData.tankLevel;
     final temperature = sensorData.temperature;
-    final humidity = sensorData.humidity;
     // On Linux (Pi), never show as offline — the Pi IS the system.
     final isOffline = Platform.isLinux ? false : sensorData.isOffline;
     final hasFault = sensorData.hasSensorFault;
@@ -163,7 +166,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                     child: _buildMainList(
                         tankLevelStr,
                         temperature,
-                        humidity,
                         rawSoil,
                         startThresholds,
                         targets,
@@ -176,7 +178,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                 : _buildMainList(
                     tankLevelStr,
                     temperature,
-                    humidity,
                     rawSoil,
                     startThresholds,
                     targets,
@@ -251,7 +252,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   Widget _buildMainList(
       String tankLevelStr,
       double temperature,
-      double humidity,
       List<double> rawSoil,
       List<double> startThresholds,
       List<double> targets,
@@ -267,7 +267,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             0, _buildTopHeader(isOffline, isTankLow, hasFault)),
         const SizedBox(height: 10),
         _buildAnimatedWidget(
-            1, _buildVitals(tankLevelStr, temperature, humidity, isEnvFault)),
+            1, _buildVitals(tankLevelStr, temperature, isEnvFault)),
         const SizedBox(height: 30),
         _buildAnimatedWidget(
             2,
@@ -306,6 +306,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   temp: temperature.toInt(),
                   pulseAnim: _pulseController,
                   isFault: sensorData.hasBedFault(0),
+                  onCalibrate: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const CalibrationPage(
+                          zoneNumber: 1, zoneName: "Zone 1 (Left)"),
+                    ),
+                  ),
                 ),
                 ZoneCard(
                   zoneId: '2',
@@ -317,6 +324,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   temp: temperature.toInt(),
                   pulseAnim: _pulseController,
                   isFault: sensorData.hasBedFault(1),
+                  onCalibrate: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const CalibrationPage(
+                          zoneNumber: 2, zoneName: "Zone 2 (Center)"),
+                    ),
+                  ),
                 ),
                 ZoneCard(
                   zoneId: '3',
@@ -328,6 +342,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   temp: temperature.toInt(),
                   pulseAnim: _pulseController,
                   isFault: sensorData.hasBedFault(2),
+                  onCalibrate: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const CalibrationPage(
+                          zoneNumber: 3, zoneName: "Zone 3 (Right)"),
+                    ),
+                  ),
                 ),
                 _buildSystemOverviewCard(context, sensorData),
               ],
@@ -455,7 +476,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
   }
 
-  Widget _buildVitals(String tankLevelStr, double systemTemp, double systemHum,
+  Widget _buildVitals(String tankLevelStr, double systemTemp,
       bool isEnvFault) {
     // Tank logic
     Color tankColor;
@@ -644,7 +665,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            "ENVIRONMENT",
+                            "TEMPERATURE",
                             style: GoogleFonts.outfit(
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
@@ -656,8 +677,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                           ),
                           Text(
                             isEnvFault
-                                ? "--°/--%"
-                                : "${systemTemp.toStringAsFixed(1)}° / ${systemHum.toInt()}%",
+                                ? "--°C"
+                                : "${systemTemp.toStringAsFixed(1)}°C",
                             style: GoogleFonts.outfit(
                               fontSize: 18,
                               fontWeight: FontWeight.w900,
@@ -697,30 +718,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13,
                                 color: Color(0xFF0277BD)),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2BCC71).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.air_rounded,
-                              color: Color(0xFF1B8E4F), size: 14),
-                          const SizedBox(width: 4),
-                          Text(
-                            isEnvFault ? "--%" : "${systemHum.toInt()}%",
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                                color: Color(0xFF1B8E4F)),
                           ),
                         ],
                       ),

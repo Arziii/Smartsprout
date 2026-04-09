@@ -50,7 +50,7 @@ def factory_reset():
 # ── I2C Bus Address ──
 ADS1115_I2C_BUS = int(os.getenv("ADS1115_I2C_BUS", "1"))
 ADS1115_I2C_ADDRESS = int(os.getenv("ADS1115_I2C_ADDRESS", "0x48"), 16)
-BME280_I2C_ADDRESS = int(os.getenv("BME280_I2C_ADDRESS", "0x76"), 16)
+BMP280_I2C_ADDRESS = int(os.getenv("BMP280_I2C_ADDRESS", "0x76"), 16)  # Chip ID 0x58 — confirmed BMP280, not BME280
 
 # ── Digital Sensors ──
 # XKC-Y26-V is a binary non-contact sensor: output is HIGH, LOW, or FAULT (string).
@@ -82,8 +82,8 @@ PULSE_BURST_SECONDS = int(os.getenv("PULSE_BURST_SECONDS", "5"))
 PULSE_SOAK_SECONDS = int(os.getenv("PULSE_SOAK_SECONDS", "20"))
 
 # ── Calibration ──
-SOIL_DRY = int(os.getenv("SOIL_SENSOR_DRY", "26000"))
-SOIL_WET = int(os.getenv("SOIL_SENSOR_WET", "13000"))
+SOIL_DRY = int(os.getenv("SOIL_SENSOR_DRY", "12491"))
+SOIL_WET = int(os.getenv("SOIL_SENSOR_WET", "6165"))
 
 
 # ── Firebase ──

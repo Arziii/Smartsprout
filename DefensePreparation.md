@@ -218,9 +218,10 @@ The Flutter mobile application serves as the primary remote control interface fo
 - Users can input direct raw analog values, or press the **"Run Wet/Dry Calibration"** buttons. These buttons queue Firebase commands (`run_wet_calibration`) which tell the Pi to physically read the sensor 10 times, calculate the average, and save it directly to the Pi's internal storage.
 
 ### 5. Settings & Account Management
-- **Device Switcher**: The app can store up to 5 unique devices (Device ID + PIN), allowing the user to seamlessly swap between different Smart Sprout setups without logging out.
-- **Device Rename**: Users can give their hardware nicknames (e.g., "Front Porch Sprout").
+- **Device Switcher**: The app can store up to 5 unique devices (Device ID + PIN), allowing the user to seamlessly swap between different Smart Sprout setups. Redundant nickname editing in this screen was removed to streamline UI.
+- **Persistent Dark Mode**: Fully localized, theme-aware Dark Mode system that cascades through all dialogs, bottom sheets, and status overlays for improved accessibility.
 - **System Controls**: Advanced commands to `RESTART_APP` or `REBOOT_PI` securely over the cloud if the Pi experiences OS-level freezing.
+- **Optimized UI Notifications**: SnackBar alert overlays are tuned to a 1.5-second duration for rapid, non-obtrusive feedback, alongside full Flutter deprecation resolution (`.withValues()` migration).
 
 ---
 
@@ -541,7 +542,7 @@ stateDiagram-v2
 2. **Persistent Batch Cleanups:** The Raspberry Pi automatically deletes telemetry older than 30 days. We implemented local disk persistence for the `_last_cleanup_time` so the Pi doesn't redundantly query and attempt cleanups on every system reboot.
 3. **Subcollection Routing:** Sensor "jitter" (electronic noise) could cause 28,000+ writes a day. Now, periodic updates only overwrite a single Status document. 
 4. **Active Filtering:** We widened the differential sync thresholds (8% moisture / 3°C temp) to ignore noise and added a strict 60-second cooldown limiter.
-5. **Kiosk Polling Optimization**: We reduced the Linux Kiosk's REST API polling frequency from 5s to 30s. This reduces background local screen reads by 83% (saving ~14,000 reads/day) without impacting the mobile app's real-time listeners.
+5. **Kiosk Local Telemetry Cache (Zero API Cost)**: We transitioned the Linux Kiosk UI to read directly from a local telemetry cache file updated seamlessly by the Pi backend. This completely eliminates Firebase REST API quota costs for the local touchscreen while achieving true real-time responsiveness.
 6. **Live Bypass Mechanism & Snappy Heartbeats:** During manual watering, we bypass cooldowns to stream data every 3 seconds for zero-delay UX. To keep the app snappy when the Pi is unplugged, we maintained a 10s Pi heartbeat but aggressively optimized the mobile app's offline timeout to **25 seconds** (a fast, stable detection threshold).
 
 **Q7: Why use a 10-second heartbeat if it's meant for "real-time" monitoring? Is a 25-second reflection delay professional?**

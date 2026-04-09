@@ -30,17 +30,17 @@ except ImportError:
 
 try:
     import board
-    import adafruit_bme280.basic as adafruit_bme280
+    import adafruit_bmp280
     _BME_AVAILABLE = True
     
-    # Initialize I2C and the BME280 sensor
+    # Initialize I2C and the BMP280 sensor (Chip ID 0x58)
     _i2c = board.I2C()
-    _bme_device = adafruit_bme280.Adafruit_BME280_I2C(_i2c, address=config.BME280_I2C_ADDRESS)
+    _bme_device = adafruit_bmp280.Adafruit_BMP280_I2C(_i2c, address=config.BMP280_I2C_ADDRESS)
     
 except (ImportError, ValueError, RuntimeError, AttributeError) as e:
     _BME_AVAILABLE = False
     _bme_device = None
-    print(f"[WARN] BME280 init failed ({e}) — Temp/Hum/Pres will return mock data.")
+    print(f"[WARN] BMP280 init failed ({e}) — Temp/Pres will return mock data.")
 
 
 # ═══════════════════════════════════════════════════════
@@ -231,25 +231,28 @@ def run_wet_calibration(target_zone=None) -> dict:
 
 
 # ═══════════════════════════════════════════════════════
-# BME280 — Temperature, Humidity & Pressure
+# BMP280 — Temperature & Pressure (NO humidity support)
+# Chip ID: 0x58. Humidity is hardcoded to None because
+# the BMP280 physically lacks a humidity sensor.
 # ═══════════════════════════════════════════════════════
 def read_environment() -> dict:
     """
-    Returns {"temperature": float, "humidity": float, "pressure": float}.
-    Values are 0.0 on sensor fault or simulation.
+    Returns {"temperature": float, "humidity": None, "pressure": float}.
+    humidity is always None — BMP280 does not support humidity measurement.
+    temperature and pressure return -1.0 on sensor fault or simulation.
     """
     if not _BME_AVAILABLE or not _bme_device:
-        return {"temperature": -1.0, "humidity": -1.0, "pressure": -1.0}
+        return {"temperature": -1.0, "humidity": None, "pressure": -1.0}
 
     try:
         return {
             "temperature": round(_bme_device.temperature, 1),
-            "humidity": round(_bme_device.humidity, 1),
+            "humidity": None,  # BMP280 has no humidity sensor (hardware mismatch resolved)
             "pressure": round(_bme_device.pressure, 1),
         }
     except Exception as e:
-        print(f"[ERROR] BME280 read failure: {e}")
-        return {"temperature": -1.0, "humidity": -1.0, "pressure": -1.0}
+        print(f"[ERROR] BMP280 read failure: {e}")
+        return {"temperature": -1.0, "humidity": None, "pressure": -1.0}
 
 
 # ═══════════════════════════════════════════════════════
@@ -511,8 +514,9 @@ def cleanup():
 class SensorManager:
     """
     SensorManager object wrapper prioritizing encapsulation for main.py.
-    Provides initialization logic for ADS1115 (A0, A1, A2) and BME280 (I2C)
+    Provides initialization logic for ADS1115 (A0, A1, A2) and BMP280 (I2C)
     per architectural requirements, and proxies commands to the module-level functions.
+    NOTE: Physical sensor confirmed as BMP280 (Chip ID 0x58). Humidity unsupported.
     """
     def __init__(self):
         print("[INIT] Initializing SensorManager...")
@@ -529,11 +533,11 @@ class SensorManager:
             except Exception as e:
                 print(f"[WARN] ADS1115 not detected at startup: {e}")
         
-        # Confirm BME280 configuration
+        # Confirm BMP280 configuration (humidity NOT available on this chip)
         if _BME_AVAILABLE:
-            print(f"[INIT] BME280 initialized on I2C (Address {hex(config.BME280_I2C_ADDRESS)}).")
+            print(f"[INIT] BMP280 initialized on I2C (Address {hex(config.BMP280_I2C_ADDRESS)}). [Temp+Pressure only]")
         else:
-            print("[WARN] BME280 hardware not found.")
+            print("[WARN] BMP280 hardware not found.")
             
         print("[INIT] SensorManager ready for polling.")
 
@@ -572,7 +576,7 @@ class SensorManager:
         return read_soil_moisture()
 
     def read_environment(self):
-        # Reads Temp/Hum/Pres from BME280
+        # Reads Temp/Pressure from BMP280. humidity is always None (BMP280 has no humidity sensor).
         return read_environment()
 
     def read_tank_level(self):

@@ -114,17 +114,18 @@ def _start_device_listener():
     _heartbeat_listener = doc_ref.on_snapshot(_on_device_snapshot)
     print("[FIREBASE] Device document listener started (heartbeat caching active).")
 
-def push_telemetry(telemetry_data: dict, write_history: bool = True):
+def push_telemetry(telemetry_data: dict, write_history: bool = True) -> bool:
     """
     Pushes current status to the device document. If write_history=True,
     also appends a record to the telemetry subcollection (historical log).
 
-    write_history should be False for high-frequency Differential Sync calls
-    to prevent the subcollection from growing by thousands of documents per day.
-    It should be True for scheduled Eco-Mode and FORCE_SYNC calls only.
+    Returns True if the Firestore write succeeded, False otherwise.
+    The caller MUST check the return value before updating its local
+    baseline — a False return means the cloud was NOT updated.
     """
     if not _db:
-        return
+        print("[FIREBASE_ERROR] push_telemetry called but Firestore client (_db) is not initialised.")
+        return False
         
     try:
         doc_ref = _db.collection('devices').document(config.DEVICE_ID)
@@ -137,6 +138,7 @@ def push_telemetry(telemetry_data: dict, write_history: bool = True):
             'tank_level': telemetry_data.get('tank_level', 0),
             'pump_locked': telemetry_data.get('pump_locked', False),
             'soil_moisture': telemetry_data.get('soil_moisture', [0.0, 0.0, 0.0]),
+            'soil_moisture_raw': telemetry_data.get('soil_moisture_raw', [-1.0, -1.0, -1.0]),
             'temperature': telemetry_data.get('temperature', 0.0),
             'humidity': telemetry_data.get('humidity', 0.0),
             'flow_rate': telemetry_data.get('flow_rate', 0.0),
@@ -153,9 +155,12 @@ def push_telemetry(telemetry_data: dict, write_history: bool = True):
         # reducing historical document creation by ~90%.
         if write_history:
             doc_ref.collection('telemetry').add(telemetry_data)
+
+        return True  # ← Confirmed success
         
     except Exception as e:
-        print(f"[FIREBASE_ERROR] Failed to push telemetry: {e}")
+        print(f"[FIREBASE_ERROR] push_telemetry FAILED: {e}")
+        return False  # ← Caller must not update baseline
 
 def push_alerts(alerts):
     """Pushes alerts to Firestore."""
@@ -174,7 +179,49 @@ def push_alerts(alerts):
     except Exception as e:
         print(f"[FIREBASE_ERROR] Failed to push alerts: {e}")
 
+def push_history_batch(records: list) -> list:
+    """
+    Uploads a batch of locally-stored telemetry records to the Firebase
+    telemetry subcollection. Used by the Recovery Engine in main.py to
+    backfill data that was captured by SQLite during an internet outage.
+
+    Args:
+        records: List of dicts as returned by local_db.get_unsynced_records().
+                 Each dict has: timestamp, soil_moisture, temperature, humidity.
+
+    Returns:
+        List of record IDs that were successfully uploaded.
+    """
+    if not _db or not records:
+        return []
+
+    doc_ref = _db.collection('devices').document(config.DEVICE_ID)
+    synced_ids = []
+
+    for record in records:
+        try:
+            doc_ref.collection('telemetry').add({
+                'timestamp':    record['timestamp'],
+                'soil_moisture': record['soil_moisture'],
+                'temperature':  record['temperature'],
+                'humidity':     record['humidity'],
+                '_source':      'local_db_recovery',  # Tag to distinguish from live pushes
+            })
+            synced_ids.append(record['id'])
+        except Exception as e:
+            print(f"[FIREBASE_ERROR] Failed to upload recovery record "
+                  f"(ts={record.get('timestamp')}): {e}")
+            # Stop on first failure — remaining unsynced rows stay for next attempt
+            break
+
+    if synced_ids:
+        print(f"[FIREBASE] Recovery batch: uploaded {len(synced_ids)} "
+              f"of {len(records)} record(s) ✓")
+    return synced_ids
+
+
 def listen_for_commands(callback):
+
     """Listens for remote commands added to the commands subcollection."""
     global _command_listener
     if not _db:
