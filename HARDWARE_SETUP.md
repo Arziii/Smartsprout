@@ -107,28 +107,48 @@ Because the system controls a 5V Low-Voltage Pump and 12V High-Voltage Valves, t
 
 ## 7. Hardware Fault Mitigation & Protective Wiring
 
-To ensure industrial-grade uptime, the following electrical shields are required to protect the Raspberry Pi from brownouts and reverse-voltage spikes (Back-EMF).
+To ensure industrial-grade uptime and protect the Raspberry Pi from erratic power fluctuations and electrical hazards inherent to inductive loads, the following four electrical shields are mandatory for this "Split-Rail" configuration.
 
 ### Protective Bill of Materials (BOM)
-| Component | Specification | Qty | Target Device |
+
+| Component | Specification | Qty | Location / Target Device |
 | :--- | :--- | :--- | :--- |
+| **Inline Fuse** | 7.5A Automotive Type | 1 pc | Main 12V Input DC Line |
+| **Inline Fuse** | 5A Automotive Type | 1 pc | 5.1V Buck Converter Output Line |
 | **Flyback Diode** | 1N4007 Rectifier Diode | 4 pcs | 1x (5V Pump), 3x (12V Valves) |
-| **Bulk Capacitor** | 1000µF Electrolytic (100V) | 1 pc | 5V Power Rail (XL4016 Output) |
+| **Bulk Capacitor** | 1000µF Electrolytic | 1 pc | 5.1V Power Rail (Buck Converter Output) |
+| **Resistor** | 10kΩ | 1 pc | Water Sensor Signal Line |
+| **Resistor** | 20kΩ | 1 pc | Water Sensor Signal to Ground |
 
-### 7.1 Back-EMF Suppression (The Diodes)
-When the relays turn off the pump or valves, the collapsing magnetic fields inside the motors shoot a destructive, high-voltage spark backward through the wires.
+### 7.1 Overcurrent Protection (Fuses)
+Fusing prevents catastrophic thermal runaway and limits damage during short-circuit events within the power rail.
 
-*   **Wiring:** Install one 1N4007 Diode across the positive and negative wires of the pump, and across the wires of each of the three valves.
-*   **Crucial Polarity:** Diodes are strictly one-way. You must wire them in **"Reverse Bias."** Connect the side with the Silver Stripe (Cathode) to the Positive (+) wire of the pump/valve. Connect the Solid Black side (Anode) to the Negative (GND) wire.
+*   **Wiring & Sizing:** 
+    *   Install a **7.5A inline fuse** on the main **12V input** positive line, before it reaches the relays and Buck Converter. This protects the entire system against total catastrophic shorts.
+    *   Install a **5A inline fuse** on the **5.1V Buck Converter output** positive line. This specifically protects the Raspberry Pi and the 5.1V logic rail in the event the 5V submersible pump jams and draws excessive current.
 
-### 7.2 Brownout Prevention (The Capacitor)
-When the 5V pump turns on, it sucks a massive "inrush current" that can drop the 5V line voltage low enough to instantly crash the Raspberry Pi.
+### 7.2 Back-EMF Suppression (Flyback Diodes)
+When the mechanical relays turn off the inductive motor loads (pump or valves), collapsing magnetic fields generate destructive, high-voltage inductive spikes that travel backward through the wiring.
 
-*   **Wiring:** Install the 1000µF Capacitor acting as a battery buffer directly at the output terminals of the XL4016 Buck Converter.
-*   **Crucial Polarity:** Connect the Long Leg (Positive) to the 5V Output (+). Connect the Short Leg with the grey minus stripe (Negative) to the GND Output (-). **Warning:** Wiring this backward will cause the capacitor to pop!
+*   **Wiring:** Install four **1N4007 Diodes** wired in parallel directly across the terminals (positive and negative wires) of the 1 pump and the 3 normally-closed solenoid valves.
+*   **Crucial Polarity:** Diodes must be explicitly wired in **"Reverse Bias"** to catch these spikes. 
+    *   Connect the **Cathode (Silver Stripe)** side of the diode to the **Positive (+)** wire of the pump/valve.
+    *   Connect the **Anode (Solid Black)** side of the diode to the **Ground (-)** wire. 
 
-### 7.3 Logic Level Shifting
-The XKC-Y26-V liquid sensor operates at 5V. Its output signal is passed through a **Voltage Divider (1kΩ/2kΩ resistors)** to ensure the Pi only receives a safe 3.3V signal on GPIO 5.
+### 7.3 Brownout Prevention (Bulk Capacitor)
+When the 5V pump kicks on, the electric motor intrinsically demands a massive transient "inrush current." Without buffering, this sharp power draw momentarily drops the 5.1V line voltage below operational thresholds, causing the Raspberry Pi to instantly crash.
+
+*   **Wiring:** Install a **1000µF electrolytic capacitor** spanning across the **5.1V Output** and **Ground** terminals of the Buck Converter to act as a local battery buffer.
+*   **Crucial Polarity:** The capacitor is polarized. Connect its **Long Leg** to the **Positive 5.1V Output** and its **Short Leg (with the white/grey minus stripe)** to **Ground**. 
+    > **Warning:** Reversing the polarity will cause the capacitor to physically burst!
+
+### 7.4 Logic Level Shifting (Voltage Divider)
+The XKC-Y26-V liquid level sensor requires 5V to scan through container walls effectively, meaning its digital logic output is also 5V. However, the Raspberry Pi's GPIO pins are strictly 3.3V tolerant; exposing them to an unmitigated 5V signal will permanently destroy the CPU.
+
+*   **Wiring:** Construct a voltage divider using a **10kΩ** and **20kΩ** resistor on the **Yellow signal wire** coming from the XKC sensor.
+    *   Place the **10kΩ resistor** in series between the yellow signal wire and the destination **Raspberry Pi GPIO pin**.
+    *   Place the **20kΩ resistor** between the GPIO pin side of the 10kΩ resistor and the shared logic **Ground**. 
+    *   This precisely safely steps the 5V signal down to ~3.3V before it hits the Raspberry Pi.
 
 ---
 ## 8. Maintenance Note & Troubleshooting
