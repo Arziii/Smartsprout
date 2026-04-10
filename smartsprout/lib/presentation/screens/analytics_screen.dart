@@ -91,19 +91,23 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                     final cutoff = DateTime(today.year, today.month, today.day)
                         .subtract(const Duration(days: 6));
 
-                    // Generate UI FlSpots — use FlSpot.nullSpot for days with
-                    // no Pi telemetry so fl_chart renders a gap in the line.
-                    final moistureSpots = data
-                        .map((d) => d.hasData
-                            ? FlSpot(d.dayIndex.toDouble(), d.avgMoisture)
-                            : FlSpot.nullSpot)
-                        .toList();
-                    final tempSpots = data
-                        .map((d) => d.hasData
-                            ? FlSpot(d.dayIndex.toDouble(), d.avgTemp)
-                            : FlSpot.nullSpot)
-                        .toList();
-                    final hasAnyData = data.any((d) => d.hasData);
+                    // Generate UI FlSpots. By filtering out days with no data, 
+                    // fl_chart will draw a continuous line connecting the available points.
+                    final hasAnyData = data.any((d) => d.hasData == true);
+
+                    final moistureSpots = hasAnyData
+                        ? data
+                            .where((d) => d.hasData == true)
+                            .map((d) => FlSpot(d.dayIndex.toDouble(), d.avgMoisture))
+                            .toList()
+                        : const [FlSpot(0, 0)];
+
+                    final tempSpots = hasAnyData
+                        ? data
+                            .where((d) => d.hasData == true)
+                            .map((d) => FlSpot(d.dayIndex.toDouble(), d.avgTemp))
+                            .toList()
+                        : const [FlSpot(0, 0)];
 
                     return SingleChildScrollView(
                       padding: const EdgeInsets.symmetric(
@@ -251,7 +255,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                           '$missingCount day${missingCount == 1 ? '' : 's'} with no sensor data (shown as gaps)',
                           style: GoogleFonts.outfit(
                             fontSize: 11,
-                            color: isDark ? Colors.white38 : Colors.grey.shade500,
+                            color:
+                                isDark ? Colors.white38 : Colors.grey.shade500,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -269,7 +274,6 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                       gridData: FlGridData(
                         show: true,
                         drawVerticalLine: false,
-                        horizontalInterval: 20,
                         getDrawingHorizontalLine: (value) {
                           return FlLine(
                               color: const Color(0xFF4A6164)
@@ -286,18 +290,23 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                         leftTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
-                            reservedSize: 30,
-                            interval: 1,
+                            reservedSize: 40,
                             getTitlesWidget: (value, meta) {
-                              if (value != value.toInt()) {
+                              // Hide min and max values to prevent overlapping with regular interval labels
+                              if (value == meta.min || value == meta.max) {
                                 return const SizedBox.shrink();
                               }
-                              return Text('${value.toInt()}',
-                                  style: GoogleFonts.outfit(
-                                      fontSize: 12,
-                                      color: const Color(0xFF4A6164)
-                                          .withValues(alpha: 0.7),
-                                      fontWeight: FontWeight.w600));
+                              
+                              return SideTitleWidget(
+                                meta: meta,
+                                space: 8,
+                                child: Text(meta.formattedValue,
+                                    style: GoogleFonts.outfit(
+                                        fontSize: 12,
+                                        color: const Color(0xFF4A6164)
+                                            .withValues(alpha: 0.7),
+                                        fontWeight: FontWeight.w600)),
+                              );
                             },
                           ),
                         ),
@@ -311,10 +320,30 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                                 return const SizedBox.shrink();
                               }
                               final idx = value.toInt();
-                              if (idx < 0 || idx > 6) return const SizedBox.shrink();
+                              if (idx < 0 || idx > 6) {
+                                return const SizedBox.shrink();
+                              }
                               final isToday = _isToday(idx);
-                              final label = isToday ? 'Today' : _dayLabel(idx, cutoff);
-                              final dayHasData = dataPoints[idx].hasData as bool;
+                              final label =
+                                  isToday ? 'Today' : _dayLabel(idx, cutoff);
+                              final dayHasData =
+                                  dataPoints[idx].hasData as bool;
+                                  
+                              final spotIdx = spots.indexWhere((s) => s.x == idx);
+                              final chartValue = spotIdx != -1 ? spots[spotIdx].y : null;
+
+                              Color getLabelColor() {
+                                if (!dayHasData) {
+                                  return isDark ? Colors.red.shade400 : Colors.red.shade600; // Pi offline
+                                }
+                                if (chartValue != null && chartValue <= -1) {
+                                  return isDark ? Colors.amber.shade400 : Colors.amber.shade600; // Value is -1
+                                }
+                                return isDark ? Colors.green.shade400 : Colors.green.shade600; // Valid green
+                              }
+                              
+                              final labelColor = getLabelColor();
+
                               return Padding(
                                 padding: const EdgeInsets.only(top: 4.0),
                                 child: Column(
@@ -325,29 +354,22 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                                       style: GoogleFonts.outfit(
                                         fontSize: isToday ? 11 : 12,
                                         height: 1.2,
-                                        color: isToday
-                                            ? color
-                                            : (isDark
-                                                ? Colors.white54
-                                                : const Color(0xFF4A6164)
-                                                    .withValues(alpha: 0.7)),
-                                        fontWeight: isToday
+                                        color: labelColor,
+                                        fontWeight: !dayHasData || isToday || (chartValue != null && chartValue <= -1)
                                             ? FontWeight.w900
                                             : FontWeight.w600,
                                       ),
                                     ),
                                     const SizedBox(height: 3),
-                                    // ── No-data indicator dot under the label ──
+                                    // ── Indicator dot/dash under the label ──
                                     if (!dayHasData)
                                       Text(
                                         '—',
                                         style: GoogleFonts.outfit(
                                           fontSize: 10,
                                           height: 1.0,
-                                          color: isDark
-                                              ? Colors.white24
-                                              : Colors.grey.shade400,
-                                          fontWeight: FontWeight.w700,
+                                          color: labelColor,
+                                          fontWeight: FontWeight.w900,
                                         ),
                                       )
                                     else
@@ -356,7 +378,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                                         height: 5,
                                         decoration: BoxDecoration(
                                           shape: BoxShape.circle,
-                                          color: color.withValues(alpha: 0.7),
+                                          color: labelColor,
                                         ),
                                       ),
                                   ],

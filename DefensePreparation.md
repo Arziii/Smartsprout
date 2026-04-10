@@ -182,7 +182,7 @@ usecaseDiagram
    - **Data**: Reads temperature, humidity, and calculated soil moisture relative to calibration.
 2. **Control Screen**:
    - Contains smart-toggle pump buttons and the **Master Lockdown Switch**.
-   - **Interactions**: Toggles initiate either Continuous or Pulse & Soak manual runs. The Lockdown Switch instantly sets `pump_locked` to true, requiring a manual "Release" to unlock.
+   - **Interactions**: Toggles initiate either Continuous or Pulse & Soak manual runs. The Lockdown Switch instantly sets `pump_locked` to true, disables all manual zone controls simultaneously, and explicitly locks the autonomous strategy toggle until explicitly "Released" by the user.
 3. **Calibration & Settings**:
    - Sliders to configure `SOIL_DRY` and `SOIL_WET` capacities with direct numeric input support.
    - Dual-input fields mapping the *target_moisture* and *max_pump_runtime*.
@@ -210,7 +210,7 @@ The Flutter mobile application serves as the primary remote control interface fo
 
 ### 3. Control Screen (Manual Operations)
 - **Pump Toggles**: Allows the user to select between "Continuous" and "Pulse & Soak" watering. Tapping the button writes a `force_water` command to Firebase.
-- **Master Lockdown Switch**: A critical safety toggle. When activated, it writes `pump_locked = true` to the cloud. The Pi receives this instantly and permanently refuses to turn on the pumps—even for auto-watering—until the user manually releases the lockdown.
+- **Master Lockdown Switch**: A critical safety toggle. When activated, it writes `pump_locked = true` to the cloud. The Pi receives this instantly and refuses to run the pumps. Concurrently, the mobile app UI greys out and explicitly disables all manual pump buttons and automatic watering toggles to prevent accidental queues while locked.
 - **Auto-Watering Strategies**: Users can switch the autonomous system between *Sensor Threshold* (waters when soil gets dry) or *Timer Schedule* (waters at a specific time daily).
 
 ### 4. Calibration Screen
@@ -297,10 +297,10 @@ The Pi writes `-1.0` when it cannot read a sensor (I2C bus failure, sensor unplu
 
 | Condition | `hasData` | Line on Chart | X-Axis Bottom Label |
 |---|---|---|---|
-| Pi published data, sensors healthy | `true` | Segment at real value + colored dot | `Mon` + ● accent dot |
-| Pi published data, sensors offline | `true` | Segment at `-1.0` + colored dot | `Mon` + ● accent dot |
-| Pi was off — zero Firestore docs | `false` | Gap (invisible) | `Mon` + `—` grey dash |
-| All docs on day failed parse | `false` | Gap (invisible) | `Mon` + `—` grey dash |
+| Pi published data, sensors healthy | `true` | Segment at real value + colored dot | `Mon` + ● dot (Green) |
+| Pi published data, sensors offline | `true` | Segment at `-1.0` + colored dot | `Mon` + ● dot (Yellow) |
+| Pi was off — zero Firestore docs | `false` | Gap (invisible) | `Mon` + `—` dash (Red) |
+| All docs on day failed parse | `false` | Gap (invisible) | `Mon` + `—` dash (Red) |
 | dayIndex == 6 (today) | either | Normal rendering | `Today` in accent color (bold) |
 
 ### 6.6 Quota & Cache Design
@@ -520,7 +520,7 @@ stateDiagram-v2
 
 **Q2: How do you prevent the pumps from flooding the user's house?**
 *Answer:* We implemented a multi-layered safety strategy:
-1. **Master Lockdown Switch**: A global software kill-switch that locks the system's state.
+1. **Master Lockdown Switch**: A global software kill-switch that physically locks out all UI buttons (both manual controls and auto-schedules) and commands the Pi to halt all logic.
 2. **Pulse & Soak System**: Reduces hydraulic pressure and prevents soil saturation runoff.
 3. **Dead-Man's Switch**: Kills the pump if the mobile app disconnects for >5 seconds during manual operation.
 4. **NC Solenoid Valves**: We use **Normally Closed** valves wired to **Normally Open** relay terminals. They require active power and logic confirmation to open, ensuring they remain shut during power loss or system crashes.

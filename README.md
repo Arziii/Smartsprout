@@ -114,6 +114,7 @@ Flutter App              Firestore              Raspberry Pi 4
 - **Eco-Mode + Differential Sync**: Hardware polling (3s) is decoupled from Firebase writes (30-min ceiling). Writes only fire on: ≥8% moisture delta, ≥3°C temperature delta, tank level change, system-status change, or manual FORCE_SYNC command. The Linux Kiosk UI reads directly from a local telemetry cache (`telemetry_cache.json`) to achieve zero-API-cost real-time responsiveness.
 - **Pulse & Soak Auto-Watering**: Pulses water 5s → soaks 20s → re-reads moisture → repeats until target saturation reached or safety timeout fires.
 - **Dead-Man's Switch**: During manual watering, a 10s heartbeat is required from the mobile app. If missed for >5s, the Pi kills all pumps immediately.
+- **Master Lockdown (Emergency Stop)**: Engaging the Emergency Stop instantly kills all running pumps and physically locks out the UI. All manual zone controls (Burst, Soak, Flow) and automatic watering strategies are completely disabled until explicitly unlocked by the user.
 - **Pump Safety Watchdog**: GPIO-level daemon forces pump OFF if it runs >120 seconds.
 - **Physical Factory Reset**: Hardware button (BCM 24) with LED feedback (BCM 18).
 
@@ -182,12 +183,12 @@ When the Pi cannot read a sensor (disconnected, I2C fault, BME280 failure), it w
 
 ### Chart Behavior Reference
 
-| Condition | `hasData` | Chart Renders | Bottom Label |
-|---|---|---|---|
-| Pi published docs, sensors OK | `true` | Line segment with dot | Day name + ● colored dot |
-| Pi published docs, sensors faulty | `true` | Line at `-1` | Day name + ● colored dot |
-| Pi was off / no docs in Firestore | `false` | Gap (no line) | Day name + `—` grey dash |
-| All docs on that day failed parsing | `false` | Gap (no line) | Day name + `—` grey dash |
+| Pi published docs, sensors OK | `true` | Continuous Line | Day name + ● dot (Green) |
+| Pi published docs, sensors faulty | `true` | Line at `-1` | Day name + ● dot (Amber Yellow) |
+| Pi was off / no docs in Firestore | `false` | Gap (no line) | Day name + `—` dash (Red) |
+| All docs on that day failed parsing | `false` | Gap (no line) | Day name + `—` dash (Red) |
+
+> **UI Polish:** The Y-axis automatically scales without overlapping boundary limits (`meta.min`/`meta.max` are hidden) to prevent text collision, ensuring intervals like `0` and `-1` remain perfectly spaced and legible.
 
 ### Firestore Quota Impact
 

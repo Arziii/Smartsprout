@@ -456,7 +456,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                 isActive: _wateringActive[1] ?? false,
                                 disabled: isPumpLockedSafe ||
                                     !isConnected ||
-                                    isTankLow,
+                                    isTankLow ||
+                                    _masterLockdown,
                               ),
                               const SizedBox(height: 12),
                               _buildZoneToggle(
@@ -469,7 +470,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                 isActive: _wateringActive[2] ?? false,
                                 disabled: isPumpLockedSafe ||
                                     !isConnected ||
-                                    isTankLow,
+                                    isTankLow ||
+                                    _masterLockdown,
                               ),
                               const SizedBox(height: 12),
                               _buildZoneToggle(
@@ -482,7 +484,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                 isActive: _wateringActive[3] ?? false,
                                 disabled: isPumpLockedSafe ||
                                     !isConnected ||
-                                    isTankLow,
+                                    isTankLow ||
+                                    _masterLockdown,
                               ),
                             ],
                           ),
@@ -691,7 +694,8 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                         : IrrigationStrategy.timer),
                                 disabled: !isConnected ||
                                     isPumpLockedSafe ||
-                                    isTankLow,
+                                    isTankLow ||
+                                    _masterLockdown,
                                 onToggle: () {
                                   HapticFeedback.heavyImpact();
                                   final targetStrategy =
