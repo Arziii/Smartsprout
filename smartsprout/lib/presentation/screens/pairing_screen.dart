@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../core/widgets/kiosk_text_field.dart';
 import '../providers/auth_provider.dart';
 
 // ═══════════════════════════════════════════════════════
@@ -508,7 +509,7 @@ class _PairingScreenState extends ConsumerState<PairingScreen>
     List<TextInputFormatter>? inputFormatters,
     String? Function(String?)? validator,
   }) {
-    return TextFormField(
+    return KioskTextFormField(
       controller: controller,
       obscureText: obscure,
       keyboardType: keyboardType,

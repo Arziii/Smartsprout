@@ -6,11 +6,16 @@ import '../../data/models/sensor_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../presentation/providers/auth_provider.dart';
 import '../../data/models/analytics_model.dart';
 
 class DataService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  // Lazy getter — only accessed inside non-Linux (else) code paths.
+  // DO NOT convert back to an eager field: Firebase is not initialized
+  // on Linux, so calling FirebaseFirestore.instance at construction time
+  // throws "No Firebase App" and puts every dependent provider in error state.
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
   final String deviceId;
   final String _projectId = 'smartsproutadmin';
   final String _apiKey = 'AIzaSyANlBxYFTPv0t7_RuGlRApt_aCtI8M-s44';
@@ -102,7 +107,14 @@ class DataService {
     if (Platform.isLinux) {
       // Read the local telemetry cache written by main.py every 3 seconds.
       // No internet required — direct sensor data, zero quota cost.
-      return Stream.periodic(const Duration(seconds: 3)).asyncMap((_) async {
+      //
+      // Uses a StreamController to emit IMMEDIATELY on first subscription
+      // (avoiding a 3-second blank screen on kiosk startup), then repeats
+      // every 3 seconds via a periodic Timer.
+      late StreamController<SensorData> controller;
+      Timer? timer;
+
+      Future<SensorData> readCache() async {
         try {
           final file = File('/tmp/smartsprout_telemetry.json');
           if (!await file.exists()) {
@@ -119,7 +131,25 @@ class DataService {
           debugPrint('[LOCAL_TELEMETRY] Failed to read cache: $e');
           return const SensorData(systemStatus: 'offline');
         }
-      });
+      }
+
+      controller = StreamController<SensorData>(
+        onListen: () async {
+          // Emit immediately so the UI is populated on first frame.
+          controller.add(await readCache());
+          // Then poll every 3 seconds.
+          timer = Timer.periodic(const Duration(seconds: 3), (_) async {
+            if (!controller.isClosed) {
+              controller.add(await readCache());
+            }
+          });
+        },
+        onCancel: () {
+          timer?.cancel();
+          controller.close();
+        },
+      );
+      return controller.stream;
     } else {
       // Native Firebase on Mobile — real-time Firestore listener.
       return _firestore
@@ -356,22 +386,15 @@ class DataService {
   // ═══════════════════════════════════════════════════════
   // Zones Collection for Plant Images
   // ═══════════════════════════════════════════════════════
+
+  /// Fetches the plant image filename for [zoneId] from Firestore.
+  ///
+  /// Linux path: uses an async* generator so the first value is emitted
+  /// immediately on subscribe (no 10-second delay), then re-polls every 10s.
+  /// Mobile/Windows path: uses a real-time Firestore snapshot stream.
   Stream<String?> zoneImageStream(String zoneId) {
     if (Platform.isLinux) {
-      return Stream.periodic(const Duration(seconds: 10)).asyncMap((_) async {
-        try {
-          final url = '$_baseUrl/zones/$zoneId?key=$_apiKey';
-          final response = await _authenticatedGet(url);
-          if (response.statusCode == 200) {
-            final data = json.decode(response.body);
-            if (data['fields'] != null &&
-                data['fields']['plant_image_name'] != null) {
-              return data['fields']['plant_image_name']['stringValue'];
-            }
-          }
-        } catch (_) {}
-        return null;
-      });
+      return _linuxZoneImageStream(zoneId);
     } else {
       return _firestore
           .collection('devices')
@@ -385,9 +408,75 @@ class DataService {
     }
   }
 
+  /// Linux-specific plant image stream.
+  /// Uses a resilient caching loop to prevent UI blinking when offline.
+  Stream<String?> _linuxZoneImageStream(String zoneId) async* {
+    String? lastYielded;
+    final prefs = await SharedPreferences.getInstance();
+    final cacheKey = 'cached_image_$zoneId';
+
+    while (true) {
+      // 1. Check local fast-memory cache. This allows the UI to update
+      // immediately when 'updateZoneImage' writes to SharedPreferences.
+      final cached = prefs.getString(cacheKey);
+      if (cached != lastYielded) {
+        lastYielded = cached;
+        yield cached;
+      }
+
+      // 2. Poll Firebase REST API to get updates from the mobile app
+      bool networkSuccess = false;
+      String? networkResult;
+
+      try {
+        final url = '$_baseUrl/zones/$zoneId?key=$_apiKey';
+        final response = await _authenticatedGet(url);
+        if (response.statusCode == 200) {
+          networkSuccess = true;
+          final data = json.decode(response.body);
+          if (data['fields'] != null &&
+              data['fields']['plant_image_name'] != null) {
+            networkResult =
+                data['fields']['plant_image_name']['stringValue'] as String?;
+          }
+        } else if (response.statusCode == 404) {
+          networkSuccess = true; // Document doesn't exist yet, valid state.
+        }
+      } catch (e) {
+        // Silently skip. The node might be offline, but the UI won't blink
+        // because we don't yield a null result on a network exception.
+      }
+
+      // 3. If the network gave us a *different* value than cache,
+      // update our ground truth and yield it.
+      if (networkSuccess && networkResult != lastYielded) {
+        lastYielded = networkResult;
+        yield networkResult;
+
+        if (networkResult != null && networkResult.isNotEmpty) {
+          await prefs.setString(cacheKey, networkResult);
+        } else {
+          await prefs.remove(cacheKey);
+        }
+      }
+
+      // 4. Poll every 2 seconds. SharedPreferences is in-memory, so reading
+      // it is extremely lightweight and ensures the kiosk responds instantly.
+      await Future.delayed(const Duration(seconds: 2));
+    }
+  }
+
   Future<void> updateZoneImage(String zoneId, String imageName) async {
     if (Platform.isLinux) {
       try {
+        final prefs = await SharedPreferences.getInstance();
+        final cacheKey = 'cached_image_$zoneId';
+        if (imageName.isEmpty) {
+          await prefs.remove(cacheKey);
+        } else {
+          await prefs.setString(cacheKey, imageName);
+        }
+
         final url =
             '$_baseUrl/zones/$zoneId?updateMask.fieldPaths=plant_image_name&key=$_apiKey';
         final token = await _getAuthToken();
@@ -431,7 +520,10 @@ class DataService {
   }
 
   Future<void> setWateringMode(String mode,
-      {String? strategy, int? timerHour, int? timerMinute}) async {
+      {String? strategy,
+      int? timerHour,
+      int? timerMinute,
+      List<int>? enabledZones}) async {
     final payload = <String, dynamic>{
       'command': 'set_mode',
       'mode': mode,
@@ -439,6 +531,9 @@ class DataService {
     if (strategy != null) payload['strategy'] = strategy;
     if (timerHour != null) payload['timer_hour'] = timerHour;
     if (timerMinute != null) payload['timer_minute'] = timerMinute;
+    // enabled_zones: list of zone numbers (1-indexed) that should participate.
+    // If omitted, the Pi defaults to all zones enabled.
+    if (enabledZones != null) payload['enabled_zones'] = enabledZones;
 
     await sendCommand(payload);
   }

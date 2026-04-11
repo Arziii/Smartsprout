@@ -98,7 +98,8 @@ The Smart Sprout hardware system integrates:
 │                         │ Temperature, Tank Level, Status         │          │
 ├─────────────────────────┼─────────────────────────────────────────┼──────────┤
 │ Irrigation Control      │ Manual pump on/off, Dual-strategy       │ P0       │
-│                         │ auto mode (Sensor threshold & Timer)    │          │
+│                         │ auto mode — MUTUALLY EXCLUSIVE:         │          │
+│                         │ Sensor Target (≤ threshold) OR Timer    │          │
 ├─────────────────────────┼─────────────────────────────────────────┼──────────┤
 │ Local Touchscreen Mode  │ Complete local offline control and      │ P0       │
 │                         │ calibration via the Raspberry Pi UI     │          │
@@ -529,6 +530,20 @@ PHASE 4.25: ADVANCED UI OPTIMIZATIONS [COMPLETED]
 ☑ SnackBar Polish: Reduced notification overlay durations to 1.5 seconds for a snappy and non-obtrusive feedback loop.
 ☑ UI Cleanup: Removed the redundant "Edit Nickname" feature from the account switching screen logic, focusing purely on device rename actions in the Settings menu.
 
+PHASE 4.26: AUTO-WATERING STRATEGY REFACTOR [COMPLETED]
+☑ Mutually Exclusive Strategies: Sensor Target and Daily Timer are now strictly mutually exclusive. Enabling one automatically disables the other via card-based UI selection.
+☑ Corrected Trigger Logic: Sensor Target now triggers when moisture ≤ startThreshold (was incorrectly == threshold), ensuring reliable debounced auto-watering.
+☑ UI Conflict Resolved: Removed the legacy SegmentedButton and redundant _autoStrategy field that caused the Daily Timer to override Sensor Target mode.
+☑ Emergency Stop Lockdown: Both auto-watering strategies are fully disabled while the Emergency Stop is engaged, preventing any irrigation regardless of sensor state.
+☑ Low Tank Warning: Manual watering with empty tank now shows "The water is Low, Please check your tank!" instead of the generic hardware error string.
+☑ Analytics Color Coding: Offline data shown in red, sensor faults in amber, valid readings in green — consistent with System Health screen.
+
+PHASE 4.27: LINUX KIOSK INITIALIZATION FIX [COMPLETED]
+☑ Root Cause Fixed: Converted FirebaseFirestore.instance from an eager field initializer to a lazy getter in DataService, eliminating the "No Firebase App" crash that caused all Linux UI screens to render blank.
+☑ Technical Detail: The old `final FirebaseFirestore _firestore = FirebaseFirestore.instance;` evaluated at class construction time before any Platform.isLinux check could protect it. The new `FirebaseFirestore get _firestore => FirebaseFirestore.instance;` defers access to call sites, all of which are already inside non-Linux else branches.
+☑ Immediate Telemetry Stream: Replaced Stream.periodic (3s delay before first event) with a StreamController that reads /tmp/smartsprout_telemetry.json immediately on subscription, then polls every 3 seconds. Kiosk now shows real sensor values on the very first frame.
+☑ Zero Startup Blank: Dashboard, Calibration, Analytics, and Settings screens on Linux now render correctly on first load.
+
 ═══════════════════════════════════════════════════════════════════
 
 
@@ -639,43 +654,73 @@ Linux Kiosk UI / Hardware Button            Raspberry Pi
 7.3 HARDWARE PIN ASSIGNMENTS
 
 The following represents the physical GPIO mapping configured for the Raspberry Pi 
-backend. These can be securely overridden locally via the `.env` configuration file.
+backend (`main.py`, `sensors.py`, `pump_watchdog.py`). These can be securely 
+overridden locally via the `.env` configuration file.
 
-**Power Infrastructure:** 12V 8A DC Power Adapter using 18AWG copper wiring for the main power rails to ensure current stability.
-**Voltage Regulation:** XL4016 High-Current Buck Converter (8A) calibrated to 5.1V. This setup powers the Raspberry Pi 4 via a 2-wire Homesaya USB Female Jack, the Relay VCC, and the USB Pump.
-**Irrigation Failsafe:** Normally Closed (NC) solenoid valves are wired to Normally Open (NO) relay terminals. The valves receive 12V directly from the adapter (bypassing the buck converter).
+**Power Infrastructure:** 12V 8A DC Power Adapter using 18AWG copper wiring for the main power rails.
+**Voltage Regulation:** XL4016 High-Current Buck Converter (8A) calibrated to 5.1V — powers the Raspberry Pi 4 via a 2-wire Homesaya USB Female Jack, the 5-Channel Relay VCC, and the USB Pump.
+**Irrigation Failsafe:** NC (Normally Closed) solenoid valves → wired to NO (Normally Open) relay terminals → powered by 12V directly from adapter (NOT through buck converter).
+**Active-Low Relay Logic:** GPIO LOW (0V) = Relay energized = Valve OPEN. GPIO HIGH (3.3V) = Valve CLOSED.
 
-┌───────────────────────┬───────────────────────────┬─────────────────────────────┐
-│ Component             │ Device Pin / Wire Color   │ Raspberry Pi Pin (BCM / Phys)│ Power Source & Wiring Logic │
-├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Main Power            │ USB-C / Homesaya Jack    │ Pi 4 USB-C Port             │ XL4016 Buck Output (5.1V)   │
-├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ I2C Bus (Sensors)     │ SDA                       │ BCM 2 (Pin 3)               │ 3.3V from Pi (Pin 1)        │
-│                       │ SCL                       │ BCM 3 (Pin 5)               │ Shared GND with Pi          │
-├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Soil Moisture (Bed 1) │ Sensor 1 Signal           │ **ADS1115 A0**              │ Capacitive v1.2 (Analog)    │
-│ Soil Moisture (Bed 2) │ Sensor 2 Signal           │ **ADS1115 A1**              │ Capacitive v1.2 (Analog)    │
-│ Soil Moisture (Bed 3) │ Sensor 3 Signal           │ **ADS1115 A2**              │ Capacitive v1.2 (Analog)    │
-├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Water Level (XKC)     │ Yellow (Signal)           │ BCM 5 (Pin 29)              │ 1kΩ/2kΩ Voltage Divider Req.│
-├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ Relay Module (5V)     │ VCC                       │ 5V (Pin 2 or 4)             │ Powered by Pi 5V Rail       │
-│                       │ IN1 (Pump)                │ BCM 17 (Pin 11)             │ COM: Buck OUT+ / NO: Pmp Red│
-│                       │ IN2 (Valve 1)             │ BCM 27 (Pin 13)             │ COM: 12V+ (IN+) / NO: V1+   │
-│                       │ IN3 (Valve 2)             │ BCM 22 (Pin 15)             │ COM: 12V+ (IN+) / NO: V2+   │
-│                       │ IN4 (Valve 3)             │ BCM 23 (Pin 16)             │ COM: 12V+ (IN+) / NO: V3+   │
-├───────────────────────┼───────────────────────────┼─────────────────────────────┤
-│ User Interface        │ Reset Button              │ BCM 24 (Pin 18)             │ One side to Pin, one to GND │
-│                       │ Feedback LED              │ BCM 18 (Pin 12)             │ Heartbeat Pulse / Rapid Blnk│
-└───────────────────────┴───────────────────────────┴─────────────────────────────┘
+┌─────────────────────────┬─────────────────────────┬───────────────────────┬────────────────────────────────────┐
+│ Hardware Component      │ Device Pin / Wire Color │ GPIO (BCM / Physical) │ Power Source & Wiring Logic        │
+├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
+│ Main Power              │ Homesaya USB Jack       │ Pi 4 USB-C Port       │ 8A XL4016 Buck Output (5.1V)       │
+├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
+│ I2C SDA                 │ SDA                     │ BCM 2  (Pin 3)        │ 3.3V from Pi (Pin 1)               │
+│ I2C SCL                 │ SCL                     │ BCM 3  (Pin 5)        │ Shared GND with Pi                 │
+├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
+│ ADS1115 ADC             │ VDD / GND               │ 3.3V / GND            │ Powers ADC chip (I2C: 0x48)        │
+│                         │ ADDR                    │ GND                   │ Sets I2C address to 0x48           │
+├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
+│ Soil Moisture Zone 1    │ Sensor 1 Signal         │ ADS1115 A0            │ Capacitive v1.2 (1.2–2.5V Analog) │
+│ Soil Moisture Zone 2    │ Sensor 2 Signal         │ ADS1115 A1            │ Capacitive v1.2 (1.2–2.5V Analog) │
+│ Soil Moisture Zone 3    │ Sensor 3 Signal         │ ADS1115 A2            │ Capacitive v1.2 (1.2–2.5V Analog) │
+├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
+│ BME280 (Temp/Hum/Pres)  │ SDA / SCL               │ BCM 2 / BCM 3         │ I2C addr: 0x76 (shared bus)        │
+├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
+│ Water Level (XKC-Y26-V) │ Yellow (Signal)         │ BCM 5  (Pin 29)       │ 1kΩ/2kΩ Voltage Divider (5V→3.3V) │
+├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
+│ Relay VCC               │ VCC                     │ 5V (Pin 2 or 4)       │ Powered by Pi 5V Rail              │
+│ Relay IN1 — Pump        │ IN1                     │ BCM 17 (Pin 11)       │ COM: XL4016 5V OUT+ / NO: Pump (+) │
+│ Relay IN2 — Valve 1     │ IN2                     │ BCM 27 (Pin 13)       │ COM: 12V+ / NO: Valve 1+           │
+│ Relay IN3 — Valve 2     │ IN3                     │ BCM 22 (Pin 15)       │ COM: 12V+ / NO: Valve 2+           │
+│ Relay IN4 — Valve 3     │ IN4                     │ BCM 23 (Pin 16)       │ COM: 12V+ / NO: Valve 3+           │
+├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
+│ Reset Button            │ Signal                  │ BCM 24 (Pin 18)       │ One side → GPIO, one → GND         │
+│ Status LED              │ Anode (+)               │ BCM 18 (Pin 12)       │ Long leg → GPIO / Short leg → GND  │
+└─────────────────────────┴─────────────────────────┴───────────────────────┴────────────────────────────────────┘
 
-7.4 THERMAL MANAGEMENT & ENCLOSURE DESIGN
+
+7.4 LINUX KIOSK DATA ARCHITECTURE
+
+The Flutter Kiosk UI on the Raspberry Pi operates completely offline — no Firebase,
+no internet, no API quota — using a local file-based telemetry pipeline:
+
+┌────────────────────────────────────────────────────────────────────┐
+│                    Raspberry Pi (Localhost)                         │
+│                                                                    │
+│  main.py  ───writes──►  /tmp/smartsprout_telemetry.json            │
+│  (I2C sensors,          (overwritten every 3 seconds)              │
+│   GPIO, BME280)                    ▲                               │
+│                                    │ reads directly (no HTTP)      │
+│  Flutter Kiosk                     │                               │
+│  (DataService)  ───────────────────┘                               │
+│    • First read = IMMEDIATE on app subscription                    │
+│    • Subsequent reads = every 3 seconds via Timer.periodic         │
+│    • Offline state shown if file is missing or Pi backend not up   │
+└────────────────────────────────────────────────────────────────────┘
+
+Commands (pump on/off, calibration writes) travel from Kiosk → Firebase REST API
+→ Python backend picks them up from the cloud command queue as usual.
+
+7.5 THERMAL MANAGEMENT & ENCLOSURE DESIGN
 
 Active Cooling: A dedicated 5V or 12V exhaust fan is integrated into the custom enclosure to dissipate heat from the XL4016 heatsinks and the Raspberry Pi 4 CPU.
 
 Airflow Path: The fan is positioned to pull hot air out of the case, preventing "thermal throttling" which can lead to system lag and sensor read errors.
 
-Wiring Strategy: 
+Wiring Strategy:
 *   **12V Fan:** Connect to the IN+ / IN- pins of the XL4016 (Full speed, maximum cooling).
 *   **5V Fan:** Connect to the OUT+ / OUT- pins of the XL4016 (Synced with Pi status).
 The fan runs whenever the system is powered to ensure continuous thermal safety.
@@ -1024,6 +1069,24 @@ to appear retroactively once the connection is restored.
 
 
 13. CONCLUSION
+
+
+The Smart Sprout system has achieved all core research objectives and is production-ready
+for the capstone defense. Key milestones reached:
+
+• Zero-Trust Hardware Gatekeeper (Pi-Bouncer) with PBKDF2-HMAC-SHA256 (600k iterations)
+• Fully offline-capable Linux Kiosk UI reading live telemetry from local file cache
+• Mutually exclusive dual auto-watering strategies with correct ≤ trigger logic
+• Master Emergency Stop locking out ALL irrigation channels simultaneously
+• SQLite store-and-forward ensuring zero analytics gaps during internet outages
+• Firestore quota optimized to <50,000 reads/day and <20,000 writes/day
+• Platform-adaptive UI (Mobile: glassmorphism / Kiosk: optimized for ARM64 GPU)
+• Complete horizontal scaling architecture: one codebase, unlimited Pi units
+
+All critical Linux kiosk initialization failures (blank screens on Calibration,
+Settings, Analytics) have been resolved by fixing the eager FirebaseFirestore.instance
+field initializer in DataService. The kiosk now displays correct, live sensor data
+from the very first frame after launch.
 
 
 ═══════════════════════════════════════════════════════════════════

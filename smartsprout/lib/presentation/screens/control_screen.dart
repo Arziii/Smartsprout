@@ -21,7 +21,6 @@ class ControlScreen extends ConsumerStatefulWidget {
 class _ControlScreenState extends ConsumerState<ControlScreen>
     with SingleTickerProviderStateMixin {
   String _mode = 'manual';
-  String _autoStrategy = 'sensor';
   TimeOfDay _autoTime = const TimeOfDay(hour: 8, minute: 0);
   late AnimationController _entranceController;
 
@@ -42,6 +41,14 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
 
   // Master lockdown state — like a real industrial e-stop
   bool _masterLockdown = false;
+
+  // ── Per-zone enabled toggles for each strategy ──
+  // If a zone is false it is skipped when that strategy runs.
+  final Map<int, bool> _sensorZonesEnabled = {1: true, 2: true, 3: true};
+  final Map<int, bool> _timerZonesEnabled  = {1: true, 2: true, 3: true};
+
+  // Which auto-strategy config page is currently visible (0 = Sensor, 1 = Timer)
+  int _autoPageIndex = 0;
 
   @override
   void initState() {
@@ -124,6 +131,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     setState(() {
       _wateringActive[zone] = false;
     });
+    
+    final isTankLow = ref.read(sensorDataProvider).isTankLow;
+    
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -133,7 +143,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Zone $zone: Hardware did not respond. Check your connection.',
+                isTankLow
+                    ? ' The water is Low, Please check your tank ! '
+                    : 'Zone $zone: Hardware did not respond. Check your connection.',
                 style: GoogleFonts.outfit(
                     fontWeight: FontWeight.w600, color: Colors.white),
               ),
@@ -216,6 +228,60 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
           }
         });
       }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // Mutual-Exclusive Auto Strategy Toggle
+  // ═══════════════════════════════════════════════════════
+  /// Enables the given [strategy]; if it was already active it turns it OFF.
+  /// Enabling one strategy automatically deactivates the other — a single
+  /// [_activeStrategy] value enforces mutual exclusivity.
+  void _toggleAutoStrategy(IrrigationStrategy strategy) {
+    HapticFeedback.heavyImpact();
+    final wasActive = _activeStrategy == strategy;
+    setState(() {
+      _activeStrategy = wasActive ? IrrigationStrategy.none : strategy;
+    });
+
+    // Build the enabled-zones list to pass alongside the command
+    final enabledZones = strategy == IrrigationStrategy.sensor
+        ? [1, 2, 3].where((z) => _sensorZonesEnabled[z] == true).toList()
+        : [1, 2, 3].where((z) => _timerZonesEnabled[z] == true).toList();
+
+    if (_activeStrategy != IrrigationStrategy.none) {
+      ref.read(dataServiceProvider)?.setWateringMode(
+        'auto',
+        strategy: _activeStrategy.name,
+        timerHour:
+            _activeStrategy == IrrigationStrategy.timer ? _autoTime.hour : null,
+        timerMinute: _activeStrategy == IrrigationStrategy.timer
+            ? _autoTime.minute
+            : null,
+        enabledZones: enabledZones,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          'Auto watering ON — ${_activeStrategy.name} mode',
+          style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+        ),
+        backgroundColor: const Color(0xFF2BCC71),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ));
+    } else {
+      ref.read(dataServiceProvider)?.setWateringMode('manual');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          'Auto watering OFF',
+          style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+        ),
+        backgroundColor: const Color(0xFF0F2027),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ));
     }
   }
 
@@ -494,272 +560,13 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                   ],
 
                   if (_mode == 'auto') ...[
-                    _buildAnimatedItem(
-                        2,
-                        _buildGlassCard(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text("Automatic Strategy",
-                                  style: GoogleFonts.outfit(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w800,
-                                      color: Theme.of(context).brightness ==
-                                              Brightness.dark
-                                          ? Colors.white
-                                          : const Color(0xFF0F2027))),
-                              const SizedBox(height: 16),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors.white10
-                                      : Colors.white.withValues(alpha: 0.5),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                padding: const EdgeInsets.all(4),
-                                child: SegmentedButton<String>(
-                                  style: SegmentedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    selectedForegroundColor:
-                                        Theme.of(context).brightness ==
-                                                Brightness.dark
-                                            ? const Color(0xFF0F2027)
-                                            : Colors.white,
-                                    selectedBackgroundColor:
-                                        const Color(0xFF29B6F6),
-                                    textStyle: GoogleFonts.outfit(
-                                        fontWeight: FontWeight.w600),
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 12),
-                                    side: BorderSide.none,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(12)),
-                                  ),
-                                  segments: const [
-                                    ButtonSegment(
-                                      value: 'sensor',
-                                      label: Text('Sensor Target'),
-                                      icon: Icon(Icons.water_drop_rounded),
-                                    ),
-                                    ButtonSegment(
-                                      value: 'timer',
-                                      label: Text('Daily Timer'),
-                                      icon: Icon(
-                                          Icons.access_time_filled_rounded),
-                                    ),
-                                  ],
-                                  selected: {_autoStrategy},
-                                  showSelectedIcon: false,
-                                  onSelectionChanged: (sel) =>
-                                      setState(() => _autoStrategy = sel.first),
-                                ),
-                              ),
-                              const SizedBox(height: 24),
-
-                              if (_autoStrategy == 'sensor') ...[
-                                Row(children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                        color: const Color(0xFF29B6F6)
-                                            .withValues(alpha: 0.15),
-                                        shape: BoxShape.circle),
-                                    child: const Icon(Icons.water_drop_rounded,
-                                        color: Color(0xFF29B6F6)),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                      child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                        Text("Sensor Thresholds",
-                                            style: GoogleFonts.outfit(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w700,
-                                                color: Theme.of(context)
-                                                            .brightness ==
-                                                        Brightness.dark
-                                                    ? Colors.white
-                                                    : const Color(0xFF0F2027))),
-                                        Text(
-                                            "Waters automatically when soil moisture drops below your calibration level.",
-                                            style: GoogleFonts.outfit(
-                                                color: Theme.of(context)
-                                                            .brightness ==
-                                                        Brightness.dark
-                                                    ? Colors.white70
-                                                    : const Color(0xFF4A6164),
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w500)),
-                                      ]))
-                                ])
-                              ] else ...[
-                                Row(children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                        color: const Color(0xFF29B6F6)
-                                            .withValues(alpha: 0.15),
-                                        shape: BoxShape.circle),
-                                    child: const Icon(
-                                        Icons.access_time_filled_rounded,
-                                        color: Color(0xFF29B6F6)),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                      child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                        Text("Daily Schedule",
-                                            style: GoogleFonts.outfit(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w700,
-                                                color: Theme.of(context)
-                                                            .brightness ==
-                                                        Brightness.dark
-                                                    ? Colors.white
-                                                    : const Color(0xFF0F2027))),
-                                        Text(
-                                            "Waters all zones every day at the time selected below.",
-                                            style: GoogleFonts.outfit(
-                                                color: Theme.of(context)
-                                                            .brightness ==
-                                                        Brightness.dark
-                                                    ? Colors.white70
-                                                    : const Color(0xFF4A6164),
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w500)),
-                                      ]))
-                                ]),
-                                const SizedBox(height: 16),
-                                InkWell(
-                                    onTap: () async {
-                                      final time = await showTimePicker(
-                                          context: context,
-                                          initialTime: _autoTime);
-                                      if (time != null) {
-                                        setState(() => _autoTime = time);
-                                      }
-                                    },
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 16, horizontal: 20),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.8),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          border: Border.all(
-                                              color: const Color(0xFF29B6F6)
-                                                  .withValues(alpha: 0.3)),
-                                        ),
-                                        child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text("Execution Time",
-                                                  style: GoogleFonts.outfit(
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      fontSize: 15,
-                                                      color: Theme.of(context)
-                                                                  .brightness ==
-                                                              Brightness.dark
-                                                          ? Colors.white
-                                                          : const Color(
-                                                              0xFF0F2027))),
-                                              Text(_autoTime.format(context),
-                                                  style: GoogleFonts.outfit(
-                                                      fontWeight:
-                                                          FontWeight.w800,
-                                                      fontSize: 18,
-                                                      color: const Color(
-                                                          0xFF29B6F6))),
-                                            ])))
-                              ],
-
-                              // Safety warning for auto mode (currently bypassed by UI testing flags)
-
-                              const SizedBox(height: 24),
-                              // ── Auto Mode Toggle Switch ──
-                              _buildAutoModeToggle(
-                                isActive: _activeStrategy ==
-                                    (_autoStrategy == 'sensor'
-                                        ? IrrigationStrategy.sensor
-                                        : IrrigationStrategy.timer),
-                                disabled: !isConnected ||
-                                    isPumpLockedSafe ||
-                                    isTankLow ||
-                                    _masterLockdown,
-                                onToggle: () {
-                                  HapticFeedback.heavyImpact();
-                                  final targetStrategy =
-                                      _autoStrategy == 'sensor'
-                                          ? IrrigationStrategy.sensor
-                                          : IrrigationStrategy.timer;
-
-                                  setState(() {
-                                    if (_activeStrategy == targetStrategy) {
-                                      _activeStrategy = IrrigationStrategy.none;
-                                    } else {
-                                      _activeStrategy = targetStrategy;
-                                    }
-                                  });
-
-                                  if (_activeStrategy !=
-                                      IrrigationStrategy.none) {
-                                    ref
-                                        .read(dataServiceProvider)
-                                        ?.setWateringMode(
-                                          'auto',
-                                          strategy: _activeStrategy.name,
-                                          timerHour: _autoTime.hour,
-                                          timerMinute: _autoTime.minute,
-                                        );
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                            'Auto watering ON — ${_activeStrategy.name} mode',
-                                            style: GoogleFonts.outfit(
-                                                fontWeight: FontWeight.w600)),
-                                        backgroundColor:
-                                            const Color(0xFF2BCC71),
-                                        behavior: SnackBarBehavior.floating,
-                                        duration: const Duration(seconds: 2),
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(10)),
-                                      ),
-                                    );
-                                  } else {
-                                    ref
-                                        .read(dataServiceProvider)
-                                        ?.setWateringMode('manual');
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Auto watering OFF',
-                                            style: GoogleFonts.outfit(
-                                                fontWeight: FontWeight.w600)),
-                                        backgroundColor:
-                                            const Color(0xFF0F2027),
-                                        behavior: SnackBarBehavior.floating,
-                                        duration: const Duration(seconds: 2),
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(10)),
-                                      ),
-                                    );
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        )),
+                    _buildAnimatedItem(2, _buildAutoModePanel(
+                      isConnected: isConnected,
+                      isPumpLockedSafe: isPumpLockedSafe,
+                      isTankLow: isTankLow,
+                      rawSoil: rawSoil,
+                      sensorData: sensorData,
+                    )),
                     const SizedBox(height: 24),
                   ],
 
@@ -1292,9 +1099,876 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   }
 
   // ═══════════════════════════════════════════════════════
-  // Auto Mode Toggle — like a big ON/OFF switch
+  // Auto Mode Panel — tabbed between Sensor Target / Daily Timer
   // ═══════════════════════════════════════════════════════
 
+  Widget _buildAutoModePanel({
+    required bool isConnected,
+    required bool isPumpLockedSafe,
+    required bool isTankLow,
+    required List<double> rawSoil,
+    required dynamic sensorData,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bool globalDisabled =
+        !isConnected || isPumpLockedSafe || isTankLow || _masterLockdown;
+
+    // Tab accent colours
+    const sensorColor = Color(0xFF29B6F6);
+    const timerColor  = Color(0xFF2BCC71);
+    final activeTabColor = _autoPageIndex == 0 ? sensorColor : timerColor;
+
+    return _buildGlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Header ──
+          Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded,
+                  color: activeTabColor, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Automatic Strategy',
+                  style: GoogleFonts.outfit(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: isDark ? Colors.white : const Color(0xFF0F2027)),
+                ),
+              ),
+              // Active badge
+              if (_activeStrategy != IrrigationStrategy.none)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: activeTabColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'ACTIVE',
+                    style: GoogleFonts.outfit(
+                        color: activeTabColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Only one strategy can be active at a time.',
+            style: GoogleFonts.outfit(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: isDark ? Colors.white54 : const Color(0xFF4A6164)),
+          ),
+          const SizedBox(height: 16),
+
+          // ── Strategy page tab bar ──
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white10 : Colors.white.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                _buildPageTab(
+                  index: 0,
+                  label: 'Sensor Target',
+                  icon: Icons.water_drop_rounded,
+                  color: sensorColor,
+                  isSelected: _autoPageIndex == 0,
+                  isStrategyOn: _activeStrategy == IrrigationStrategy.sensor,
+                ),
+                const SizedBox(width: 4),
+                _buildPageTab(
+                  index: 1,
+                  label: 'Daily Timer',
+                  icon: Icons.access_time_filled_rounded,
+                  color: timerColor,
+                  isSelected: _autoPageIndex == 1,
+                  isStrategyOn: _activeStrategy == IrrigationStrategy.timer,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ── Page content (animated cross-fade) ──
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 300),
+            crossFadeState: _autoPageIndex == 0
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            firstChild: _buildSensorTargetPage(
+              isConnected: isConnected,
+              isPumpLockedSafe: isPumpLockedSafe,
+              isTankLow: isTankLow,
+              rawSoil: rawSoil,
+              sensorData: sensorData,
+              globalDisabled: globalDisabled,
+            ),
+            secondChild: _buildDailyTimerPage(
+              globalDisabled: globalDisabled,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A single tab button for switching between strategy pages.
+  Widget _buildPageTab({
+    required int index,
+    required String label,
+    required IconData icon,
+    required Color color,
+    required bool isSelected,
+    required bool isStrategyOn,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _autoPageIndex = index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? (isDark ? color.withValues(alpha: 0.25) : color.withValues(alpha: 0.12))
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: isSelected
+                ? Border.all(color: color.withValues(alpha: 0.45), width: 1.5)
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon,
+                  size: 15,
+                  color: isSelected
+                      ? color
+                      : (isDark ? Colors.white38 : Colors.grey.shade400)),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontSize: 13,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected
+                          ? color
+                          : (isDark ? Colors.white38 : Colors.grey.shade400)),
+                ),
+              ),
+              if (isStrategyOn) ...[
+                const SizedBox(width: 4),
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Page 1: Sensor Target ──
+  Widget _buildSensorTargetPage({
+    required bool isConnected,
+    required bool isPumpLockedSafe,
+    required bool isTankLow,
+    required List<double> rawSoil,
+    required dynamic sensorData,
+    required bool globalDisabled,
+  }) {
+    const color = Color(0xFF29B6F6);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isActive = _activeStrategy == IrrigationStrategy.sensor;
+
+    // Compute if all zones are enabled
+    final allOn = _sensorZonesEnabled.values.every((v) => v);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Strategy description row
+        _buildStrategyHeaderRow(
+          icon: Icons.water_drop_rounded,
+          color: color,
+          title: 'Sensor Target',
+          description: 'Waters when soil moisture drops ≤ start threshold.',
+          isActive: isActive,
+          disabled: globalDisabled,
+          strategy: IrrigationStrategy.sensor,
+        ),
+        const SizedBox(height: 16),
+
+        // Zone chips header (label only — All chip is inside the row)
+        Text('Active Zones',
+            style: GoogleFonts.outfit(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: isDark ? Colors.white70 : const Color(0xFF4A6164))),
+        const SizedBox(height: 10),
+
+        // Zone enable chips row: [All] [Zone 1] [Zone 2] [Zone 3]
+        Row(
+          children: [
+            // ── ALL chip ──
+            Expanded(
+              child: _buildZoneEnableChip(
+                zone: 0,
+                isAll: true,
+                enabled: allOn,
+                color: color,
+                onToggle: () {
+                  setState(() {
+                    final newVal = !allOn;
+                    _sensorZonesEnabled[1] = newVal;
+                    _sensorZonesEnabled[2] = newVal;
+                    _sensorZonesEnabled[3] = newVal;
+                  });
+                  if (isActive) _resendStrategyCommand();
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            // ── Individual zone chips ──
+            for (int z = 1; z <= 3; z++) ...[
+              Expanded(
+                child: _buildZoneEnableChip(
+                  zone: z,
+                  moisture: z <= rawSoil.length ? rawSoil[z - 1] : null,
+                  enabled: _sensorZonesEnabled[z] ?? true,
+                  color: color,
+                  onToggle: () {
+                    setState(() {
+                      _sensorZonesEnabled[z] = !(_sensorZonesEnabled[z] ?? true);
+                    });
+                    if (isActive) _resendStrategyCommand();
+                  },
+                ),
+              ),
+              if (z < 3) const SizedBox(width: 8),
+            ],
+          ],
+        ),
+
+        // Show warning if no zone is enabled
+        if (_sensorZonesEnabled.values.every((v) => !v)) ...[
+          const SizedBox(height: 10),
+          _buildInlineWarning(
+            'Enable at least one zone for the strategy to run.',
+            Icons.warning_amber_rounded,
+            Colors.amber,
+          ),
+        ],
+      ],
+    );
+  }
+
+  // ── Page 2: Daily Timer ──
+  Widget _buildDailyTimerPage({required bool globalDisabled}) {
+    const color = Color(0xFF2BCC71);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isActive = _activeStrategy == IrrigationStrategy.timer;
+    final allOn = _timerZonesEnabled.values.every((v) => v);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Strategy description row
+        _buildStrategyHeaderRow(
+          icon: Icons.access_time_filled_rounded,
+          color: color,
+          title: 'Daily Timer',
+          description: 'Waters selected zones at the configured time each day.',
+          isActive: isActive,
+          disabled: globalDisabled,
+          strategy: IrrigationStrategy.timer,
+        ),
+        const SizedBox(height: 16),
+
+        // Zone chips header (label only)
+        Text('Active Zones',
+            style: GoogleFonts.outfit(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: isDark ? Colors.white70 : const Color(0xFF4A6164))),
+        const SizedBox(height: 10),
+
+        // Zone enable chips row: [All] [Zone 1] [Zone 2] [Zone 3]
+        Row(
+          children: [
+            // ── ALL chip ──
+            Expanded(
+              child: _buildZoneEnableChip(
+                zone: 0,
+                isAll: true,
+                enabled: allOn,
+                color: color,
+                onToggle: () {
+                  setState(() {
+                    final newVal = !allOn;
+                    _timerZonesEnabled[1] = newVal;
+                    _timerZonesEnabled[2] = newVal;
+                    _timerZonesEnabled[3] = newVal;
+                  });
+                  if (isActive) _resendStrategyCommand();
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            // ── Individual zone chips ──
+            for (int z = 1; z <= 3; z++) ...[
+              Expanded(
+                child: _buildZoneEnableChip(
+                  zone: z,
+                  enabled: _timerZonesEnabled[z] ?? true,
+                  color: color,
+                  onToggle: () {
+                    setState(() {
+                      _timerZonesEnabled[z] = !(_timerZonesEnabled[z] ?? true);
+                    });
+                    if (isActive) _resendStrategyCommand();
+                  },
+                ),
+              ),
+              if (z < 3) const SizedBox(width: 8),
+            ],
+          ],
+        ),
+
+        if (_timerZonesEnabled.values.every((v) => !v)) ...[
+          const SizedBox(height: 10),
+          _buildInlineWarning(
+            'Enable at least one zone for the timer to run.',
+            Icons.warning_amber_rounded,
+            Colors.amber,
+          ),
+        ],
+
+        // Time picker (always visible in timer page)
+        const SizedBox(height: 16),
+        _buildTimerPicker(),
+      ],
+    );
+  }
+
+  /// Resends the current active strategy command after zone-config change.
+  void _resendStrategyCommand() {
+    final strategy = _activeStrategy;
+    if (strategy == IrrigationStrategy.none) return;
+    final enabledZones = strategy == IrrigationStrategy.sensor
+        ? [1, 2, 3].where((z) => _sensorZonesEnabled[z] == true).toList()
+        : [1, 2, 3].where((z) => _timerZonesEnabled[z] == true).toList();
+    ref.read(dataServiceProvider)?.setWateringMode(
+      'auto',
+      strategy: strategy.name,
+      timerHour: strategy == IrrigationStrategy.timer ? _autoTime.hour : null,
+      timerMinute: strategy == IrrigationStrategy.timer ? _autoTime.minute : null,
+      enabledZones: enabledZones,
+    );
+  }
+
+  /// Strategy header row: icon, title, description, ON/OFF pill.
+  Widget _buildStrategyHeaderRow({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String description,
+    required bool isActive,
+    required bool disabled,
+    required IrrigationStrategy strategy,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: disabled
+            ? (isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade50)
+            : isActive
+                ? color.withValues(alpha: 0.09)
+                : (isDark ? Colors.white10 : Colors.white.withValues(alpha: 0.5)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: disabled
+              ? (isDark ? Colors.grey.shade800 : Colors.grey.shade200)
+              : isActive
+                  ? color.withValues(alpha: 0.55)
+                  : (isDark ? Colors.white24 : Colors.white),
+          width: isActive ? 2 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: disabled
+                  ? Colors.grey.shade100
+                  : color.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon,
+                color: disabled ? Colors.grey.shade400 : color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: disabled
+                            ? Colors.grey.shade400
+                            : isDark
+                                ? Colors.white
+                                : const Color(0xFF0F2027))),
+                const SizedBox(height: 2),
+                Text(description,
+                    style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: disabled
+                            ? Colors.grey.shade300
+                            : isDark
+                                ? Colors.white54
+                                : const Color(0xFF4A6164))),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: disabled ? null : () => _toggleAutoStrategy(strategy),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: disabled
+                    ? Colors.grey.shade200
+                    : isActive
+                        ? color
+                        : color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: isActive
+                    ? [
+                        BoxShadow(
+                          color: color.withValues(alpha: 0.38),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        )
+                      ]
+                    : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isActive
+                        ? Icons.toggle_on_rounded
+                        : Icons.toggle_off_rounded,
+                    color: disabled
+                        ? Colors.grey.shade400
+                        : isActive
+                            ? Colors.white
+                            : color,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    isActive ? 'ON' : 'OFF',
+                    style: GoogleFonts.outfit(
+                      color: disabled
+                          ? Colors.grey.shade400
+                          : isActive
+                              ? Colors.white
+                              : color,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Zone enable/disable chip used inside auto strategy pages.
+  /// Set [isAll] = true to render the special "All" master chip.
+  Widget _buildZoneEnableChip({
+    required int zone,
+    required bool enabled,
+    required Color color,
+    required VoidCallback onToggle,
+    double? moisture,
+    bool isAll = false,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final label = isAll ? 'All' : 'Zone $zone';
+    final moistureStr = (!isAll && moisture != null && moisture >= 0)
+        ? '${moisture.toStringAsFixed(0)}%'
+        : null;
+
+    // All chip uses a slightly stronger border to stand out as the master toggle
+    final chipBorderWidth = isAll ? (enabled ? 2.0 : 1.5) : (enabled ? 1.5 : 1.0);
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.mediumImpact();
+        onToggle();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(
+          color: enabled
+              ? color.withValues(alpha: isAll ? 0.15 : 0.1)
+              : (isDark ? Colors.white.withValues(alpha: 0.04) : Colors.grey.shade50),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: enabled
+                ? color.withValues(alpha: isAll ? 0.65 : 0.45)
+                : (isDark ? Colors.white12 : Colors.grey.shade200),
+            width: chipBorderWidth,
+          ),
+          boxShadow: (isAll && enabled)
+              ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  )
+                ]
+              : null,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icon badge
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: enabled
+                    ? color.withValues(alpha: isAll ? 0.25 : 0.18)
+                    : (isDark ? Colors.white12 : Colors.grey.shade100),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isAll
+                    ? (enabled
+                        ? Icons.select_all_rounded
+                        : Icons.deselect_rounded)
+                    : (enabled ? Icons.check_rounded : Icons.close_rounded),
+                size: isAll ? 17 : 16,
+                color: enabled
+                    ? color
+                    : (isDark ? Colors.white38 : Colors.grey.shade400),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: GoogleFonts.outfit(
+                  fontSize: 12,
+                  fontWeight: isAll ? FontWeight.w800 : FontWeight.w700,
+                  color: enabled
+                      ? (isDark ? Colors.white : const Color(0xFF0F2027))
+                      : (isDark ? Colors.white38 : Colors.grey.shade400)),
+            ),
+            if (moistureStr != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                moistureStr,
+                style: GoogleFonts.outfit(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: enabled
+                        ? color
+                        : (isDark ? Colors.white24 : Colors.grey.shade300)),
+              ),
+            ],
+            const SizedBox(height: 4),
+            Text(
+              enabled ? 'ON' : 'OFF',
+              style: GoogleFonts.outfit(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                  color: enabled
+                      ? color
+                      : (isDark ? Colors.white24 : Colors.grey.shade300)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Small inline amber/red warning banner.
+  Widget _buildInlineWarning(String text, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text,
+                style: GoogleFonts.outfit(
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // Per-Strategy Toggle Card (legacy — kept for reference)
+  // ═══════════════════════════════════════════════════════
+
+  // ignore: unused_element
+  Widget _buildStrategyToggle({
+    required IrrigationStrategy strategy,
+    required IconData icon,
+    required String title,
+    required String description,
+    required Color color,
+    required bool isActive,
+    bool disabled = false,
+    Widget? extra,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final Color bgColor;
+    final Color borderColor;
+    if (disabled) {
+      bgColor = isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade50;
+      borderColor = isDark ? Colors.grey.shade800 : Colors.grey.shade200;
+    } else if (isActive) {
+      bgColor = color.withValues(alpha: 0.09);
+      borderColor = color.withValues(alpha: 0.55);
+    } else {
+      bgColor = isDark ? Colors.white10 : Colors.white.withValues(alpha: 0.5);
+      borderColor = isDark ? Colors.white24 : Colors.white;
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor, width: isActive ? 2 : 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              // Icon badge
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: disabled
+                      ? Colors.grey.shade100
+                      : color.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon,
+                    color: disabled ? Colors.grey.shade400 : color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              // Title + description
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: disabled
+                              ? Colors.grey.shade400
+                              : isDark
+                                  ? Colors.white
+                                  : const Color(0xFF0F2027)),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      description,
+                      style: GoogleFonts.outfit(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: disabled
+                              ? Colors.grey.shade300
+                              : isDark
+                                  ? Colors.white54
+                                  : const Color(0xFF4A6164)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // ON/OFF pill button
+              GestureDetector(
+                onTap: disabled ? null : () => _toggleAutoStrategy(strategy),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: disabled
+                        ? Colors.grey.shade200
+                        : isActive
+                            ? color
+                            : color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: isActive
+                        ? [
+                            BoxShadow(
+                              color: color.withValues(alpha: 0.38),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            )
+                          ]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isActive
+                            ? Icons.toggle_on_rounded
+                            : Icons.toggle_off_rounded,
+                        color: disabled
+                            ? Colors.grey.shade400
+                            : isActive
+                                ? Colors.white
+                                : color,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        isActive ? 'ON' : 'OFF',
+                        style: GoogleFonts.outfit(
+                          color: disabled
+                              ? Colors.grey.shade400
+                              : isActive
+                                  ? Colors.white
+                                  : color,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          // Optional extra widget (e.g. time picker for Daily Timer)
+          if (extra != null) ...[const SizedBox(height: 12), extra],
+        ],
+      ),
+    );
+  }
+
+  /// Time picker tile — shown inside the Daily Timer card when active.
+  Widget _buildTimerPicker() {
+    return InkWell(
+      onTap: () async {
+        final time =
+            await showTimePicker(context: context, initialTime: _autoTime);
+        if (time != null) {
+          setState(() => _autoTime = time);
+          // Re-send updated timer command so the Pi adopts the new time.
+          ref.read(dataServiceProvider)?.setWateringMode(
+            'auto',
+            strategy: 'timer',
+            timerHour: time.hour,
+            timerMinute: time.minute,
+          );
+        }
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2BCC71).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: const Color(0xFF2BCC71).withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.alarm_rounded,
+                    color: Color(0xFF2BCC71), size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  "Execution Time",
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: const Color(0xFF15803D)),
+                ),
+              ],
+            ),
+            Text(
+              _autoTime.format(context),
+              style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  color: const Color(0xFF2BCC71)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // Legacy stub — retained to avoid stale references during hot-reload.
+  // Not called from UI; use _buildStrategyToggle instead.
+  // ═══════════════════════════════════════════════════════
+  // ignore: unused_element
   Widget _buildAutoModeToggle({
     required bool isActive,
     required bool disabled,

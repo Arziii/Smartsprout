@@ -13,6 +13,7 @@
 10. [Defense Q&A Preparation](#10-defense-qa-preparation)
 11. [Future Recommendations](#11-future-recommendations)
 12. [Intellectual Property & Anti-Tamper Strategies](#12-intellectual-property--anti-tamper-strategies)
+13. [**Customizable System Parameters (Live Tuning Reference)**](#13-customizable-system-parameters-live-tuning-reference)
 
 ---
 
@@ -561,4 +562,155 @@ stateDiagram-v2
 4. **Advanced Offline Mode**: Developing an ad-hoc Bluetooth Low Energy (BLE) fallback.
 4. **Data Backup/Recovery Plans**: Automating nightly Firebase storage exports to GCP Cloud Storage.
 5. **Push Notifications**: Utilizing Firebase Cloud Messaging (FCM) to trigger iOS/Android banner notifications the moment the `system_status` hits `tank_low` or `CONNECTION_LOST_SHUTDOWN`.
-6. **User Accounts & Role-Based Access**: Multi-tenancy configurations so a family can have 'admin' rights (changing parameters) vs 'viewer' rights (just viewing stats).
+---
+
+## 13. Customizable System Parameters (Live Tuning Reference)
+
+> [!IMPORTANT]
+> This section is a **live tuning cheat-sheet** for the defense. All values listed here can be changed by the researcher in real-time without rewriting core logic — either by editing `.env` on the Pi, modifying calibration through the app's Settings screen, or updating the in-app zone configuration.
+
+---
+
+### A. Watering Behaviour — Per-Zone (`smartsprout/` App Settings / Calibration Screen)
+
+These are set **per bed** by the user in the Flutter app → Settings → Zone Calibration.
+
+| Parameter | App Label | Default Value | What It Does | Where Stored |
+|---|---|---|---|---|
+| `start_threshold` | **Start Threshold %** | *(none — must be set)* | Sensor Target strategy triggers watering when soil moisture **≤** this value | `smartsproutrasberry/calibration_offsets.json` on Pi |
+| `target_moisture` | **Target Saturation %** | **65%** | Watering (both strategies) stops when soil moisture reaches this value | `smartsproutrasberry/calibration_offsets.json` on Pi |
+| `max_pump_runtime` | **Safety Timeout (s)** | **30 seconds** | Hard cut-off: pump stops after this many seconds regardless of moisture level, preventing flooding | `smartsproutrasberry/calibration_offsets.json` on Pi |
+
+> **Recommended realistic values:**  
+> Start Threshold = 40%, Target Saturation = 70%, Safety Timeout = 300s (5 min) for typical garden beds.
+
+---
+
+### B. Pulse & Soak Cycle Timing (`smartsproutrasberry/.env` / `config.py`)
+
+Controls the rhythm of the auto-watering engine. Both Sensor Target and Daily Timer use this engine.
+
+| Parameter | `.env` Key | Default Value | What It Does |
+|---|---|---|---|
+| Burst duration | `PULSE_BURST_SECONDS` | **5 seconds** | How long the pump runs in one pulse before soaking |
+| Soak duration | `PULSE_SOAK_SECONDS` | **20 seconds** | How long the pump is OFF after each burst (lets water absorb into soil) |
+
+> **Example:** With defaults, one full cycle = 5s ON → 20s OFF → check moisture → repeat if still below target.
+
+> **Panelist scenario:** *"What if the panelist wants faster watering?"*  
+> → Increase `PULSE_BURST_SECONDS` to `10` and reduce `PULSE_SOAK_SECONDS` to `10`. Edit `.env` and restart the Pi service.
+
+---
+
+### C. Auto-Watering Cooldown (`smartsproutrasberry/main.py`)
+
+| Parameter | Location | Default Value | What It Does |
+|---|---|---|---|
+| Sensor Target re-trigger cooldown | `smartsproutrasberry/main.py` line ~723 | **3600 seconds (1 hour)** | Prevents a zone from re-triggering auto-water more than once per hour even if moisture drops again immediately after a cycle |
+
+> **To change:** Edit the literal `3600` on the sensor cooldown line in `main.py`. E.g., set to `1800` for 30-minute cooldown.
+
+---
+
+### D. Daily Timer Schedule (`smartsprout/` App Control Screen)
+
+Set by the user in the Flutter app → Controls → Auto Mode → Daily Timer tab.
+
+| Parameter | Default Value | What It Does |
+|---|---|---|
+| **Scheduled Hour** | 8 (8:00 AM) | Hour of the day the timer fires (24-hour format) |
+| **Scheduled Minute** | 0 | Minute of the hour the timer fires |
+| **Enabled Zones** | All (1, 2, 3) | Which beds participate in the daily schedule |
+
+---
+
+### E. Telemetry & Cloud Sync Intervals (`smartsproutrasberry/.env` / `config.py`)
+
+| Parameter | `.env` Key | Default Value | What It Does |
+|---|---|---|---|
+| Sensor read interval | `TELEMETRY_INTERVAL` | **3 seconds** | How often the Pi physically reads all sensors |
+| Cloud eco-mode push | `CLOUD_SYNC_INTERVAL` | **1800 seconds (30 min)** | Forced full push interval when no significant change is detected (Eco-Mode) |
+| Differential threshold — moisture | *(hardcoded in `main.py`)* | **8%** | Cloud push triggered early if any zone's moisture changes by more than this |
+| Differential threshold — temperature | *(hardcoded in `main.py`)* | **3.0 °C** | Cloud push triggered early if temperature changes by more than this |
+| Differential cooldown | *(hardcoded in `main.py`)* | **60 seconds** | Minimum gap between differential-triggered pushes (prevents jitter-spamming) |
+| Live watering stream rate | *(hardcoded — bypass mode)* | **3 seconds** | When pump is active, bypass all cooldowns and push every 3s for real-time UI |
+| Pi online → offline timeout | *(`smartsprout/` app config)* | **25 seconds** | App declares Pi offline if `last_heartbeat` is older than this |
+
+---
+
+### F. Hardware Safety (`smartsproutrasberry/.env` / `config.py`)
+
+| Parameter | `.env` Key | Default Value | What It Does |
+|---|---|---|---|
+| Hardware master timeout | `PUMP_TIMEOUT_SECONDS` | **120 seconds** | `smartsproutrasberry/pump_watchdog.py` (independent process) kills GPIO relay after this time regardless of software |
+| Dead-Man's Switch threshold | *(hardcoded in `main.py`)* | **5 seconds** | Manual watering aborts if mobile app heartbeat is older than this (phone disconnected) |
+| Mobile heartbeat rate | *(`smartsprout/` Flutter app)* | **2 seconds** | How often the app refreshes the heartbeat timestamp during manual watering |
+| Factory reset hold | `RESET_HOLD_SECONDS` | **5 seconds** | How long to hold the physical button on the Pi to trigger a factory reset |
+
+---
+
+### G. GPIO Pin Mapping (`smartsproutrasberry/.env` / `config.py`)
+
+All pins use **BCM (Broadcom) numbering**. Change only if rewiring hardware.
+
+| Component | `.env` Key | Default BCM Pin |
+|---|---|---|
+| Pump relay | `RELAY_PUMP_PIN` | **17** |
+| Solenoid Valve — Zone 1 | `RELAY_VALVE1_PIN` | **27** |
+| Solenoid Valve — Zone 2 | `RELAY_VALVE2_PIN` | **22** |
+| Solenoid Valve — Zone 3 | `RELAY_VALVE3_PIN` | **23** |
+| XKC Tank Level Sensor | `XKC_LEVEL_PIN` | **5** |
+| Factory Reset Button | `RESET_BUTTON_PIN` | **24** |
+| Reset Indicator LED | `RESET_LED_PIN` | **18** |
+| ADS1115 I2C Bus | `ADS1115_I2C_BUS` | **1** |
+| ADS1115 I2C Address | `ADS1115_I2C_ADDRESS` | **0x48** |
+| BMP280 I2C Address | `BMP280_I2C_ADDRESS` | **0x76** |
+
+---
+
+### H. Soil Sensor Calibration Bounds (`smartsproutrasberry/.env` / `config.py`)
+
+Raw ADC values from the ADS1115 that represent 0% (dry) and 100% (wet).
+
+| Parameter | `.env` Key | Default Value | What It Does |
+|---|---|---|---|
+| Dry raw ADC value | `SOIL_SENSOR_DRY` | **12491** | ADC reading when sensor is in open air (completely dry) |
+| Wet raw ADC value | `SOIL_SENSOR_WET` | **6165** | ADC reading when sensor is submerged in water (fully wet) |
+
+> **To recalibrate:** Use the **Calibration Screen** in the app (`smartsprout/` Settings → Calibration → Run Dry / Run Wet). The Pi will average 10 readings and save new values automatically. Manual override is also possible via `.env`.
+
+---
+
+### I. Security & Authentication (`smartsproutrasberry/device_config.json` / `auth_bouncer.py`)
+
+| Parameter | Location | Default / Current Value | What It Does |
+|---|---|---|---|
+| Device hardware ID | `device_config.json` | `SPROUT_A1B2` | Immutable hardware identity used as Firestore document key |
+| Device alias | `device_config.json` | Set by user | Human-readable login name (e.g., `Reyche01`) |
+| Max login attempts | `auth_bouncer.py` | **5 attempts** | Fails before 15-minute lockout |
+| Lockout duration | `auth_bouncer.py` | **900 seconds (15 min)** | How long bad actors are frozen out |
+| Password hash algorithm | `auth_bouncer.py` | **PBKDF2-HMAC-SHA256** | Industry-standard password hashing — 600,000 iterations |
+
+---
+
+### J. Data Retention & Cleanup (`smartsproutrasberry/.env` / `config.py`)
+
+| Parameter | `.env` Key | Default Value | What It Does |
+|---|---|---|---|
+| Telemetry retention | `STORAGE_RETENTION_DAYS` | **30 days** | Pi auto-deletes Firestore telemetry history older than this to stay within free quota |
+| Cleanup check interval | `CLEANUP_INTERVAL_HOURS` | **24 hours** | How often the Pi checks if old telemetry needs pruning |
+| Analytics Firestore cap | *(`smartsprout/` Flutter app)* | **500 documents** | Hard `.limit(500)` on the analytics query — prevents runaway reads |
+| Analytics cache expiry | *(`smartsprout/` Flutter app)* | **1 hour** | Re-navigating to Analytics re-uses cached data for this duration (0 extra reads) |
+
+---
+
+### K. How to Apply Changes During the Defense
+
+| Change Type | Method | Requires Restart? |
+|---|---|---|
+| Target saturation / start threshold / safety timeout | `smartsprout/` App → Settings → Zone Calibration → Save | ❌ No — takes effect next auto cycle |
+| Daily timer schedule / enabled zones | `smartsprout/` App → Controls → Auto Mode → Daily Timer tab | ❌ No — applied immediately |
+| Pulse burst / soak seconds | Edit `smartsproutrasberry/.env` on Pi | ✅ Yes — `sudo systemctl restart smartsprout` |
+| GPIO pin reassignment | Edit `smartsproutrasberry/.env` on Pi | ✅ Yes — `sudo systemctl restart smartsprout` |
+| Cooldown / sync thresholds | Edit `smartsproutrasberry/main.py` on Pi | ✅ Yes — `sudo systemctl restart smartsprout` |
+| Security lockout parameters | Edit `smartsproutrasberry/auth_bouncer.py` on Pi | ✅ Yes — `sudo systemctl restart smartsprout` |

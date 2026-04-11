@@ -29,6 +29,9 @@ _auto_timer_hour = 8
 _auto_timer_minute = 0
 _last_auto_water = {1: 0, 2: 0, 3: 0} # Cooldown tracking per zone
 _last_daily_water_date = ""
+# Per-zone enabled flags — mirrors zone chips in Flutter auto-mode UI.
+# Keys are 1-indexed zone numbers. Default: all zones active.
+_enabled_zones: set = {1, 2, 3}
 _last_sent_telemetry = {}  # Tracks last cloud-pushed values for differential sync
 _force_sync = False
 _last_push_time = 0.0        # Minimum push cooldown guard — prevents rapid-fire writes
@@ -241,11 +244,23 @@ def handle_firebase_command(payload: dict):
         print(f"[FIREBASE] Force sync requested from mobile app (requested_at={requested_at})")
         _force_sync = True
     elif command == "set_mode":
-        global _current_mode, _auto_strategy, _auto_timer_hour, _auto_timer_minute
+        global _current_mode, _auto_strategy, _auto_timer_hour, _auto_timer_minute, _enabled_zones
         _current_mode = payload.get("mode", "manual")
-        _auto_strategy = payload.get("strategy", "sensor")
-        _auto_timer_hour = payload.get("timer_hour", 8)
-        _auto_timer_minute = payload.get("timer_minute", 0)
+        # Only override strategy/timer if explicitly provided — prevents
+        # a mode toggle OFF (which omits 'strategy') from silently
+        # resetting the active strategy to the default 'sensor'.
+        if "strategy" in payload:
+            _auto_strategy = payload["strategy"]
+        if "timer_hour" in payload:
+            _auto_timer_hour = payload["timer_hour"]
+        if "timer_minute" in payload:
+            _auto_timer_minute = payload["timer_minute"]
+        # enabled_zones: list of 1-indexed zone numbers the user has toggled ON.
+        # If the key is absent (e.g. manual mode toggle), keep the previous set unchanged.
+        if "enabled_zones" in payload:
+            raw_zones = payload["enabled_zones"]
+            _enabled_zones = set(int(z) for z in raw_zones) if raw_zones else set()
+            print(f"[SETTINGS] Zone filter updated → active zones: {sorted(_enabled_zones)}")
         print(f"[SETTINGS] Switched to {_current_mode.upper()} mode, Strategy: {_auto_strategy}, Time: {_auto_timer_hour:02d}:{_auto_timer_minute:02d}")
     elif command == "set_triggers":
         zone = payload.get("zone", 1)
@@ -691,44 +706,88 @@ def main():
                                 continue
                             try:
                                 z_num = int(key.replace("bed", ""))
+                                # ── Zone enabled guard ──
+                                if z_num not in _enabled_zones:
+                                    continue  # User disabled this zone in the Flutter UI
                                 zone_key = f"zone_{z_num}"
-                                threshold = cal_data.get(zone_key, {}).get("manual_offset_pct", 0)
-                                if threshold <= 0:  # No threshold set by user
+                                zone_cal = cal_data.get(zone_key, {})
+                                # BUG FIX: Read 'start_threshold' (set by user via Settings),
+                                # NOT 'manual_offset_pct' (calibration offset — unrelated field).
+                                threshold = zone_cal.get("start_threshold", 0)
+                                target_sat = zone_cal.get("target_moisture", config.DEFAULT_TARGET_MOISTURE)
+                                timeout = zone_cal.get("max_pump_runtime", config.DEFAULT_MAX_PUMP_RUNTIME)
+                                if threshold <= 0:  # No trigger threshold set by user — skip
                                     continue
-                                if raw_moisture < threshold:
+                                # BUG FIX: Use <= so a reading AT the threshold also triggers.
+                                if raw_moisture <= threshold:
                                     if current_time - _last_auto_water.get(z_num, 0) > 3600:  # 1 hour cooldown
+                                        # Also cross-check with Firestore targets in case they
+                                        # were updated remotely after the last cal_data load.
                                         zt = zone_targets.get(z_num, {})
-                                        target = zt.get("target", config.DEFAULT_TARGET_MOISTURE)
-                                        timeout = zt.get("timeout", config.DEFAULT_MAX_PUMP_RUNTIME)
+                                        final_target = zt.get("target", target_sat)
+                                        final_timeout = zt.get("timeout", timeout)
                                         print(f"[AUTO-SENSOR] Triggering Zone {z_num} "
-                                              f"(Raw: {raw_moisture}% < Threshold: {threshold}%) "
-                                              f"→ Target: {target}%, Timeout: {timeout}s")
+                                              f"(Raw: {raw_moisture}% <= Threshold: {threshold}%) "
+                                              f"→ Target: {final_target}%, Timeout: {final_timeout}s")
                                         _last_auto_water[z_num] = current_time
                                         threading.Thread(
                                             target=_force_water_task,
-                                            args=(z_num, timeout, target),
+                                            args=(z_num, final_timeout, final_target),
                                             daemon=True,
                                         ).start()
                             except ValueError:
                                 pass
-                    
+
                     elif _auto_strategy == "timer":
                         import datetime
                         now = datetime.datetime.now()
                         today_str = now.strftime("%Y-%m-%d")
                         global _last_daily_water_date
-                        
+
                         if now.hour == _auto_timer_hour and now.minute == _auto_timer_minute:
                             if _last_daily_water_date != today_str:
-                                print(f"[AUTO-TIMER] Triggering daily schedule for all zones at {now.strftime('%H:%M')}")
-                                def _water_all_sequential():
+                                active = sorted(_enabled_zones)
+                                print(f"[AUTO-TIMER] Daily schedule triggered for zones {active} at {now.strftime('%H:%M')}")
+
+                                # Snapshot calibration data once for all zones
+                                cal_data = sensor_manager.load_calibration()
+
+                                def _water_all_sequential(zones=active, cal=cal_data):
                                     hstatus = telemetry.get("hardware_status", {})
-                                    for z in [1, 2, 3]:
+                                    soil_now, _, _ = sensor_manager.read_soil_moisture()
+
+                                    for z in zones:
+                                        # ── Hardware fault guard ──
                                         if hstatus.get(f"bed{z}") == "fault":
-                                            print(f"[AUTO-TIMER] Skipping Zone {z} due to hardware fault (hardlocked safety).")
+                                            print(f"[AUTO-TIMER] Skipping Zone {z} — hardware fault.")
                                             continue
-                                        _force_water_task(z, 10)
-                                        time.sleep(1) # brief pause
+
+                                        # ── Read per-zone targets from calibration ──
+                                        zone_key = f"zone_{z}"
+                                        zone_cal = cal.get(zone_key, {})
+                                        target_sat = float(zone_cal.get(
+                                            "target_moisture", config.DEFAULT_TARGET_MOISTURE))
+                                        timeout = int(zone_cal.get(
+                                            "max_pump_runtime", config.DEFAULT_MAX_PUMP_RUNTIME))
+
+                                        # ── Pre-check: is target already met? ──
+                                        current = soil_now.get(f"bed{z}", 0.0)
+                                        if current >= target_sat:
+                                            print(
+                                                f"[AUTO-TIMER] Zone {z}: Target saturation already met "
+                                                f"({current:.1f}% >= {target_sat:.1f}%) — no watering needed."
+                                            )
+                                            continue  # Skip — soil is already moist enough
+
+                                        # ── Start watering with Pulse & Soak + saturation stop ──
+                                        print(
+                                            f"[AUTO-TIMER] Zone {z}: Starting watering "
+                                            f"(current {current:.1f}% → target {target_sat:.1f}%, "
+                                            f"timeout {timeout}s)"
+                                        )
+                                        _force_water_task(z, timeout, target_sat)
+                                        time.sleep(1)  # brief pause between zones
+
                                 threading.Thread(target=_water_all_sequential, daemon=True).start()
                                 _last_daily_water_date = today_str
             except Exception as loop_e:

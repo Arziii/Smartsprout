@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../core/widgets/kiosk_text_field.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Model
@@ -624,7 +625,7 @@ class _PasswordSheetState extends State<_PasswordSheet> {
           const SizedBox(height: 20),
 
           // Password field — uses the system QWERTY keyboard on Linux
-          TextField(
+          KioskTextField(
             controller: _controller,
             obscureText: _obscure,
             autofocus: true,

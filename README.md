@@ -10,6 +10,7 @@ Smart Sprout employs a **Zero-Trust, Pi-Bouncer Authentication Architecture**: a
 - [System Architecture](#-system-architecture)
 - [Authentication Flow — Pi-Bouncer](#-authentication-flow--pi-bouncer)
 - [Core Features](#-core-features)
+- [Auto-Watering Strategies](#-auto-watering-strategies)
 - [Analytics Engine](#-analytics-engine)
 - [Security Model](#-security-model)
 - [Hardware Pin Mapping](#-hardware-pin-mapping)
@@ -43,6 +44,10 @@ Smart Sprout employs a **Zero-Trust, Pi-Bouncer Authentication Architecture**: a
                                       │ XKC-Y26-V─► Tank Level   │
                                       │ 4ch Relay─► Pump/Valves  │
                                       └──────────────────────────┘
+
+Linux Kiosk Data Flow (Zero-Cloud):
+  main.py ──writes──► /tmp/smartsprout_telemetry.json ◄──reads── Flutter UI
+  (sensors)                  (every 3 seconds)                (immediate on open)
 ```
 
 ---
@@ -110,19 +115,52 @@ Flutter App              Firestore              Raspberry Pi 4
 - **Session-Reuse Quick Switch**: Saved accounts use Option B logic — if a Firebase Custom Token session is still valid, the app switches instantly with zero network round-trip. Expired sessions prompt re-authentication.
 - **Dual Operation Modes**:
   - **Secure IoT**: Monitor and control globally via iOS, Android, and Windows Desktop apps. Features a beautifully persistent, theme-aware Dark Mode and optimized Snackbars for rapid, non-obtrusive feedback (1.5s).
-  - **Air-Gapped Local**: Full operation via Pi's physical touchscreen, independent of internet, bypassing Firebase to use the local memory telemetry cache.
-- **Eco-Mode + Differential Sync**: Hardware polling (3s) is decoupled from Firebase writes (30-min ceiling). Writes only fire on: ≥8% moisture delta, ≥3°C temperature delta, tank level change, system-status change, or manual FORCE_SYNC command. The Linux Kiosk UI reads directly from a local telemetry cache (`telemetry_cache.json`) to achieve zero-API-cost real-time responsiveness.
+  - **Air-Gapped Local (Linux Kiosk)**: Full operation via Pi's physical touchscreen, independent of internet. The Flutter UI reads live sensor data directly from `/tmp/smartsprout_telemetry.json` written by `main.py` — zero Firebase API calls, zero quota cost, zero network dependency.
+- **Eco-Mode + Differential Sync**: Hardware polling (3s) is decoupled from Firebase writes (30-min ceiling). Writes only fire on: ≥8% moisture delta, ≥3°C temperature delta, tank level change, system-status change, or manual FORCE_SYNC command.
+- **Immediate Kiosk Telemetry**: The Linux kiosk reads the local cache file the instant the app opens (zero startup delay), then refreshes every 3 seconds.
+- **Mutually Exclusive Auto-Watering Strategies**: Sensor Target mode and Daily Timer mode are strictly mutually exclusive. Enabling one automatically disables the other. When Sensor Target is ON, the daily timer is suspended; when Daily Timer is ON, the sensor target loop is suspended.
+- **Sensor Target Logic (≤ threshold)**: Auto-watering triggers when moisture is **at or below** the start threshold, not just exactly equal — correct and reliable debounced triggering.
+- **Master Lockdown (Emergency Stop)**: Engaging the Emergency Stop instantly kills all running pumps and physically locks out the UI. All manual zone controls (Burst, Soak, Flow) and **both** automatic watering strategies are completely disabled until explicitly unlocked by the user.
+- **Low Tank Detection**: When manual watering is attempted and the tank sensor reads empty, the UI displays *"The water is Low, Please check your tank!"* instead of a generic hardware error.
 - **Pulse & Soak Auto-Watering**: Pulses water 5s → soaks 20s → re-reads moisture → repeats until target saturation reached or safety timeout fires.
 - **Dead-Man's Switch**: During manual watering, a 10s heartbeat is required from the mobile app. If missed for >5s, the Pi kills all pumps immediately.
-- **Master Lockdown (Emergency Stop)**: Engaging the Emergency Stop instantly kills all running pumps and physically locks out the UI. All manual zone controls (Burst, Soak, Flow) and automatic watering strategies are completely disabled until explicitly unlocked by the user.
 - **Pump Safety Watchdog**: GPIO-level daemon forces pump OFF if it runs >120 seconds.
 - **Physical Factory Reset**: Hardware button (BCM 24) with LED feedback (BCM 18).
+
+---
+
+## 🤖 Auto-Watering Strategies
+
+The Control screen provides two **mutually exclusive** auto-watering strategies. Enabling one immediately disables the other — they cannot be simultaneously active.
+
+### Strategy 1: Sensor Target
+
+| Parameter | Description |
+|---|---|
+| **Start Threshold** | Moisture level (%) at which watering begins. Triggers when `moisture ≤ threshold`. |
+| **Target Saturation** | Moisture level (%) at which the pump stops. Uses Pulse & Soak loop. |
+| **Max Runtime** | Hard safety cut-off (seconds) per zone regardless of saturation. |
+
+**Trigger Logic:** `if moisture ≤ startThreshold AND NOT tankEmpty AND NOT pumpLocked → start pump`
+
+### Strategy 2: Daily Timer
+
+| Parameter | Description |
+|---|---|
+| **Schedule Time** | Time of day (HH:MM) when watering fires automatically. |
+| **Duration** | How many seconds each zone runs. |
+
+**Exclusivity Rule:** The backend (`main.py`) checks which strategy is active:
+- If `sensor_target_enabled = true` → timer loop is skipped entirely.
+- If `daily_timer_enabled = true` → sensor threshold loop is skipped entirely.
 
 ---
 
 ## 📊 Analytics Engine
 
 The Analytics Screen provides a **rolling 7-day trend** of soil moisture and temperature, computed directly from Firestore telemetry history documents.
+
+> **Linux Kiosk:** Analytics returns synthetic no-data on the Pi touchscreen — zero Firestore reads. The Pi itself has access to raw SQLite history (`telemetry.db`) if local analytics are needed.
 
 ### Rolling Window Definition
 
@@ -133,30 +171,7 @@ The Analytics Screen provides a **rolling 7-day trend** of soil moisture and tem
 | `dayIndex 0` | `cutoff` | 6 days ago |
 | `dayIndex 6` | `today` | Always "Today" |
 
-The window **slides forward every day automatically** — no manual refresh needed. On Monday the window is Mon→Sun (previous), on Tuesday it shifts to Tue→Mon, etc.
-
-### Formula: Average Soil Moisture per Day
-
-```
-For each telemetry document on day N:
-
-  soil_values = [bed1, bed2, bed3]   (from Firestore Map)
-  avgSoil_doc = Σ(soil_values) / count(soil_values)
-
-For the full day:
-
-  avgMoisture[N] = Σ(avgSoil_doc for all docs in day N)
-                  ─────────────────────────────────────
-                         count(valid docs in day N)
-```
-
-### Formula: Average Temperature per Day
-
-```
-avgTemp[N] = Σ(temperature for all valid docs in day N)
-             ────────────────────────────────────────────
-                     count(valid docs in day N)
-```
+The window **slides forward every day automatically** — no manual refresh needed.
 
 ### Data Processing Pipeline
 
@@ -164,14 +179,14 @@ avgTemp[N] = Σ(temperature for all valid docs in day N)
 |---|---|---|
 | 1. Query | `DataService.fetchWeeklyAnalytics()` | Fetch telemetry docs where `timestamp ≥ cutoffSeconds`, limited to 500 docs |
 | 2. Group | `data_service.dart` | Assign each doc to `dayIndex` via `date.difference(cutoff).inDays` |
-| 3. Normalize types | `safeDouble()` helper | Cast Firestore `int`/`double`/`null` → `double` safely using `(v as num?)?.toDouble() ?? 0.0` |
+| 3. Normalize types | `safeDouble()` helper | Cast Firestore `int`/`double`/`null` → `double` safely |
 | 4. Aggregate | Per-day loop | Sum moisture & temperature across all documents, divide by `validDocs` |
 | 5. Flag gaps | `hasData` field | Set `hasData: false` if day has zero docs OR all docs threw parse errors |
-| 6. Render | `analytics_screen.dart` | `hasData == true` → `FlSpot(x, y)`; `hasData == false` → `FlSpot.nullSpot` (visible gap) |
+| 6. Render | `analytics_screen.dart` | `hasData == true` → `FlSpot(x, y)`; `hasData == false` → `FlSpot.nullSpot` (gap) |
 
 ### Sentinel Value: `-1.0`
 
-When the Pi cannot read a sensor (disconnected, I2C fault, BME280 failure), it writes **`-1.0`** instead of a real value. This is the Pi's fault indicator:
+When the Pi cannot read a sensor (disconnected, I2C fault, BME280 failure), it writes **`-1.0`** instead of a real value.
 
 | Field | Normal Range | Fault Value | Meaning |
 |---|---|---|---|
@@ -179,24 +194,21 @@ When the Pi cannot read a sensor (disconnected, I2C fault, BME280 failure), it w
 | `soil_moisture.bedN` | 0.0 – 100.0 % | `-1.0` | ADS1115 / sensor disconnect |
 | `humidity` | 10.0 – 100.0 % | `-1.0` | BME280 read failure |
 
-> **Note:** `-1.0` is included in the daily average calculation. If the Pi was running but all sensors were disconnected, the chart correctly shows `-1` for that day — which is visually distinguishable from `0` (no data/gap).
+### Chart Behavior
 
-### Chart Behavior Reference
-
-| Pi published docs, sensors OK | `true` | Continuous Line | Day name + ● dot (Green) |
-| Pi published docs, sensors faulty | `true` | Line at `-1` | Day name + ● dot (Amber Yellow) |
-| Pi was off / no docs in Firestore | `false` | Gap (no line) | Day name + `—` dash (Red) |
-| All docs on that day failed parsing | `false` | Gap (no line) | Day name + `—` dash (Red) |
-
-> **UI Polish:** The Y-axis automatically scales without overlapping boundary limits (`meta.min`/`meta.max` are hidden) to prevent text collision, ensuring intervals like `0` and `-1` remain perfectly spaced and legible.
+| Condition | hasData | Chart | Label |
+|---|---|---|---|
+| Pi published docs, sensors OK | `true` | Continuous line | Green ● dot |
+| Pi published docs, sensors faulty | `true` | Line at `-1` | Amber ● dot |
+| Pi was off / no docs | `false` | Gap (no line) | Red `—` dash |
 
 ### Firestore Quota Impact
 
 | Operation | Frequency | Cost |
 |---|---|---|
-| Analytics fetch | On screen open + 1-hour cache | 1 read per query (max 500 docs counted) |
+| Analytics fetch | On screen open + 1-hour cache | 1 read per query (max 500 docs) |
 | Cache hit (navigating back) | Any time within 1 hour | **0 reads** |
-| `limit(500)` cap | Always enforced | Prevents unbounded reads on large datasets |
+| Linux Kiosk | Always | **0 reads** (local synthetic data) |
 
 ---
 
@@ -227,7 +239,7 @@ When the Pi cannot read a sensor (disconnected, I2C fault, BME280 failure), it w
 | **Hashing Algorithm** | PBKDF2-HMAC-SHA256 (600,000 iterations) with Per-Device Random Salting |
 | **Verification** | Constant-time `hmac.compare_digest` to prevent Timing Attacks |
 | **Storage Format** | `pbkdf2:<salt>:<hash>` in `device_config.json` (auto-migrated from legacy formats) |
-| **Comparison** | Pi-side only — Flutter never evaluates hashing or logic locally. |
+| **Comparison** | Pi-side only — Flutter never evaluates hashing or logic locally |
 | **Transmission** | Raw password transmitted encrypted over TLS to `login_requests`, never directly written to `devices/` |
 | **Post-auth Storage** | Password **not** stored locally on mobile (clean memory state) |
 
@@ -235,18 +247,28 @@ When the Pi cannot read a sensor (disconnected, I2C fault, BME280 failure), it w
 
 ## 🔌 Hardware Pin Mapping (BCM Reference)
 
-| Component | Device Pin / Color | Pin (BCM / Phys) | Power Source & Wiring Logic |
+All BCM numbers are used in `main.py`, `sensors.py`, and `pump_watchdog.py`.
+
+| Hardware Component | Device Pin / Color | GPIO (BCM / Physical) | Power Source & Wiring Logic |
 | :--- | :--- | :--- | :--- |
-| **Main Power** | USB-C Input | **USB-C Port** | From 5V/5A Buck Module Primary |
+| **Main Power** | Homesaya USB Jack | **Pi 4 USB-C Port** | From 8A XL4016 Buck Output (5.1V) |
 | **I2C SDA** | SDA | **BCM 2** (Pin 3) | 3.3V from Pi (Pin 1) |
 | **I2C SCL** | SCL | **BCM 3** (Pin 5) | Shared GND with Pi |
-| **Water Level**| Yellow (Signal) | **BCM 5** (Pin 29) | Requires 1k/2k Voltage Divider |
-| **Relay: Pump** | IN1 (Pump) | **BCM 17** (Pin 11) | COM: Buck OUT+ / NO: Pump Red |
-| **Relay: Valve 1**| IN2 (Valve 1) | **BCM 27** (Pin 13) | COM: 12V+ / NO: Valve 1+ |
-| **Relay: Valve 2**| IN3 (Valve 2) | **BCM 22** (Pin 15) | COM: 12V+ / NO: Valve 2+ |
-| **Relay: Valve 3**| IN4 (Valve 3) | **BCM 23** (Pin 16) | COM: 12V+ / NO: Valve 3+ |
-| **Reset Button**| Button Pin | **BCM 24** (Pin 18) | One side to Pin, one to GND |
-| **Status LED** | Anode (+) | **BCM 18** (Pin 12) | Long leg (+) to Pin / GND |
+| **ADS1115 ADC** | VDD / GND | **3.3V / GND** | Powers the ADC chip |
+| | ADDR | **GND** | Sets I2C address to 0x48 |
+| **Soil Moisture Zone 1** | Sensor 1 Signal | **ADS1115 A0** | Capacitive v1.2 (Analog) |
+| **Soil Moisture Zone 2** | Sensor 2 Signal | **ADS1115 A1** | Capacitive v1.2 (Analog) |
+| **Soil Moisture Zone 3** | Sensor 3 Signal | **ADS1115 A2** | Capacitive v1.2 (Analog) |
+| **Water Level (XKC)** | Yellow (Signal) | **BCM 5** (Pin 29) | 1kΩ/2kΩ Voltage Divider (5V→3.3V) |
+| **Relay Module VCC** | VCC | **5V** (Pin 2 or 4) | Powered by Pi 5V Rail |
+| **Relay IN1 — Pump** | IN1 | **BCM 17** (Pin 11) | COM: XL4016 5V OUT+ / NO: Pump (+) |
+| **Relay IN2 — Valve 1** | IN2 | **BCM 27** (Pin 13) | COM: 12V+ / NO: Valve 1+ |
+| **Relay IN3 — Valve 2** | IN3 | **BCM 22** (Pin 15) | COM: 12V+ / NO: Valve 2+ |
+| **Relay IN4 — Valve 3** | IN4 | **BCM 23** (Pin 16) | COM: 12V+ / NO: Valve 3+ |
+| **Reset Button** | Signal | **BCM 24** (Pin 18) | One side to GPIO, one to GND |
+| **Status LED** | Anode (+) | **BCM 18** (Pin 12) | Long leg (+) → GPIO / Short leg (−) → GND |
+
+> **Active-Low Logic:** GPIO LOW (0V) = Relay energized = Valve OPEN. GPIO HIGH (3.3V) = Relay de-energized = Valve CLOSED.
 
 ---
 
@@ -288,11 +310,15 @@ sudo systemctl start smartsprout
 ```bash
 cd Smartsprout/smartsprout
 
-# 1. Install dependencies (includes uuid package)
+# 1. Install dependencies
 flutter pub get
 
 # 2. Run on your target device (iOS/Android)
 flutter run
+
+# 3. Build Linux Kiosk (on Raspberry Pi)
+flutter build linux
+./build/linux/arm64/release/bundle/smartsprout
 ```
 
 ### 3. First-Time Device Registration
@@ -341,23 +367,31 @@ Smartsprout/
 ├── smartsprout/                # Flutter UI (Mobile & Kiosk)
 │   ├── firestore.rules         # ← Zero-Trust security rules (Pi-Bouncer)
 │   ├── lib/
-│   │   ├── data/               # Firestore services, Models, Config parsing
+│   │   ├── data/
+│   │   │   └── services/
+│   │   │       └── data_service.dart   # ← Lazy Firebase init (Linux-safe)
 │   │   ├── presentation/
 │   │   │   ├── providers/
-│   │   │   │   └── auth_provider.dart  # ← Pi-Bouncer login flow (Riverpod)
+│   │   │   │   ├── auth_provider.dart  # ← Pi-Bouncer login flow (Riverpod)
+│   │   │   │   └── sensor_provider.dart# ← Live sensor state
 │   │   │   └── screens/
-│   │   │       └── hardware_login_screen.dart  # ← Rate-limit UI & countdown
-│   │   └── screens/            # Dashboard, Calibration, Setup
+│   │   │       ├── control_screen.dart # ← Mutually exclusive auto strategies
+│   │   │       ├── calibration_screen.dart
+│   │   │       └── analytics_screen.dart
+│   │   ├── screens/            # Dashboard, Setup
+│   │   └── core/utils/
+│   │       └── platform_utils.dart  # ← isLiteMode / isPremiumMode / isDesktopMode
 │   └── pubspec.yaml
 │
 └── smartsproutrasberry/        # Python Hardware Controller
-    ├── main.py                 # Telemetry loop & differential sync
-    ├── auth_bouncer.py         # ← Pi-Bouncer auth daemon (NEW)
+    ├── main.py                 # Telemetry loop, differential sync, writes /tmp/smartsprout_telemetry.json
+    ├── auth_bouncer.py         # ← Pi-Bouncer auth daemon
     ├── firebase_manager.py     # Firestore telemetry & heartbeats
-    ├── pump_watchdog.py        # Hardware safety shutoff daemon
+    ├── local_db.py             # SQLite store-and-forward buffer
+    ├── pump_watchdog.py        # Hardware safety shutoff daemon (120s max)
     ├── reset_button.py         # Factory reset logic & LED feedback
     ├── sensors.py              # Hardware abstraction (I2C, GPIO)
-    └── device_config.json      # Stores hashed_pin (auto-migrated)
+    └── device_config.json      # Stores hashed password (PBKDF2, auto-migrated)
 ```
 
 ---

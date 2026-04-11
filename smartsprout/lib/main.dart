@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_onscreen_keyboard/flutter_onscreen_keyboard.dart';
 import 'firebase_options.dart';
 
 import 'core/constants/app_theme.dart';
@@ -56,6 +57,7 @@ class _SmartSproutAppState extends ConsumerState<SmartSproutApp> {
       themeMode: currentThemeMode,
       routerConfig: goRouter,
       debugShowCheckedModeBanner: false,
+      // ── Linux kiosk keyboard is handled directly inside KioskTextField ──
     );
   }
 }

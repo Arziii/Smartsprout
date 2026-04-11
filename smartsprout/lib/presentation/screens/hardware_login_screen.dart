@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../core/widgets/kiosk_text_field.dart';
 import '../providers/auth_provider.dart';
 
 class HardwareLoginScreen extends ConsumerStatefulWidget {
@@ -623,7 +624,7 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
           ),
         ),
         const SizedBox(height: 8),
-        TextFormField(
+        KioskTextFormField(
           controller: controller,
           obscureText: obscure,
           maxLength: maxLength,
