@@ -14,8 +14,6 @@ class SystemSettingsDialog extends ConsumerWidget {
     if (Platform.isLinux) {
       if (command == 'REBOOT_PI') {
         Process.run('sudo', ['reboot']);
-      } else if (command == 'RESTART_APP') {
-        Process.run('pkill', ['-f', 'smartsprout']);
       }
     }
 
