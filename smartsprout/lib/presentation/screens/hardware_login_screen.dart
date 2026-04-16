@@ -166,14 +166,25 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.5),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 2),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF2BCC71).withValues(alpha: 0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
-          child: const Icon(Icons.grass_rounded,
-              size: 60, color: Color(0xFF2BCC71)),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Image.asset(
+              'assets/images/app_logo.png',
+              width: 96,
+              height: 96,
+              fit: BoxFit.cover,
+            ),
+          ),
         ),
         const SizedBox(height: 24),
         Text(
@@ -187,7 +198,7 @@ class _HardwareLoginScreenState extends ConsumerState<HardwareLoginScreen>
         ),
         const SizedBox(height: 8),
         Text(
-          'Secure Hardware Access',
+          'INDOOR GARDENING SYSTEM',
           style: GoogleFonts.outfit(
             fontSize: 16,
             fontWeight: FontWeight.w500,

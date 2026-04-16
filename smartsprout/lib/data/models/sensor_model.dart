@@ -1,5 +1,5 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 class SensorData {
   final List<double> soilMoisture; // 3 zones (calibrated = raw + offset)
   final List<double> soilMoistureRaw; // 3 zones (raw sensor, before offset)
@@ -176,7 +176,13 @@ class SensorData {
       systemStatus == 'tank_low' ||
       alerts.contains('tank_empty') ||
       tankLevel == 'LOW';
-  bool get isOffline => systemStatus == 'offline' || isControllerDisconnected;
+  bool get isOffline {
+    try {
+      if (Platform.isLinux) return false;
+    } catch (_) {}
+    return systemStatus == 'offline' || isControllerDisconnected;
+  }
+
   bool get isHealthy => !hasSensorFault && !isTankLow && !isOffline;
 
   bool get isEnvFault => hardwareStatus['environment'] == 'fault';
@@ -200,6 +206,9 @@ class SensorData {
       hardwareStatus['tank'] == 'fault' || tankLevel == 'FAULT';
 
   bool get isControllerDisconnected {
+    try {
+      if (Platform.isLinux) return false;
+    } catch (_) {}
     if (lastHeartbeat == null) return true;
     return DateTime.now().difference(lastHeartbeat!).inMinutes > 2;
   }
