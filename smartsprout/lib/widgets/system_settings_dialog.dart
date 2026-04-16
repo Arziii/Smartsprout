@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
+import 'dart:io';
 
 import '../data/services/data_service.dart';
 
@@ -10,6 +11,14 @@ class SystemSettingsDialog extends ConsumerWidget {
   const SystemSettingsDialog({super.key});
 
   void _sendCommand(BuildContext context, WidgetRef ref, String command) {
+    if (Platform.isLinux) {
+      if (command == 'REBOOT_PI') {
+        Process.run('sudo', ['reboot']);
+      } else if (command == 'RESTART_APP') {
+        Process.run('pkill', ['-f', 'smartsprout']);
+      }
+    }
+
     ref.read(dataServiceProvider)?.sendCommand({'command': command});
 
     // Close the settings dialog
