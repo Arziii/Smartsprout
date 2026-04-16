@@ -12,10 +12,17 @@ It is automatically launched by the systemd service.
 import subprocess
 import json
 import re
+import os
+import sqlite3
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 7788
+
+# ── Path to the local SQLite database written by local_db.py ──
+_DB_PATH = os.path.join(os.path.dirname(__file__), 'telemetry.db')
+
 
 
 def _run(cmd: list[str]) -> tuple[str, str, int]:
@@ -107,6 +114,79 @@ def current_status() -> dict:
     return {"connected": False, "ssid": ""}
 
 
+def get_weekly_analytics() -> list[dict]:
+    """
+    Aggregates the last 7 calendar days of telemetry from local SQLite.
+
+    Returns a list of 7 dicts in ascending date order (oldest → today):
+      [
+        {"dayIndex": 0, "avgMoisture": 42.5, "avgTemp": 28.1},
+        ...
+        {"dayIndex": 6, "avgMoisture": 55.0, "avgTemp": 26.8},
+      ]
+    dayIndex 0 = 6 days ago, dayIndex 6 = today.
+    Missing days return avgMoisture=0.0 and avgTemp=0.0.
+    """
+    now_ts = int(time.time())
+
+    # Build a slot for each of the 7 days (0 = 6 days ago … 6 = today)
+    day_buckets: dict[int, list[dict]] = {i: [] for i in range(7)}
+
+    # UTC-midnight of 6 days ago (floor to full day)
+    today_midnight = now_ts - (now_ts % 86400)           # midnight UTC today
+    week_start = today_midnight - 6 * 86400              # midnight 6 days ago
+
+    if not os.path.exists(_DB_PATH):
+        return [{'dayIndex': i, 'avgMoisture': 0.0, 'avgTemp': 0.0}
+                for i in range(7)]
+
+    try:
+        conn = sqlite3.connect(_DB_PATH, timeout=5)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(
+            """
+            SELECT timestamp,
+                   (moisture_b1 + moisture_b2 + moisture_b3) / 3.0 AS avg_m,
+                   temperature
+            FROM  telemetry
+            WHERE timestamp >= ?
+            ORDER BY timestamp ASC
+            """,
+            (week_start,),
+        )
+        rows = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        print(f"[WiFi Bridge] Analytics DB error: {e}")
+        return [{'dayIndex': i, 'avgMoisture': 0.0, 'avgTemp': 0.0}
+                for i in range(7)]
+
+    for row in rows:
+        day_idx = (row['timestamp'] - week_start) // 86400
+        if 0 <= day_idx <= 6:
+            day_buckets[day_idx].append({
+                'moisture': row['avg_m'],
+                'temp': row['temperature'],
+            })
+
+    result = []
+    for i in range(7):
+        readings = day_buckets[i]
+        if readings:
+            avg_m = sum(r['moisture'] for r in readings) / len(readings)
+            avg_t = sum(r['temp'] for r in readings) / len(readings)
+        else:
+            avg_m, avg_t = 0.0, 0.0
+        result.append({
+            'dayIndex': i,
+            'avgMoisture': round(avg_m, 1),
+            'avgTemp': round(avg_t, 1),
+        })
+
+    return result
+
+
 class WifiBridgeHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         # Suppress HTTP request logs to keep the console clean
@@ -145,6 +225,9 @@ class WifiBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": False, "message": "SSID required"}, 400)
             else:
                 self._send_json(forget_wifi(ssid))
+
+        elif path == "/analytics":
+            self._send_json({"days": get_weekly_analytics()})
 
         else:
             self._send_json({"error": "Unknown endpoint"}, 404)

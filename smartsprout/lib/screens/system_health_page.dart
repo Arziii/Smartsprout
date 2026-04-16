@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -14,7 +15,10 @@ class SystemHealthPage extends ConsumerWidget {
 
     // Overall Status
     final isHealthy = sensorData.isHealthy;
-    final isOffline = sensorData.isOffline;
+    // On Linux (Raspberry Pi kiosk) the app reads sensors directly from
+    // local hardware — there is no remote controller to go "offline".
+    // Force isOffline = false so every card and the banner show live data.
+    final isOffline = Platform.isLinux ? false : sensorData.isOffline;
 
     Color overallColor = isOffline
         ? Colors.grey
@@ -134,16 +138,27 @@ class SystemHealthPage extends ConsumerWidget {
                   const SizedBox(height: 24),
 
                   // ── CONTROLLER CONNECTION ──
+                  // On Linux the app runs ON the Raspberry Pi itself,
+                  // so there is no remote controller to go offline.
+                  // Bypass the isOffline check and lock this card to Online.
                   _buildDetailCard(
                     context,
                     title: "Controller Connection",
                     icon: Icons.router_rounded,
-                    statusText: isOffline ? "Offline" : "Online",
-                    statusColor:
-                        isOffline ? Colors.redAccent : const Color(0xFF2BCC71),
-                    description: isOffline
-                        ? "The Raspberry Pi controller cannot be reached over the network."
-                        : "Securely connected and synchronizing data.",
+                    statusText: Platform.isLinux
+                        ? "Online"
+                        : (isOffline ? "Offline" : "Online"),
+                    statusColor: Platform.isLinux
+                        ? const Color(0xFF2BCC71)
+                        : (isOffline
+                            ? Colors.redAccent
+                            : const Color(0xFF2BCC71)),
+                    description: Platform.isLinux
+                        ? "Running directly on the Raspberry Pi controller. "
+                            "Connection is always active — this device is the controller."
+                        : (isOffline
+                            ? "The Raspberry Pi controller cannot be reached over the network."
+                            : "Securely connected and synchronizing data."),
                   ),
                   const SizedBox(height: 16),
 

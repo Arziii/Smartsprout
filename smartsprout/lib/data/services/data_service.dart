@@ -549,10 +549,10 @@ class DataService {
     final cutoffSeconds = cutoff.millisecondsSinceEpoch ~/ 1000;
 
     if (Platform.isLinux) {
-      return List.generate(
-          7, (i) => DailyAnalytics(dayIndex: i, avgMoisture: 0, avgTemp: 0));
+      return _fetchWeeklyAnalyticsLinux(cutoff, cutoffSeconds);
     }
 
+    // ── Mobile / cloud path ──────────────────────────────────────────────
     try {
       // PHASE 1 FIX: Hard cap at 500 documents to prevent unbounded reads.
       // The Pi writes to telemetry only on Eco-Mode (every 30 min), so
@@ -646,7 +646,222 @@ class DataService {
           7, (i) => DailyAnalytics(dayIndex: i, avgMoisture: 0, avgTemp: 0));
     }
   }
-}
+
+  // ═══════════════════════════════════════════════════════
+  // Analytics — Linux hybrid path
+  // ═══════════════════════════════════════════════════════
+  //
+  // Strategy:
+  //   1. Try Firebase REST API (with 6-second timeout) → online path.
+  //      Uses the same telemetry sub-collection as the mobile SDK path.
+  //   2. If Firebase is unreachable (timeout / SocketException / 401) →
+  //      offline path: call wifi_bridge on 127.0.0.1:7788/analytics which
+  //      queries the local SQLite telemetry.db directly.
+  //   3. If both fail, return an empty 7-day skeleton so the chart renders.
+
+  static const _wifiBridgeAnalyticsUrl =
+      'http://127.0.0.1:7788/analytics';
+
+  Future<List<DailyAnalytics>> _fetchWeeklyAnalyticsLinux(
+    DateTime cutoff,
+    int cutoffSeconds,
+  ) async {
+    // ── 1. Try online: Firebase REST ──────────────────────────────────────
+    try {
+      final result = await _fetchAnalyticsFromFirebaseRest(
+        cutoff: cutoff,
+        cutoffSeconds: cutoffSeconds,
+      ).timeout(const Duration(seconds: 6));
+      if (result != null) {
+        debugPrint('[ANALYTICS_LINUX] Online ✓ — read from Firebase REST');
+        return result;
+      }
+    } on TimeoutException {
+      debugPrint('[ANALYTICS_LINUX] Firebase REST timed out → offline mode');
+    } on SocketException {
+      debugPrint('[ANALYTICS_LINUX] No internet → offline mode');
+    } catch (e) {
+      debugPrint('[ANALYTICS_LINUX] Firebase REST error: $e → offline mode');
+    }
+
+    // ── 2. Fallback: wifi_bridge → local SQLite ───────────────────────────
+    return _fetchAnalyticsFromLocalBridge();
+  }
+
+  /// Queries the Firebase Firestore REST endpoint for the 7-day telemetry
+  /// window. Returns null on auth failure so the caller can fall back.
+  Future<List<DailyAnalytics>?> _fetchAnalyticsFromFirebaseRest({
+    required DateTime cutoff,
+    required int cutoffSeconds,
+  }) async {
+    final token = await _getAuthToken();
+    if (token == null) return null;
+
+    // Firestore REST: runQuery (structured query) to filter by timestamp.
+    // Using a structuredQuery POST is the most reliable GET alternative.
+    final url = Uri.parse(
+      'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents'
+      ':runQuery',
+    );
+
+    final queryBody = {
+      'structuredQuery': {
+        'from': [
+          {
+            'collectionId': 'telemetry',
+            'allDescendants': false,
+          }
+        ],
+        'where': {
+          'fieldFilter': {
+            'field': {'fieldPath': 'timestamp'},
+            'op': 'GREATER_THAN_OR_EQUAL',
+            'value': {'integerValue': cutoffSeconds.toString()},
+          }
+        },
+        'orderBy': [
+          {
+            'field': {'fieldPath': 'timestamp'},
+            'direction': 'ASCENDING',
+          }
+        ],
+        'limit': 500,
+        // Scope the query to this device's telemetry sub-collection
+        'parent':
+            'projects/$_projectId/databases/(default)/documents/devices/$deviceId',
+      }
+    };
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode(queryBody),
+    );
+
+    if (response.statusCode != 200) {
+      debugPrint(
+          '[ANALYTICS_LINUX] REST query failed ${response.statusCode}: ${response.body}');
+      return null;
+    }
+
+    final List<dynamic> rawList = json.decode(response.body) as List<dynamic>;
+
+    // Group by dayIndex (0 = 6 days ago … 6 = today)
+    final Map<int, List<Map<String, dynamic>>> grouped = {
+      for (int i = 0; i < 7; i++) i: []
+    };
+
+    for (final item in rawList) {
+      final fields = (item as Map<String, dynamic>?)?['document']
+          ?['fields'] as Map<String, dynamic>?;
+      if (fields == null) continue;
+
+      final tsStr = fields['timestamp']?['integerValue'] as String?;
+      if (tsStr == null) continue;
+      final ts = int.tryParse(tsStr);
+      if (ts == null) continue;
+
+      final date = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+      final dayDiff = date.difference(cutoff).inDays;
+      if (dayDiff >= 0 && dayDiff < 7) grouped[dayDiff]!.add(fields);
+    }
+
+    // Build DailyAnalytics list
+    double extractDouble(Map<String, dynamic>? field) {
+      if (field == null) return 0.0;
+      final dv = field['doubleValue'];
+      final iv = field['integerValue'];
+      if (dv != null) return (dv as num).toDouble();
+      if (iv != null) return double.tryParse(iv.toString()) ?? 0.0;
+      return 0.0;
+    }
+
+    final results = <DailyAnalytics>[];
+    for (int i = 0; i < 7; i++) {
+      final docs = grouped[i]!;
+      if (docs.isEmpty) {
+        results.add(DailyAnalytics(
+            dayIndex: i, avgMoisture: 0, avgTemp: 0, hasData: false));
+        continue;
+      }
+
+      double totalMoisture = 0;
+      double totalTemp = 0;
+      int validCount = 0;
+
+      for (final fields in docs) {
+        try {
+          // soil_moisture is stored as a Firestore mapValue
+          final soilMap = fields['soil_moisture']?['mapValue']?['fields']
+              as Map<String, dynamic>?;
+          double avgSoil = 0;
+          if (soilMap != null && soilMap.isNotEmpty) {
+            final vals = soilMap.values.map((f) => extractDouble(f as Map<String, dynamic>));
+            avgSoil = vals.reduce((a, b) => a + b) / vals.length;
+          }
+          totalMoisture += avgSoil;
+          totalTemp += extractDouble(fields['temperature'] as Map<String, dynamic>?);
+          validCount++;
+        } catch (e) {
+          debugPrint('[ANALYTICS_LINUX_REST] Parse error on field: $e');
+        }
+      }
+
+      results.add(DailyAnalytics(
+        dayIndex: i,
+        avgMoisture: validCount == 0 ? 0 : totalMoisture / validCount,
+        avgTemp: validCount == 0 ? 0 : totalTemp / validCount,
+        hasData: validCount > 0,
+      ));
+    }
+
+    return results;
+  }
+
+  /// Calls the local wifi_bridge /analytics endpoint which aggregates
+  /// telemetry.db (SQLite) into 7 daily averages. Always available offline.
+  Future<List<DailyAnalytics>> _fetchAnalyticsFromLocalBridge() async {
+    try {
+      final response = await http
+          .get(Uri.parse(_wifiBridgeAnalyticsUrl))
+          .timeout(const Duration(seconds: 4));
+
+      if (response.statusCode != 200) {
+        debugPrint(
+            '[ANALYTICS_LINUX] Bridge returned ${response.statusCode}');
+        return _emptyWeek();
+      }
+
+      final body = json.decode(response.body) as Map<String, dynamic>;
+      final days = body['days'] as List<dynamic>;
+
+      return days.map((d) {
+        final map = d as Map<String, dynamic>;
+        return DailyAnalytics(
+          dayIndex: map['dayIndex'] as int,
+          avgMoisture: (map['avgMoisture'] as num).toDouble(),
+          avgTemp: (map['avgTemp'] as num).toDouble(),
+          hasData: (map['avgMoisture'] as num) > 0 ||
+              (map['avgTemp'] as num) > 0,
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('[ANALYTICS_LINUX] Bridge error: $e');
+      return _emptyWeek();
+    }
+  }
+
+  /// Returns a 7-day skeleton with all zeros (graceful degradation).
+  List<DailyAnalytics> _emptyWeek() => List.generate(
+        7,
+        (i) => DailyAnalytics(dayIndex: i, avgMoisture: 0, avgTemp: 0),
+      );
+
+
+} // end DataService
 
 final dataServiceProvider = Provider<DataService?>((ref) {
   final authState = ref.watch(authProvider);

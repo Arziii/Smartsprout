@@ -419,7 +419,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Good Morning,",
+              Text("Good Day,",
                   style: GoogleFonts.outfit(
                       color: isDark ? Colors.white70 : const Color(0xFF4A6164),
                       fontSize: 16,
