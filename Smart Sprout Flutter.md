@@ -544,6 +544,27 @@ PHASE 4.27: LINUX KIOSK INITIALIZATION FIX [COMPLETED]
 ☑ Immediate Telemetry Stream: Replaced Stream.periodic (3s delay before first event) with a StreamController that reads /tmp/smartsprout_telemetry.json immediately on subscription, then polls every 3 seconds. Kiosk now shows real sensor values on the very first frame.
 ☑ Zero Startup Blank: Dashboard, Calibration, Analytics, and Settings screens on Linux now render correctly on first load.
 
+PHASE 4.28: LINUX KIOSK VIRTUAL KEYBOARD INTEGRATION [COMPLETED]
+☑ Virtual Keyboard: Resolved virtual keyboard visibility failure on the Linux kiosk interface.
+☑ Overlay Mapping: Integrated `flutter_onscreen_keyboard` overlay on the Raspberry Pi touchscreen.
+☑ Field Wrapping: Wrapped text fields in `KioskTextFormField` and `KioskTextField` to consistently trigger `OnscreenKeyboard.builder` within `MaterialApp`.
+
+PHASE 4.29: APP ICON & HARDWARE LOGIN REFINEMENT [COMPLETED]
+☑ Branded UI: Updated hardware login UI to use a branded logo, custom shadow styling, and updated system title text.
+☑ Native Icons: Configured `flutter_launcher_icons` for Android/iOS icon generation using `assets/images/app_logo.png`.
+
+PHASE 4.30: LINUX KIOSK ONLINE STATUS ENFORCEMENT [COMPLETED]
+☑ Platform Checks: Enhanced the `SensorData` model with platform-specific checks using `dart:io`.
+☑ Offline Override: Overrode `isOffline` and `isControllerDisconnected` states to return `false` when running on Linux (Raspberry Pi kiosk).
+☑ UX Clarity: Eliminated misleading "System Offline" UI warnings on the strictly-local Kiosk interface.
+
+PHASE 4.31: HARDWARE FAULT MITIGATION & PROTECTIVE WIRING [COMPLETED]
+☑ Comprehensive Electrical Safety: Established clear boundaries between the Raspberry Pi and the 12V hardware.
+☑ Overcurrent Protection: Integrated physical fuses to protect against short circuits.
+☑ Back-EMF Suppression: Integrated Flyback Diodes on Solenoid Valves.
+☑ Brownout Prevention: Added Bulk Capacitors for the Pump to prevent voltage drops.
+☑ Logic Level Shifting: Used Voltage Dividers (1kΩ/2kΩ) for 5V-to-3.3V reduction on the XKC-Y26-V liquid sensor.
+
 ═══════════════════════════════════════════════════════════════════
 
 
@@ -692,7 +713,17 @@ overridden locally via the `.env` configuration file.
 └─────────────────────────┴─────────────────────────┴───────────────────────┴────────────────────────────────────┘
 
 
-7.4 LINUX KIOSK DATA ARCHITECTURE
+7.4 HARDWARE FAULT MITIGATION & PROTECTIVE WIRING
+
+To ensure the safety of the sensitive 3.3V Raspberry Pi GPIO pins when interfacing with 12V and 5V components (specifically inductive loads like solenoid valves and DC pumps), the system incorporates the following hardware protections:
+
+• Overcurrent Protection (Fuses): Placed on the main 12V supply line to prevent catastrophic failure in the event of a short circuit.
+• Back-EMF Suppression (Flyback Diodes): Reverse-biased 1N4007 diodes are installed across the terminals of all Solenoid Valves and the Pump. This gives the high-voltage spike generated when the coil is de-energized a safe path to dissipate, protecting the relay module and Pi.
+• Brownout Prevention (Bulk Capacitor): A large electrolytic capacitor (e.g., 1000μF 25V) is placed across the power rails near the pump to supply the sudden burst of current required during motor startup, preventing voltage dips that could reset the Pi.
+• Logic Level Shifting: The XKC-Y26-V liquid level sensor outputs a 5V signal. To safely read this on the Pi's 3.3V GPIO 5, a 1kΩ/2kΩ voltage divider is used to step down the signal to ~3.3V.
+
+
+7.5 LINUX KIOSK DATA ARCHITECTURE
 
 The Flutter Kiosk UI on the Raspberry Pi operates completely offline — no Firebase,
 no internet, no API quota — using a local file-based telemetry pipeline:
@@ -714,7 +745,7 @@ no internet, no API quota — using a local file-based telemetry pipeline:
 Commands (pump on/off, calibration writes) travel from Kiosk → Firebase REST API
 → Python backend picks them up from the cloud command queue as usual.
 
-7.5 THERMAL MANAGEMENT & ENCLOSURE DESIGN
+7.6 THERMAL MANAGEMENT & ENCLOSURE DESIGN
 
 Active Cooling: A dedicated 5V or 12V exhaust fan is integrated into the custom enclosure to dissipate heat from the XL4016 heatsinks and the Raspberry Pi 4 CPU.
 
