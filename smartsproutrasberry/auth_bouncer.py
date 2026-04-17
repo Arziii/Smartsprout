@@ -51,7 +51,7 @@ _rate_limit_store: dict = {}
 _rl_lock = threading.Lock()
 
 _MAX_FAILURES    = 5
-_LOCKOUT_SECONDS = 900   # 15 minutes
+_LOCKOUT_SECONDS = 30    # 30 seconds
 
 
 # ═══════════════════════════════════════════════════════
@@ -197,7 +197,7 @@ def _record_failure(request_key: str):
         print(f"[AUTH_BOUNCER] ❌ Failed attempt #{record['failures']} for {request_key}")
         if record["failures"] >= _MAX_FAILURES:
             record["locked_until"] = time.time() + _LOCKOUT_SECONDS
-            print(f"[AUTH_BOUNCER] 🔒 {request_key} RATE LIMITED for {_LOCKOUT_SECONDS // 60} minutes.")
+            print(f"[AUTH_BOUNCER] 🔒 {request_key} RATE LIMITED for {_LOCKOUT_SECONDS} seconds.")
 
 
 def _reset_failures(request_key: str):
@@ -292,7 +292,7 @@ def _handle_request(db, doc_ref, doc_id: str, data: dict):
                     doc_ref.update({
                         "status":       "rate_limited",
                         "locked_until": int(time.time() + remaining),
-                        "error":        f"Too many failed attempts. Try again in {int(remaining // 60) + 1} minute(s).",
+                        "error":        f"Too many failed attempts. Try again in {int(remaining)} second(s).",
                         "processedAt":  firestore.SERVER_TIMESTAMP,
                     })
                 else:
@@ -313,7 +313,7 @@ def _handle_request(db, doc_ref, doc_id: str, data: dict):
                     doc_ref.update({
                         "status":       "rate_limited",
                         "locked_until": int(time.time() + remaining),
-                        "error":        f"Too many failed attempts. Try again in {int(remaining // 60) + 1} minute(s).",
+                        "error":        f"Too many failed attempts. Try again in {int(remaining)} second(s).",
                         "processedAt":  firestore.SERVER_TIMESTAMP,
                     })
                 else:
@@ -337,7 +337,7 @@ def _handle_request(db, doc_ref, doc_id: str, data: dict):
                     doc_ref.update({
                         "status":       "rate_limited",
                         "locked_until": int(time.time() + remaining),
-                        "error":        f"Too many failed attempts. Try again in {int(remaining // 60) + 1} minute(s).",
+                        "error":        f"Too many failed attempts. Try again in {int(remaining)} second(s).",
                         "processedAt":  firestore.SERVER_TIMESTAMP,
                     })
                 else:
@@ -359,7 +359,7 @@ def _handle_request(db, doc_ref, doc_id: str, data: dict):
             doc_ref.update({
                 "status":       "rate_limited",
                 "locked_until": int(locked_until_ts),
-                "error":        f"Too many failed attempts. Try again in {int(remaining // 60) + 1} minute(s).",
+                "error":        f"Too many failed attempts. Try again in {int(remaining)} second(s).",
                 "processedAt":  firestore.SERVER_TIMESTAMP,
             })
             return
@@ -384,7 +384,7 @@ def _handle_request(db, doc_ref, doc_id: str, data: dict):
                 doc_ref.update({
                     "status":       "rate_limited",
                     "locked_until": int(time.time() + rem_after),
-                    "error":        f"Too many failed attempts. Try again in {int(rem_after // 60) + 1} minute(s).",
+                    "error":        f"Too many failed attempts. Try again in {int(rem_after)} second(s).",
                     "processedAt":  firestore.SERVER_TIMESTAMP,
                 })
             else:

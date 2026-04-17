@@ -57,10 +57,16 @@ _heartbeat_listener = None          # Firestore listener handle
 def init_firebase():
     global _db
     try:
-        cred = credentials.Certificate(config.FIREBASE_CREDENTIALS_PATH)
-        firebase_admin.initialize_app(cred)
+        # Guard: reuse existing app if wifi_bridge (or any other module) already
+        # called initialize_app() before us. Calling it twice raises ValueError.
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(config.FIREBASE_CREDENTIALS_PATH)
+            firebase_admin.initialize_app(cred)
+            print(f"[FIREBASE] Initialized fresh Firebase app for device: {config.DEVICE_ID}")
+        else:
+            print(f"[FIREBASE] Reusing existing Firebase app (initialized by wifi_bridge).")
         _db = firestore.client()
-        print(f"[FIREBASE] Initialized with device ID: {config.DEVICE_ID}")
+        print(f"[FIREBASE] Firestore client ready. Device ID: {config.DEVICE_ID}")
         return True
     except FileNotFoundError:
         print(f"[FIREBASE_ERROR] Service account key not found at {config.FIREBASE_CREDENTIALS_PATH}")

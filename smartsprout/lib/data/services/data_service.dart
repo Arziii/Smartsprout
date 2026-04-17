@@ -33,7 +33,14 @@ class DataService {
   // Firebase Auth REST API - Anonymous Sign-In for Linux
   // ═══════════════════════════════════════════════════════
 
-  /// Gets a valid auth token, refreshing if expired
+  /// Gets a valid Firebase ID token for this device's UID (SPROUT_A1B2).
+  ///
+  /// On Linux (Raspberry Pi kiosk), the token is minted by the local
+  /// wifi_bridge.py at 127.0.0.1:7788/token — it uses the Firebase Admin SDK
+  /// to create a custom token for SPROUT_A1B2, then exchanges it for an ID
+  /// token. This satisfies the Firestore rule: request.auth.uid == deviceId.
+  ///
+  /// Tokens are cached for 55 minutes to avoid repeated minting.
   Future<String?> _getAuthToken() async {
     // Return cached token if still valid (with 5-min buffer)
     if (_authToken != null &&
@@ -44,27 +51,29 @@ class DataService {
     }
 
     try {
-      final url = Uri.parse(
-          'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$_apiKey');
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'returnSecureToken': true}),
-      );
+      // Call the local Pi bridge — it mints a custom token as SPROUT_A1B2
+      // and exchanges it for a real ID token via Firebase REST.
+      final response = await http
+          .get(Uri.parse('http://127.0.0.1:7788/token'))
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        _authToken = data['idToken'];
-        // Tokens expire in 3600 seconds (1 hour)
-        final expiresIn = int.tryParse(data['expiresIn'] ?? '3600') ?? 3600;
-        _tokenExpiry = DateTime.now().add(Duration(seconds: expiresIn));
-        debugPrint('[REST_AUTH] Anonymous sign-in successful');
-        return _authToken;
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        if (data.containsKey('idToken')) {
+          _authToken = data['idToken'] as String;
+          final expiresIn =
+              int.tryParse(data['expiresIn']?.toString() ?? '3600') ?? 3600;
+          _tokenExpiry = DateTime.now().add(Duration(seconds: expiresIn));
+          debugPrint('[REST_AUTH] Token obtained from bridge (uid=SPROUT_A1B2)');
+          return _authToken;
+        } else {
+          debugPrint('[REST_AUTH] Bridge /token error: ${data['error']}');
+        }
       } else {
-        debugPrint('[REST_AUTH] Failed: ${response.body}');
+        debugPrint('[REST_AUTH] Bridge /token HTTP ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('[REST_AUTH] Error: $e');
+      debugPrint('[REST_AUTH] Bridge /token exception: $e');
     }
     return null;
   }
@@ -554,16 +563,16 @@ class DataService {
 
     // ── Mobile / cloud path ──────────────────────────────────────────────
     try {
-      // PHASE 1 FIX: Hard cap at 500 documents to prevent unbounded reads.
-      // The Pi writes to telemetry only on Eco-Mode (every 30 min), so
-      // 500 docs = ~10+ days of data — well beyond the 7-day window needed.
+      // PHASE 1 FIX: Hard cap at 2000 documents to prevent completely unbounded reads,
+      // but ensure we capture the most recent data first (descending: true) so today
+      // is never truncated if the sensor gets aggressive.
       final snapshot = await _firestore
           .collection('devices')
           .doc(deviceId)
           .collection('telemetry')
           .where('timestamp', isGreaterThanOrEqualTo: cutoffSeconds)
-          .orderBy('timestamp', descending: false)
-          .limit(500)
+          .orderBy('timestamp', descending: true)
+          .limit(2000)
           .get();
 
       Map<int, List<Map<String, dynamic>>> grouped = {
@@ -600,7 +609,9 @@ class DataService {
         } else {
           double totalMoisture = 0.0;
           double totalTemp = 0.0;
-          int validDocs = 0;
+          int moistureCount = 0;
+          int tempCount = 0;
+          bool hasFault = false;
           for (var d in docs) {
             try {
               // ── soil_moisture is written by the Pi as Map<String, dynamic>
@@ -608,24 +619,41 @@ class DataService {
               // Firestore returns int for whole numbers, so we always cast
               // through num? → toDouble() to avoid the combine-type mismatch.
               final rawSoil = d['soil_moisture'];
-              List<double> soil;
-              if (rawSoil is Map) {
-                soil = rawSoil.values
+              List<double> allSoil;
+              if (rawSoil is Map && rawSoil.isNotEmpty) {
+                allSoil = rawSoil.values
                     .map<double>((v) => safeDouble(v))
                     .toList();
-              } else if (rawSoil is List) {
-                soil = rawSoil.map<double>((v) => safeDouble(v)).toList();
+              } else if (rawSoil is List && rawSoil.isNotEmpty) {
+                allSoil = rawSoil.map<double>((v) => safeDouble(v)).toList();
               } else {
-                soil = [0.0, 0.0, 0.0];
+                allSoil = []; // No soil data — skip this doc for moisture
               }
 
-              final avgSoil = soil.isEmpty
-                  ? 0.0
-                  : soil.reduce((a, b) => a + b) / soil.length;
+              // Filter out -1 fault values; track if any existed
+              final validSoil = allSoil.where((v) => v >= 0).toList();
+              if (allSoil.isNotEmpty && validSoil.length < allSoil.length) {
+                hasFault = true;
+              }
 
-              totalMoisture += avgSoil;
-              totalTemp += safeDouble(d['temperature']);
-              validDocs++;
+              if (validSoil.isNotEmpty) {
+                totalMoisture +=
+                    validSoil.reduce((a, b) => a + b) / validSoil.length;
+                moistureCount++;
+              }
+
+              // null temperature → -1 (skip), matching Python's
+              // d.get('temperature', -1) behavior.
+              final rawTemp = d['temperature'];
+              final temp = rawTemp != null
+                  ? (rawTemp as num).toDouble()
+                  : -1.0;
+              if (temp >= 0) {
+                totalTemp += temp;
+                tempCount++;
+              } else {
+                hasFault = true;
+              }
             } on TypeError catch (te) {
               debugPrint(
                   '[ANALYTICS_PARSE] TypeError on doc data — raw payload: $d');
@@ -634,9 +662,11 @@ class DataService {
           }
           results.add(DailyAnalytics(
               dayIndex: i,
-              avgMoisture: validDocs == 0 ? 0.0 : totalMoisture / validDocs,
-              avgTemp: validDocs == 0 ? 0.0 : totalTemp / validDocs,
-              hasData: validDocs > 0)); // false if all docs threw parse errors
+              avgMoisture:
+                  moistureCount == 0 ? 0.0 : totalMoisture / moistureCount,
+              avgTemp: tempCount == 0 ? 0.0 : totalTemp / tempCount,
+              hasData: true, // Telemetry docs exist (even if all faulted)
+              hasFault: hasFault));
         }
       }
       return results;
@@ -666,167 +696,64 @@ class DataService {
     DateTime cutoff,
     int cutoffSeconds,
   ) async {
-    // ── 1. Try online: Firebase REST ──────────────────────────────────────
+    // ── Call /analytics_cloud: Pi Admin SDK → Firestore ──────────────────
+    // Pass Flutter's own cutoffSeconds so the bridge uses the EXACT same
+    // week boundary as the chart labels — timezone-agnostic by design.
     try {
-      final result = await _fetchAnalyticsFromFirebaseRest(
-        cutoff: cutoff,
-        cutoffSeconds: cutoffSeconds,
-      ).timeout(const Duration(seconds: 6));
-      if (result != null) {
-        debugPrint('[ANALYTICS_LINUX] Online ✓ — read from Firebase REST');
-        return result;
-      }
-    } on TimeoutException {
-      debugPrint('[ANALYTICS_LINUX] Firebase REST timed out → offline mode');
-    } on SocketException {
-      debugPrint('[ANALYTICS_LINUX] No internet → offline mode');
-    } catch (e) {
-      debugPrint('[ANALYTICS_LINUX] Firebase REST error: $e → offline mode');
-    }
+      final uri = Uri.parse(
+          'http://127.0.0.1:7788/analytics_cloud?cutoff=$cutoffSeconds');
+      final response = await http.get(uri).timeout(const Duration(seconds: 20));
 
-    // ── 2. Fallback: wifi_bridge → local SQLite ───────────────────────────
-    return _fetchAnalyticsFromLocalBridge();
-  }
+      debugPrint('[ANALYTICS_LINUX] /analytics_cloud HTTP ${response.statusCode}');
 
-  /// Queries the Firebase Firestore REST endpoint for the 7-day telemetry
-  /// window. Returns null on auth failure so the caller can fall back.
-  Future<List<DailyAnalytics>?> _fetchAnalyticsFromFirebaseRest({
-    required DateTime cutoff,
-    required int cutoffSeconds,
-  }) async {
-    final token = await _getAuthToken();
-    if (token == null) return null;
-
-    // Firestore REST: runQuery (structured query) to filter by timestamp.
-    // Using a structuredQuery POST is the most reliable GET alternative.
-    final url = Uri.parse(
-      'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents'
-      ':runQuery',
-    );
-
-    final queryBody = {
-      'structuredQuery': {
-        'from': [
-          {
-            'collectionId': 'telemetry',
-            'allDescendants': false,
-          }
-        ],
-        'where': {
-          'fieldFilter': {
-            'field': {'fieldPath': 'timestamp'},
-            'op': 'GREATER_THAN_OR_EQUAL',
-            'value': {'integerValue': cutoffSeconds.toString()},
-          }
-        },
-        'orderBy': [
-          {
-            'field': {'fieldPath': 'timestamp'},
-            'direction': 'ASCENDING',
-          }
-        ],
-        'limit': 500,
-        // Scope the query to this device's telemetry sub-collection
-        'parent':
-            'projects/$_projectId/databases/(default)/documents/devices/$deviceId',
-      }
-    };
-
-    final response = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: json.encode(queryBody),
-    );
-
-    if (response.statusCode != 200) {
-      debugPrint(
-          '[ANALYTICS_LINUX] REST query failed ${response.statusCode}: ${response.body}');
-      return null;
-    }
-
-    final List<dynamic> rawList = json.decode(response.body) as List<dynamic>;
-
-    // Group by dayIndex (0 = 6 days ago … 6 = today)
-    final Map<int, List<Map<String, dynamic>>> grouped = {
-      for (int i = 0; i < 7; i++) i: []
-    };
-
-    for (final item in rawList) {
-      final fields = (item as Map<String, dynamic>?)?['document']
-          ?['fields'] as Map<String, dynamic>?;
-      if (fields == null) continue;
-
-      final tsStr = fields['timestamp']?['integerValue'] as String?;
-      if (tsStr == null) continue;
-      final ts = int.tryParse(tsStr);
-      if (ts == null) continue;
-
-      final date = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
-      final dayDiff = date.difference(cutoff).inDays;
-      if (dayDiff >= 0 && dayDiff < 7) grouped[dayDiff]!.add(fields);
-    }
-
-    // Build DailyAnalytics list
-    double extractDouble(Map<String, dynamic>? field) {
-      if (field == null) return 0.0;
-      final dv = field['doubleValue'];
-      final iv = field['integerValue'];
-      if (dv != null) return (dv as num).toDouble();
-      if (iv != null) return double.tryParse(iv.toString()) ?? 0.0;
-      return 0.0;
-    }
-
-    final results = <DailyAnalytics>[];
-    for (int i = 0; i < 7; i++) {
-      final docs = grouped[i]!;
-      if (docs.isEmpty) {
-        results.add(DailyAnalytics(
-            dayIndex: i, avgMoisture: 0, avgTemp: 0, hasData: false));
-        continue;
-      }
-
-      double totalMoisture = 0;
-      double totalTemp = 0;
-      int validCount = 0;
-
-      for (final fields in docs) {
-        try {
-          // soil_moisture is stored as a Firestore mapValue
-          final soilMap = fields['soil_moisture']?['mapValue']?['fields']
-              as Map<String, dynamic>?;
-          double avgSoil = 0;
-          if (soilMap != null && soilMap.isNotEmpty) {
-            final vals = soilMap.values.map((f) => extractDouble(f as Map<String, dynamic>));
-            avgSoil = vals.reduce((a, b) => a + b) / vals.length;
-          }
-          totalMoisture += avgSoil;
-          totalTemp += extractDouble(fields['temperature'] as Map<String, dynamic>?);
-          validCount++;
-        } catch (e) {
-          debugPrint('[ANALYTICS_LINUX_REST] Parse error on field: $e');
+      if (response.statusCode == 200) {
+        final body = json.decode(response.body) as Map<String, dynamic>;
+        if (body.containsKey('days')) {
+          final days = body['days'] as List<dynamic>;
+          final result = days.map((d) {
+            final m = d as Map<String, dynamic>;
+            return DailyAnalytics(
+              dayIndex: (m['dayIndex'] as num).toInt(),
+              avgMoisture: (m['avgMoisture'] as num).toDouble(),
+              avgTemp: (m['avgTemp'] as num).toDouble(),
+              hasData: m['hasData'] as bool? ?? false,
+              hasFault: m['hasFault'] as bool? ?? false,
+            );
+          }).toList();
+          debugPrint('[ANALYTICS_LINUX] ✅ Cloud data: '
+              '${result.where((d) => d.hasData == true).length}/7 days have data');
+          return result;
+        } else {
+          debugPrint(
+              '[ANALYTICS_LINUX] Bridge error: ${body['error']}');
         }
       }
-
-      results.add(DailyAnalytics(
-        dayIndex: i,
-        avgMoisture: validCount == 0 ? 0 : totalMoisture / validCount,
-        avgTemp: validCount == 0 ? 0 : totalTemp / validCount,
-        hasData: validCount > 0,
-      ));
+    } on TimeoutException {
+      debugPrint('[ANALYTICS_LINUX] /analytics_cloud timed out → SQLite fallback');
+    } on SocketException catch (e) {
+      debugPrint('[ANALYTICS_LINUX] /analytics_cloud socket error: $e → SQLite fallback');
+    } catch (e) {
+      debugPrint('[ANALYTICS_LINUX] /analytics_cloud exception: $e → SQLite fallback');
     }
 
-    return results;
+    // ── Fallback: /analytics → local SQLite telemetry.db ─────────────────
+    debugPrint('[ANALYTICS_LINUX] 🔀 Falling back to local SQLite...');
+    return _fetchAnalyticsFromLocalBridge(cutoffSeconds: cutoffSeconds);
   }
+
 
   /// Calls the local wifi_bridge /analytics endpoint which aggregates
   /// telemetry.db (SQLite) into 7 daily averages. Always available offline.
-  Future<List<DailyAnalytics>> _fetchAnalyticsFromLocalBridge() async {
+  ///
+  /// Passes [cutoffSeconds] so the bridge uses Flutter's exact local-midnight
+  /// boundary — ensuring day labels match identically across platforms.
+  Future<List<DailyAnalytics>> _fetchAnalyticsFromLocalBridge({
+    required int cutoffSeconds,
+  }) async {
     try {
+      final url = '$_wifiBridgeAnalyticsUrl?cutoff=$cutoffSeconds';
       final response = await http
-          .get(Uri.parse(_wifiBridgeAnalyticsUrl))
+          .get(Uri.parse(url))
           .timeout(const Duration(seconds: 4));
 
       if (response.statusCode != 200) {
@@ -844,8 +771,8 @@ class DataService {
           dayIndex: map['dayIndex'] as int,
           avgMoisture: (map['avgMoisture'] as num).toDouble(),
           avgTemp: (map['avgTemp'] as num).toDouble(),
-          hasData: (map['avgMoisture'] as num) > 0 ||
-              (map['avgTemp'] as num) > 0,
+          hasData: map['hasData'] as bool? ?? false,
+          hasFault: map['hasFault'] as bool? ?? false,
         );
       }).toList();
     } catch (e) {

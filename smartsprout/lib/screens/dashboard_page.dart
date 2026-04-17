@@ -260,15 +260,20 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
       bool hasFault,
       bool isEnvFault,
       dynamic sensorData) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+    return Column(
       children: [
-        _buildAnimatedWidget(
-            0, _buildTopHeader(isOffline, isTankLow, hasFault)),
-        const SizedBox(height: 10),
-        _buildAnimatedWidget(
-            1, _buildVitals(tankLevelStr, temperature, isEnvFault)),
-        const SizedBox(height: 30),
+        Padding(
+          padding: const EdgeInsets.only(left: 20, right: 20, top: 10),
+          child: _buildAnimatedWidget(
+              0, _buildTopHeader(isOffline, isTankLow, hasFault)),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            children: [
+              _buildAnimatedWidget(
+                  1, _buildVitals(tankLevelStr, temperature, isEnvFault)),
+              const SizedBox(height: 30),
         _buildAnimatedWidget(
             2,
             Row(
@@ -354,6 +359,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               ],
             )),
         const SizedBox(height: 100),
+            ],
+          ),
+        ),
       ],
     );
   }

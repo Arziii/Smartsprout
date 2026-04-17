@@ -204,16 +204,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                       color: const Color(0xFF78909C),
                       onTap: () => _showChangePinSheet(),
                     )),
-                _buildAnimatedItem(
-                    10,
-                    _buildSettingsCard(
-                      title: 'Disconnect Device',
-                      subtitle: 'Log out of current hardware',
-                      icon: Icons.logout_rounded,
-                      color: Colors.redAccent,
-                      isDestructive: true,
-                      onTap: () => _logout(),
-                    )),
+                if (!Platform.isLinux)
+                  _buildAnimatedItem(
+                      10,
+                      _buildSettingsCard(
+                        title: 'Disconnect Device',
+                        subtitle: 'Log out of current hardware',
+                        icon: Icons.logout_rounded,
+                        color: Colors.redAccent,
+                        isDestructive: true,
+                        onTap: () => _logout(),
+                      )),
                 const SizedBox(height: 50),
               ],
             ),
@@ -1179,8 +1180,9 @@ class _ChangePinSheetState extends ConsumerState<_ChangePinSheet>
               if (!RegExp(r'[A-Z]').hasMatch(pw)) return 'Must contain an uppercase letter';
               if (!RegExp(r'[a-z]').hasMatch(pw)) return 'Must contain a lowercase letter';
               if (!RegExp(r'[0-9]').hasMatch(pw)) return 'Must contain a number';
-              if (!RegExp(r'[!@#%^&*()_+={}\[\];:.\-]').hasMatch(pw))
+              if (!RegExp(r'[!@#%^&*()_+={}\[\];:.\-]').hasMatch(pw)) {
                 return 'Must contain a special character (!@#%^&*)';
+              }
             }
             return null;
           },

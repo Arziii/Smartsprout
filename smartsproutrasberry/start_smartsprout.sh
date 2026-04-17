@@ -12,7 +12,7 @@ echo "Starting SmartSprout Kiosk System..."
 # 1. Start Python Backend in the background
 cd /home/smartsprout/Smartsprout/smartsproutrasberry
 source venv/bin/activate
-python3 main.py &
+python3 -u main.py > /tmp/smartsprout.log 2>&1 &
 BACKEND_PID=$!
 
 echo "Python Backend running on PID: $BACKEND_PID"

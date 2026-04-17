@@ -23,6 +23,12 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     )..forward();
+
+    // Always fetch fresh data when the screen opens — bypasses the 1-hour
+    // cache so the kiosk shows up-to-date analytics on every visit.
+    Future.microtask(() {
+      ref.read(analyticsProvider.notifier).refresh();
+    });
   }
 
   @override
@@ -48,6 +54,17 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh_rounded,
+                color: isDark ? Colors.white70 : const Color(0xFF4A6164)),
+            tooltip: 'Refresh Analytics',
+            onPressed: () {
+              ref.read(analyticsProvider.notifier).refresh();
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Stack(
         children: [
@@ -109,39 +126,45 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                             .toList()
                         : const [FlSpot(0, 0)];
 
-                    return SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildAnimatedItem(
-                              0,
-                              _buildChartCard(
-                                title: 'Soil Moisture Trend (7 Days)',
-                                subtitle: 'Average across all zones',
-                                color: const Color(0xFF8D6E63),
-                                icon: Icons.grass_rounded,
-                                spots: moistureSpots,
-                                cutoff: cutoff,
-                                hasAnyData: hasAnyData,
-                                dataPoints: data,
-                              )),
-                          const SizedBox(height: 24),
-                          _buildAnimatedItem(
-                              1,
-                              _buildChartCard(
-                                title: 'Temperature Trend (7 Days)',
-                                subtitle: 'Daily average in °C',
-                                color: const Color(0xFFFF7043),
-                                icon: Icons.thermostat_rounded,
-                                spots: tempSpots,
-                                cutoff: cutoff,
-                                hasAnyData: hasAnyData,
-                                dataPoints: data,
-                              )),
-                          const SizedBox(height: 100),
-                        ],
+                    return RefreshIndicator(
+                      color: const Color(0xFF2BCC71),
+                      onRefresh: () =>
+                          ref.read(analyticsProvider.notifier).refresh(),
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildAnimatedItem(
+                                0,
+                                _buildChartCard(
+                                  title: 'Soil Moisture Trend (7 Days)',
+                                  subtitle: 'Average across all zones',
+                                  color: const Color(0xFF8D6E63),
+                                  icon: Icons.grass_rounded,
+                                  spots: moistureSpots,
+                                  cutoff: cutoff,
+                                  hasAnyData: hasAnyData,
+                                  dataPoints: data,
+                                )),
+                            const SizedBox(height: 24),
+                            _buildAnimatedItem(
+                                1,
+                                _buildChartCard(
+                                  title: 'Temperature Trend (7 Days)',
+                                  subtitle: 'Daily average in °C',
+                                  color: const Color(0xFFFF7043),
+                                  icon: Icons.thermostat_rounded,
+                                  spots: tempSpots,
+                                  cutoff: cutoff,
+                                  hasAnyData: hasAnyData,
+                                  dataPoints: data,
+                                )),
+                            const SizedBox(height: 100),
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -293,7 +316,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                             reservedSize: 40,
                             getTitlesWidget: (value, meta) {
                               // Hide min and max values to prevent overlapping with regular interval labels
-                              if (value == meta.min || value == meta.max) {
+                              // Only hide them if they are not the same (i.e., not a flat line)
+                              if (meta.min != meta.max && (value == meta.min || value == meta.max)) {
                                 return const SizedBox.shrink();
                               }
                               
@@ -326,9 +350,12 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                               final isToday = _isToday(idx);
                               final label =
                                   isToday ? 'Today' : _dayLabel(idx, cutoff);
-                              final dayHasData =
-                                  dataPoints[idx].hasData as bool;
-                                  
+                              final dp = dataPoints[idx];
+                              final dayHasData = dp.hasData as bool;
+                              final dayHasFault = dp.hasFault as bool;
+
+                              // Look up the actual chart value for THIS chart
+                              // (moisture or temperature) to decide color.
                               final spotIdx = spots.indexWhere((s) => s.x == idx);
                               final chartValue = spotIdx != -1 ? spots[spotIdx].y : null;
 
@@ -336,12 +363,18 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                                 if (!dayHasData) {
                                   return isDark ? Colors.red.shade400 : Colors.red.shade600; // Pi offline
                                 }
-                                if (chartValue != null && chartValue <= -1) {
-                                  return isDark ? Colors.amber.shade400 : Colors.amber.shade600; // Value is -1
+                                // Valid data > 0 overrides fault — some sensors worked
+                                if (chartValue != null && chartValue > 0) {
+                                  return isDark ? Colors.green.shade400 : Colors.green.shade600;
+                                }
+                                // Value is 0 AND sensors faulted — amber
+                                if (dayHasFault) {
+                                  return isDark ? Colors.amber.shade400 : Colors.amber.shade600;
                                 }
                                 return isDark ? Colors.green.shade400 : Colors.green.shade600; // Valid green
                               }
                               
+                              final isFaultDisplay = dayHasFault && (chartValue == null || chartValue <= 0);
                               final labelColor = getLabelColor();
 
                               return Padding(
@@ -355,7 +388,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen>
                                         fontSize: isToday ? 11 : 12,
                                         height: 1.2,
                                         color: labelColor,
-                                        fontWeight: !dayHasData || isToday || (chartValue != null && chartValue <= -1)
+                                        fontWeight: !dayHasData || isToday || isFaultDisplay
                                             ? FontWeight.w900
                                             : FontWeight.w600,
                                       ),

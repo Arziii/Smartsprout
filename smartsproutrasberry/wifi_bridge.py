@@ -18,7 +18,29 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
+try:
+    import firebase_admin
+    from firebase_admin import credentials, auth as fb_auth, firestore as fb_firestore
+
+    # main.py already calls firebase_admin.initialize_app() via firebase_manager.
+    # We REUSE that existing app here instead of creating a second one.
+    # Only initialize if no app exists yet (e.g., when wifi_bridge is run standalone).
+    _SERVICE_ACCOUNT = os.path.join(os.path.dirname(__file__), 'firebase-adminsdk.json')
+    if not firebase_admin._apps:
+        _cred = credentials.Certificate(_SERVICE_ACCOUNT)
+        firebase_admin.initialize_app(_cred)
+        print('[WiFi Bridge] Initialized Firebase Admin SDK (standalone mode)')
+    else:
+        print('[WiFi Bridge] Reusing existing Firebase Admin SDK app from main.py')
+    _FIREBASE_ADMIN_OK = True
+except Exception as _e:
+    print(f'[WiFi Bridge] firebase_admin unavailable: {_e}')
+    _FIREBASE_ADMIN_OK = False
+
 PORT = 7788
+
+# ── Device ID that owns all data in Firestore ──
+_DEVICE_ID = 'SPROUT_A1B2'
 
 # ── Path to the local SQLite database written by local_db.py ──
 _DB_PATH = os.path.join(os.path.dirname(__file__), 'telemetry.db')
@@ -114,30 +136,42 @@ def current_status() -> dict:
     return {"connected": False, "ssid": ""}
 
 
-def get_weekly_analytics() -> list[dict]:
+def get_weekly_analytics(cutoff_seconds: int = None) -> list[dict]:
     """
     Aggregates the last 7 calendar days of telemetry from local SQLite.
 
     Returns a list of 7 dicts in ascending date order (oldest → today):
       [
-        {"dayIndex": 0, "avgMoisture": 42.5, "avgTemp": 28.1},
+        {"dayIndex": 0, "avgMoisture": 42.5, "avgTemp": 28.1,
+         "hasData": true, "hasFault": false},
         ...
-        {"dayIndex": 6, "avgMoisture": 55.0, "avgTemp": 26.8},
       ]
     dayIndex 0 = 6 days ago, dayIndex 6 = today.
-    Missing days return avgMoisture=0.0 and avgTemp=0.0.
+
+    Args:
+        cutoff_seconds: Unix timestamp of the start of the 7-day window,
+            as computed by Flutter (local midnight - 6 days).
+            When provided, this is used verbatim so the bridge and chart
+            labels use the EXACT same day boundary.
     """
-    now_ts = int(time.time())
+    import datetime as _dt
 
     # Build a slot for each of the 7 days (0 = 6 days ago … 6 = today)
     day_buckets: dict[int, list[dict]] = {i: [] for i in range(7)}
 
-    # UTC-midnight of 6 days ago (floor to full day)
-    today_midnight = now_ts - (now_ts % 86400)           # midnight UTC today
-    week_start = today_midnight - 6 * 86400              # midnight 6 days ago
+    if cutoff_seconds is not None:
+        week_start = int(cutoff_seconds)
+        print(f'[WiFi Bridge] /analytics: using Flutter cutoff={week_start}')
+    else:
+        # Compute LOCAL midnight (not UTC!) so day boundaries match Flutter.
+        local_now = _dt.datetime.now()
+        local_midnight = _dt.datetime(local_now.year, local_now.month, local_now.day)
+        week_start = int(local_midnight.timestamp()) - 6 * 86400
+        print(f'[WiFi Bridge] /analytics: computed local week_start={week_start}')
 
     if not os.path.exists(_DB_PATH):
-        return [{'dayIndex': i, 'avgMoisture': 0.0, 'avgTemp': 0.0}
+        return [{'dayIndex': i, 'avgMoisture': 0.0, 'avgTemp': 0.0,
+                 'hasData': False, 'hasFault': False}
                 for i in range(7)]
 
     try:
@@ -146,9 +180,7 @@ def get_weekly_analytics() -> list[dict]:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
             """
-            SELECT timestamp,
-                   (moisture_b1 + moisture_b2 + moisture_b3) / 3.0 AS avg_m,
-                   temperature
+            SELECT timestamp, moisture_b1, moisture_b2, moisture_b3, temperature
             FROM  telemetry
             WHERE timestamp >= ?
             ORDER BY timestamp ASC
@@ -159,32 +191,221 @@ def get_weekly_analytics() -> list[dict]:
         conn.close()
     except Exception as e:
         print(f"[WiFi Bridge] Analytics DB error: {e}")
-        return [{'dayIndex': i, 'avgMoisture': 0.0, 'avgTemp': 0.0}
+        return [{'dayIndex': i, 'avgMoisture': 0.0, 'avgTemp': 0.0,
+                 'hasData': False, 'hasFault': False}
                 for i in range(7)]
 
     for row in rows:
         day_idx = (row['timestamp'] - week_start) // 86400
         if 0 <= day_idx <= 6:
             day_buckets[day_idx].append({
-                'moisture': row['avg_m'],
+                'b1': row['moisture_b1'],
+                'b2': row['moisture_b2'],
+                'b3': row['moisture_b3'],
                 'temp': row['temperature'],
             })
 
     result = []
     for i in range(7):
         readings = day_buckets[i]
-        if readings:
-            avg_m = sum(r['moisture'] for r in readings) / len(readings)
-            avg_t = sum(r['temp'] for r in readings) / len(readings)
-        else:
-            avg_m, avg_t = 0.0, 0.0
+        if not readings:
+            result.append({
+                'dayIndex': i,
+                'avgMoisture': 0.0,
+                'avgTemp': 0.0,
+                'hasData': False,
+                'hasFault': False,
+            })
+            continue
+
+        total_m, total_t, m_count, t_count = 0.0, 0.0, 0, 0
+        has_fault = False
+
+        for r in readings:
+            # Collect valid (>= 0) moisture values, track faults
+            bed_vals = [r['b1'], r['b2'], r['b3']]
+            valid_beds = [v for v in bed_vals if v >= 0]
+            if len(valid_beds) < len(bed_vals):
+                has_fault = True  # At least one bed was -1 (fault)
+            if valid_beds:
+                total_m += sum(valid_beds) / len(valid_beds)
+                m_count += 1
+
+            temp = r['temp']
+            if temp >= 0:
+                total_t += temp
+                t_count += 1
+            else:
+                has_fault = True
+
         result.append({
             'dayIndex': i,
-            'avgMoisture': round(avg_m, 1),
-            'avgTemp': round(avg_t, 1),
+            'avgMoisture': round(total_m / m_count, 1) if m_count > 0 else 0.0,
+            'avgTemp': round(total_t / t_count, 1) if t_count > 0 else 0.0,
+            'hasData': True,
+            'hasFault': has_fault,
         })
 
     return result
+
+
+def get_firebase_custom_token() -> dict:
+    """
+    Mint a Firebase custom token for the device using the Admin SDK,
+    then exchange it for an ID token via the Firebase REST API.
+    Returns: {"idToken": "...", "expiresIn": "3600"} or {"error": "..."}
+    """
+    if not _FIREBASE_ADMIN_OK:
+        return {"error": "firebase_admin not available"}
+
+    try:
+        # Step 1: Mint a custom token (this is a JWT, NOT an idToken)
+        custom_token = fb_auth.create_custom_token(_DEVICE_ID)
+        if isinstance(custom_token, bytes):
+            custom_token = custom_token.decode('utf-8')
+
+        # Step 2: Exchange custom token for ID token via Firebase REST
+        import urllib.request
+        api_key = _read_api_key()
+        if not api_key:
+            return {"error": "Could not read Firebase API key"}
+
+        exchange_url = f'https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key={api_key}'
+        payload = json.dumps({"token": custom_token, "returnSecureToken": True}).encode()
+        req = urllib.request.Request(exchange_url, data=payload,
+                                     headers={'Content-Type': 'application/json'},
+                                     method='POST')
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read())
+            return {"idToken": result["idToken"], "expiresIn": result.get("expiresIn", "3600")}
+    except Exception as e:
+        print(f'[WiFi Bridge] Token mint error: {e}')
+        return {"error": str(e)}
+
+
+def _read_api_key() -> str:
+    """Read the Firebase API key from the .env file next to this script."""
+    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    try:
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('FIREBASE_API_KEY='):
+                    return line.split('=', 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    # Fallback: hardcode the web API key (public, not a secret)
+    return 'AIzaSyANlBxYFTPv0t7_RuGlRApt_aCtI8M-s44'
+
+
+def get_analytics_from_cloud(cutoff_seconds: int = None) -> dict:
+    """
+    Query Firestore using the Admin SDK (bypasses ALL security rules).
+    Reads devices/SPROUT_A1B2/telemetry for the last 7 calendar days
+    and returns the same day-by-day format as /analytics.
+
+    Args:
+        cutoff_seconds: Unix timestamp of the start of the 7-day window,
+            as computed by Flutter (DateTime(today).subtract(6 days)).
+            When provided, this is used verbatim so the bridge and chart
+            labels use the EXACT same boundary — timezone-agnostic.
+
+    Returns {"days": [{"dayIndex": 0, "avgMoisture": X, "avgTemp": Y}, ...]}
+    or {"error": "..."} on failure.
+    """
+    if not _FIREBASE_ADMIN_OK:
+        return {"error": "firebase_admin not available"}
+
+    try:
+        import datetime as _dt
+        db = fb_firestore.client()
+
+        if cutoff_seconds is not None:
+            # Use Flutter's own computed cutoff — same local-midnight in flutter
+            week_start = int(cutoff_seconds)
+            print(f'[WiFi Bridge] /analytics_cloud: using Flutter cutoff={week_start}')
+        else:
+            # Fallback: compute local midnight on the Pi
+            local_now = _dt.datetime.now()
+            local_midnight = _dt.datetime(local_now.year, local_now.month, local_now.day)
+            week_start = int(local_midnight.timestamp()) - 6 * 86400
+            print(f'[WiFi Bridge] /analytics_cloud: computed Pi week_start={week_start}')
+
+        coll_ref = (
+            db.collection('devices')
+              .document(_DEVICE_ID)
+              .collection('telemetry')
+              .where('timestamp', '>=', week_start)
+              .order_by('timestamp', direction=fb_firestore.Query.DESCENDING)
+              .limit(2000)
+        )
+        docs = coll_ref.stream()
+
+        # Bucket into 7 day slots (0 = 6 days ago, 6 = today)
+        day_buckets: dict[int, list[dict]] = {i: [] for i in range(7)}
+
+        for doc in docs:
+            d = doc.to_dict()
+            ts = d.get('timestamp', 0)
+            if not isinstance(ts, (int, float)):
+                continue
+            day_idx = (int(ts) - week_start) // 86400
+            if 0 <= day_idx <= 6:
+                day_buckets[day_idx].append(d)
+
+        result = []
+        for i in range(7):
+            readings = day_buckets[i]
+            if not readings:
+                result.append({'dayIndex': i, 'avgMoisture': 0.0, 'avgTemp': 0.0,
+                               'hasData': False, 'hasFault': False})
+                continue
+
+            total_m, total_t, m_count, t_count = 0.0, 0.0, 0, 0
+            has_fault = False
+            for d in readings:
+                try:
+                    soil = d.get('soil_moisture', {})
+                    all_vals = []
+                    if isinstance(soil, dict) and soil:
+                        all_vals = [float(v) for v in soil.values()]
+                    elif isinstance(soil, list) and soil:
+                        all_vals = [float(v) for v in soil]
+
+                    valid_vals = [v for v in all_vals if v >= 0]
+                    if len(valid_vals) < len(all_vals):
+                        has_fault = True  # At least one bed was -1 (fault)
+                    if valid_vals:
+                        total_m += sum(valid_vals) / len(valid_vals)
+                        m_count += 1
+
+                    temp = float(d.get('temperature', -1))
+                    if temp >= 0:
+                        total_t += temp
+                        t_count += 1
+                    else:
+                        has_fault = True
+                except Exception:
+                    pass
+
+            # hasData = True when telemetry docs exist (even if all faulted).
+            # hasFault = True when any reading had a -1 sensor value.
+            # Fault-only days show as amber dots at 0 on the chart.
+            result.append({
+                'dayIndex': i,
+                'avgMoisture': round(total_m / m_count, 1) if m_count > 0 else 0.0,
+                'avgTemp': round(total_t / t_count, 1) if t_count > 0 else 0.0,
+                'hasData': True,
+                'hasFault': has_fault,
+            })
+
+
+        print(f'[WiFi Bridge] /analytics_cloud: returned {len(result)} day buckets')
+        return {'days': result}
+
+    except Exception as e:
+        print(f'[WiFi Bridge] /analytics_cloud error: {e}')
+        return {'error': str(e)}
 
 
 class WifiBridgeHandler(BaseHTTPRequestHandler):
@@ -227,7 +448,29 @@ class WifiBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(forget_wifi(ssid))
 
         elif path == "/analytics":
-            self._send_json({"days": get_weekly_analytics()})
+            # Accept optional cutoff= param so day boundaries match Flutter
+            cutoff_param = params.get('cutoff', [None])[0]
+            cutoff_seconds = int(cutoff_param) if cutoff_param else None
+            self._send_json({"days": get_weekly_analytics(cutoff_seconds=cutoff_seconds)})
+
+        elif path == "/analytics_cloud":
+            # Admin SDK → Firestore (bypasses all security rules)
+            # Accept optional cutoff= param so Flutter dictates the week boundary
+            cutoff_param = params.get('cutoff', [None])[0]
+            cutoff_seconds = int(cutoff_param) if cutoff_param else None
+            result = get_analytics_from_cloud(cutoff_seconds=cutoff_seconds)
+            if 'error' in result:
+                self._send_json(result, 500)
+            else:
+                self._send_json(result)
+
+        elif path == "/token":
+            # Mint a real Firebase ID token authenticated as SPROUT_A1B2
+            result = get_firebase_custom_token()
+            if 'error' in result:
+                self._send_json(result, 500)
+            else:
+                self._send_json(result)
 
         else:
             self._send_json({"error": "Unknown endpoint"}, 404)

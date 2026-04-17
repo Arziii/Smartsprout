@@ -247,7 +247,7 @@ class AuthNotifier extends Notifier<AuthState> {
           case 'rate_limited':
             final lockedUntilEpoch = data['locked_until'] as int?;
             final errorMsg = data['error'] as String? ??
-                'Too many attempts. Wait 15 minutes.';
+                'Too many attempts. Wait 30 seconds.';
             DateTime? expiry;
             if (lockedUntilEpoch != null) {
               expiry =

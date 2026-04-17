@@ -309,9 +309,9 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     final notifier = ref.read(sensorDataProvider.notifier);
     final isConnected = Platform.isLinux || !sensorData.isOffline;
 
-    // TEMPORARY BYPASS FOR UI TESTING WITHOUT SENSORS:
-    const isTankLow = false; // normally: tankLevel < 10;
-    const isPumpLockedSafe = false; // normally: pumpLocked;
+    // Read hardware safety statuses
+    final isTankLow = sensorData.isTankLow;
+    final isPumpLockedSafe = sensorData.pumpLocked;
 
     // Auto-lock watering if tank is low, pump locked, or MASTER LOCKDOWN active
     if (isTankLow || isPumpLockedSafe || _masterLockdown) {
