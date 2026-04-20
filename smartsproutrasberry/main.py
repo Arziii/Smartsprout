@@ -279,9 +279,7 @@ def handle_firebase_command(payload: dict):
         sensor_manager.save_calibration()
         _force_sync = True
     elif command == "RESTART_APP":
-        import os
-        print("[MAINTENANCE] Kiosk application restart requested. Killing Flutter UI...")
-        os.system("pkill -f smartsprout")
+        print("[MAINTENANCE] Kiosk UI refresh requested. (Handled locally by Flutter)")
     elif command == "REBOOT_PI":
         import os
         print("[MAINTENANCE] Hardware reboot requested. Rebooting now...")
@@ -322,12 +320,15 @@ def collect_telemetry() -> dict:
     alerts = []
     system_status = "ok"
 
-    # Tank safety lock String formatting
+    # Tank safety lock
+    # "FULL" = water detected (Active-Low: GPIO LOW), pump allowed.
+    # "LOW"  = no water detected, pump locked.
+    # "FAULT"= sensor disconnected or signal unstable, pump locked for safety.
     if tank == "LOW" or tank == "FAULT":
         _pump_locked = True
         alerts.append("tank_empty" if tank == "LOW" else "tank_sensor_fault")
         system_status = "tank_low" if tank == "LOW" else "sensor_fault"
-    elif tank == "HIGH":
+    elif tank == "FULL":
         _pump_locked = False
 
     # Hardware status tracking

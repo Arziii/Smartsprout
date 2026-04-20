@@ -491,9 +491,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     String tankLabel;
     String tankStatus;
     IconData tankIcon;
-    if (tankLevelStr == 'HIGH') {
+    // 'FULL' = new Active-Low label (Black/Mode on 5V, GPIO LOW = water detected).
+    // 'HIGH' = legacy label kept for backward compat with old Firestore documents.
+    if (tankLevelStr == 'FULL' || tankLevelStr == 'HIGH') {
       tankColor = const Color(0xFF2BCC71);
-      tankLabel = 'NORMAL';
+      tankLabel = 'FULL';
       tankStatus = 'Level Sufficient';
       tankIcon = Icons.water_drop_rounded;
     } else if (tankLevelStr == 'LOW') {
@@ -515,7 +517,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           child: Container(
             height: 140, // Match design
             decoration: BoxDecoration(
-              color: tankLevelStr == 'HIGH'
+              color: (tankLevelStr == 'FULL' || tankLevelStr == 'HIGH')
                   ? (Theme.of(context).brightness == Brightness.dark
                       ? const Color(0xFF0F172A).withValues(alpha: 0.9)
                       : Colors.white.withValues(alpha: 0.9))
@@ -523,7 +525,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                   color: tankColor.withValues(
-                      alpha: tankLevelStr == 'HIGH' ? 0.3 : 0.8),
+                      alpha: (tankLevelStr == 'FULL' || tankLevelStr == 'HIGH') ? 0.3 : 0.8),
                   width: 1.5),
               boxShadow: isLiteMode
                   ? null

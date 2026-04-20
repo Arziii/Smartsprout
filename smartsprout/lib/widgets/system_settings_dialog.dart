@@ -16,22 +16,36 @@ class SystemSettingsDialog extends ConsumerWidget {
         Process.run('sudo', ['reboot']);
       }
     }
+    if (command == 'RESTART_APP') {
+      Navigator.of(context).pop();
+      context.go('/dashboard');
+      
+      // Soft restart: invalidate the main provider to force a data reconnect
+      // without tearing down the Linux OS process (which causes a black screen).
+      ref.invalidate(dataServiceProvider);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Dashboard UI Refreshed.'),
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : const Color(0xFF0F2027),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      return;
+    }
 
     ref.read(dataServiceProvider)?.sendCommand({'command': command});
 
     // Close the settings dialog
     Navigator.of(context).pop();
 
-    // If it's a restart command, automatically go back to the Home/Dashboard
-    if (command == 'RESTART_APP') {
-      context.go('/dashboard');
-    }
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(command == 'RESTART_APP'
-            ? 'Restarting Dashboard...'
-            : 'Command sent: $command'),
+        content: Text('Command sent: $command'),
         backgroundColor: Theme.of(context).brightness == Brightness.dark
             ? Colors.white
             : const Color(0xFF0F2027),

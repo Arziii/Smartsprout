@@ -30,7 +30,7 @@ To prevent I2C `[Errno 5]` errors and system instability, the project utilizes a
 
 *   **Soil Moisture:** Capacitive v1.2 (Analog 1.2V-2.5V). Requires the **ADS1115 I2C ADC** to convert analog signals to digital values for the Pi.
 *   **Temp/Humidity/Pressure:** BME280 (I2C). A precision sensor that communicates over the I2C bus (Address: 0x76).
-*   **Water Level:** XKC-Y26-V Non-contact Liquid Level Sensor. Powered by 5V for maximum sensitivity. Outputs a digital signal passed through a voltage divider for Pi safety.
+*   **Water Level:** XKC-Y26-V Non-contact Liquid Level Sensor. Powered by 5V. Outputs a digital signal passed through a voltage divider. **System uses Active-Low logic (GPIO.LOW = FULL) with an internal software pull-up resistor and a 200ms debounce loop to prevent false alerts.**
 *   **Irrigation Control:** 12V Solenoid Valves - Normally Closed (NC). Valves stay CLOSED when unpowered and open via the relay module using 12V DC.
 *   **Water Pump:** 5V Submersible Pump.
 
@@ -71,7 +71,7 @@ All software implementation must reference the **BCM (Broadcom)** numbering used
 | **Soil Moisture (Z1)** | Sensor 1 Signal | **ADS1115 A0** | Capacitive v1.2 (Analog) |
 | **Soil Moisture (Z2)** | Sensor 2 Signal | **ADS1115 A1** | Capacitive v1.2 (Analog) |
 | **Soil Moisture (Z3)** | Sensor 3 Signal | **ADS1115 A2** | Capacitive v1.2 (Analog) |
-| **Water Level (XKC)** | Yellow (Signal) | **BCM 5** (Pin 29) | Requires 1kΩ/2kΩ Voltage Divider |
+| **Water Level (XKC)** | Yellow (Signal) | **BCM 5** (Pin 29) | Active-Low / Internal Pull-Up / 1kΩ/2kΩ Div |
 | **Relay Module (5V)** | VCC | **5V** (Pin 2 or 4) | Powered by Pi 5V Rail |
 | | IN1 (Pump) | **BCM 17** (Pin 11) | COM: Buck OUT+ / NO: Pump Red |
 | | IN2 (Valve 1) | **BCM 27** (Pin 13) | COM: 12V+ (IN+) / NO: Valve 1+ |

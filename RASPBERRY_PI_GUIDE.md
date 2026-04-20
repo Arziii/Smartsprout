@@ -128,6 +128,12 @@ For large folders, using the command line is significantly faster than VNC's fil
     sudo systemctl start smartsprout
     sudo systemctl status smartsprout  # Verify it is active (running)
     ```
+7.  **Setup Zero-Trust Wi-Fi Access (Sudoers)**:
+    To allow the Pi UI to switch Wi-Fi networks without requiring a root password prompt, create a sudo drop-in:
+    ```bash
+    echo "smartsprout ALL=(ALL) NOPASSWD: /usr/bin/nmcli dev wifi connect *, /usr/bin/nmcli connection delete *" | sudo tee /etc/sudoers.d/smartsprout_nmcli
+    sudo chmod 0440 /etc/sudoers.d/smartsprout_nmcli
+    ```
 
 ---
 
@@ -219,7 +225,7 @@ Full wiring reference for `main.py`, `sensors.py`, and `pump_watchdog.py`. See [
 | **Soil Moisture Z2** | Signal | **ADS1115 A1** | Capacitive v1.2 (1.2V–2.5V Analog) |
 | **Soil Moisture Z3** | Signal | **ADS1115 A2** | Capacitive v1.2 (1.2V–2.5V Analog) |
 | **BME280** | SDA / SCL | **BCM 2 / BCM 3** | I2C addr: 0x76 (Temp/Hum/Pressure) |
-| **Water Level (XKC)** | Yellow (Signal) | **BCM 5** (Pin 29) | 1kΩ/2kΩ Voltage Divider (5V → 3.3V) |
+| **Water Level (XKC)** | Yellow (Signal) | **BCM 5** (Pin 29) | Active-Low / Pull-Up / 1kΩ/2kΩ Divider |
 | **Relay VCC** | VCC | **5V** (Pin 2 or 4) | Pi 5V Rail |
 | **Relay IN1 — Pump** | IN1 | **BCM 17** (Pin 11) | COM: XL4016 5V OUT+ / NO: Pump (+) |
 | **Relay IN2 — Valve 1** | IN2 | **BCM 27** (Pin 13) | COM: 12V+ / NO: Valve 1+ |

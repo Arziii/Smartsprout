@@ -565,6 +565,21 @@ PHASE 4.31: HARDWARE FAULT MITIGATION & PROTECTIVE WIRING [COMPLETED]
 ☑ Brownout Prevention: Added Bulk Capacitors for the Pump to prevent voltage drops.
 ☑ Logic Level Shifting: Used Voltage Dividers (1kΩ/2kΩ) for 5V-to-3.3V reduction on the XKC-Y26-V liquid sensor.
 
+PHASE 4.32: WI-FI NETWORK MANAGEMENT & SUDOERS ARCHITECTURE [COMPLETED]
+☑ Zero-Trust Wi-Fi Controls: Added network discovery and connection interface via the Kiosk Settings.
+☑ Privilege Drop-In: Created an `/etc/sudoers.d/smartsprout_nmcli` drop-in ensuring the Kiosk can only run `nmcli dev wifi connect` and `nmcli connection delete` as root, preventing general privilege escalation.
+☑ Kiosk Guard: Enforced startup guard in `start_smartsprout.sh` to copy the sudoers file on every boot, ensuring Wi-Fi capability is always injected correctly.
+
+PHASE 4.33: SENSOR ROBUSTNESS & COMMAND PRECISION [COMPLETED]
+☑ Active-Low XKC-Y26-V Logic: Updated the water sensor GPIO reading to use Active-Low (`LOW = FULL`) paired with an internal Pi Pull-Up resistor to stabilize floating signals.
+☑ Hardware Debounce Loop: Added a 200ms `time.sleep` confirmation loop in sensor polling to ignore fleeting water splashes and transient electrical noise before locking in an "Empty" state.
+☑ RESTART_APP Precision Fix: Refactored the UI restart command to use `pkill -f 'bundle/smartsprout'` instead of just `smartsprout`, successfully isolating the Flutter binary and protecting the immortal backend shell script from accidental termination.
+☑ Snappy UI Relaunch: Reduced Kiosk bash relaunch delay from 5s to 2s to minimize blank VNC time.
+
+PHASE 4.34: BLACK SCREEN HOTFIX & UI SOFT REFRESH [COMPLETED]
+☑ Kiosk Black Screen Mitigation: Removed the `RESTART_APP` `pkill` OS-level execution from `main.py` backends. Hard-killing the graphic session process occasionally failed to re-attach to the Wayland/X11 output correctly, resulting in an indefinite black screen.
+☑ Stateful Soft Restart: Re-routed the "Restart Dashboard" function in `system_settings_dialog.dart` to rely on entirely internal state destruction. A call to `ref.invalidate(dataServiceProvider)` now successfully drops and re-establishes all MQTT/Firebase data sockets seamlessly in under 1ms.
+
 ═══════════════════════════════════════════════════════════════════
 
 

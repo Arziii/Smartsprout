@@ -96,14 +96,16 @@ def scan_wifi() -> list[dict]:
 
 def connect_wifi(ssid: str, password: str) -> dict:
     """Connect to a Wi-Fi network. Returns success/failure with a message."""
+    # sudo is required here because nmcli connection changes need elevated
+    # privileges when running under a non-root systemd service user.
     if password:
         stdout, stderr, code = _run([
-            "nmcli", "dev", "wifi", "connect", ssid,
+            "sudo", "nmcli", "dev", "wifi", "connect", ssid,
             "password", password
         ])
     else:
         stdout, stderr, code = _run([
-            "nmcli", "dev", "wifi", "connect", ssid
+            "sudo", "nmcli", "dev", "wifi", "connect", ssid
         ])
 
     if code == 0:
@@ -115,8 +117,9 @@ def connect_wifi(ssid: str, password: str) -> dict:
 
 def forget_wifi(ssid: str) -> dict:
     """Remove a saved Wi-Fi connection profile."""
+    # sudo is required for the same reason as connect_wifi.
     stdout, stderr, code = _run([
-        "nmcli", "connection", "delete", ssid
+        "sudo", "nmcli", "connection", "delete", ssid
     ])
     if code == 0:
         return {"success": True, "message": f"Forgot {ssid}"}

@@ -222,6 +222,7 @@ The Flutter mobile application serves as the primary remote control interface fo
 - **Device Switcher**: The app can store up to 5 unique devices (Device ID + PIN), allowing the user to seamlessly swap between different Smart Sprout setups. Redundant nickname editing in this screen was removed to streamline UI.
 - **Persistent Dark Mode**: Fully localized, theme-aware Dark Mode system that cascades through all dialogs, bottom sheets, and status overlays for improved accessibility.
 - **System Controls**: Advanced commands to `RESTART_APP` or `REBOOT_PI` securely over the cloud if the Pi experiences OS-level freezing.
+- **Kiosk Wi-Fi Management (Local Only)**: Provides a Zero-Trust network setup interface strictly available on the physical Pi touchscreen. Utilizes `nmcli` executed via a `sudoers` drop-in to prevent shell privilege escalation.
 - **Optimized UI Notifications**: SnackBar alert overlays are tuned to a 1.5-second duration for rapid, non-obtrusive feedback, alongside full Flutter deprecation resolution (`.withValues()` migration).
 
 ---
@@ -534,6 +535,9 @@ stateDiagram-v2
 **Q4: How did you handle the UI performance bottleneck on the low-powered Raspberry Pi?**
 *Answer:* Platform-specific optimizations. Previously, we utilized Flutter's `Platform.isLinux` conditions to disable heavy GPU calculations like BackdropFilters (glassmorphism) and restricted the image cache size significantly for the Pi 3B. However, with the transition to the Raspberry Pi 4 (4GB RAM), we have enabled the full premium UI (glassmorphism, animations) on the Linux Kiosk to match the mobile experience, eliminating the need for strict visual regressions.
 
+**Q4.b: How does the Wi-Fi settings feature in the Kiosk app not compromise system security?**
+*Answer:* Normally, changing Wi-Fi requires root privileges (`sudo`). If we ran the Flutter app as root, any vulnerability in Flutter would give an attacker full control of the Pi. Instead, we use a **Least Privilege** model. We placed a strict drop-in file in `/etc/sudoers.d/smartsprout_nmcli`. This mathematically guarantees the Flutter app can **only** execute `nmcli dev wifi connect` and `nmcli connection delete` as root without a password. It cannot execute any other elevated shell commands, keeping the main Kiosk sandboxed while allowing the user to seamlessly switch Wi-Fi networks via the touchscreen UI.
+
 **Q5: How is this system scalable?**
 *Answer:* Expanding the system is horizontally scalable through Firebase. By appending a new `device_id`, the user can buy a second Smart Sprout kit, place it in their backyard, and manage it seamlessly from the exact same mobile app by merely toggling device selection. 
 
@@ -659,7 +663,7 @@ All pins use **BCM (Broadcom) numbering**. Change only if rewiring hardware.
 | Solenoid Valve — Zone 1 | `RELAY_VALVE1_PIN` | **27** |
 | Solenoid Valve — Zone 2 | `RELAY_VALVE2_PIN` | **22** |
 | Solenoid Valve — Zone 3 | `RELAY_VALVE3_PIN` | **23** |
-| XKC Tank Level Sensor | `XKC_LEVEL_PIN` | **5** |
+| XKC Tank Level Sensor | `XKC_LEVEL_PIN` | **5 (Active-Low / PULL_UP)** |
 | Factory Reset Button | `RESET_BUTTON_PIN` | **24** |
 | Reset Indicator LED | `RESET_LED_PIN` | **18** |
 | ADS1115 I2C Bus | `ADS1115_I2C_BUS` | **1** |

@@ -256,55 +256,78 @@ def read_environment() -> dict:
 
 
 # ═══════════════════════════════════════════════════════
-# XKC-Y26-V — Non-contact Tank Level (Digital)
+# XKC-Y26-V — Non-contact Tank Level (Digital, Active-Low)
+# Wiring: Black (Mode) → 5V  |  Yellow (Signal) → GPIO BCM 5 (Pin 29)
+# Because Black is on 5V the sensor operates in Active-Low mode:
+#   GPIO LOW  (0) → sensor sinking current → water detected → "FULL"
+#   GPIO HIGH (1) → sensor idle / high-Z   → no water       → "LOW"
 # ═══════════════════════════════════════════════════════
-def _setup_tank_sensor():
-    # Only run general setup, but we'll manipulate the pin dynamically in the read function
-    pass
-
 
 def read_tank_level() -> str:
     """
-    Returns tank fill state as a string: 'HIGH', 'LOW', or 'FAULT'.
-    Uses aggressive floating-pin detection to verify physical connection.
-    By rapidly testing against both internal PULL-UP and PULL-DOWN resistors,
-    we can determine if the sensor is actively driving the line, or if the wire
-    is completely disconnected.
+    Returns tank fill state: 'FULL', 'LOW', or 'FAULT'.
+
+    Wiring — Active-Low (Black/Mode on 5V, Yellow/Signal on GPIO BCM 5):
+      GPIO LOW  (0) = water detected = "FULL"
+      GPIO HIGH (1) = no water / dry = "LOW"
+
+    Three-stage read:
+      1. Dual-pull disconnection guard — detects an open-circuit wire before
+         committing to a reading. A floating pin follows both internal resistors;
+         a driven pin resists at least one of them.
+      2. Settle on PULL_UP — keeps the signal stable at 3.3 V when the sensor
+         is idle (no water), matching the Active-Low convention.
+      3. 200 ms debounce — two readings 200 ms apart must agree before we trust
+         the result. Disagreement → FAULT, preventing the flickering transitions
+         that were caused by electrical noise on the signal line.
     """
     if not _GPIO_AVAILABLE:
         print("[WARN] read_tank_level: GPIO not available — returning FAULT sentinel.")
         return "FAULT"
 
     try:
-        # TEST 1: Pull the pin HIGH internally
+        # ── Stage 1: Disconnection guard (dual-pull test) ─────────────────────
+        # A floating (disconnected) wire blindly follows whichever resistor we
+        # apply. A sensor that is actively driving the line will resist at least
+        # one direction — that proves the wire is actually connected.
         GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        time.sleep(0.02)  # Wait 20ms for wire capacitance to settle
+        time.sleep(0.02)   # 20 ms for wire capacitance to settle
         up_sample = GPIO.input(config.XKC_LEVEL_PIN)
 
-        # TEST 2: Pull the pin LOW internally
         GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
         time.sleep(0.02)
         down_sample = GPIO.input(config.XKC_LEVEL_PIN)
 
-        # Evaluate the results:
-        if up_sample == True and down_sample == False:
-            # The pin blindly followed our weak internal resistors.
-            # This mathematically proves nothing is wired to the pin to resist it.
+        if up_sample == GPIO.HIGH and down_sample == GPIO.LOW:
+            # Pin blindly followed both resistors → nothing is driving the wire.
             print("[WARN] Tank sensor pin is floating (DISCONNECTED) — returning FAULT.")
             return "FAULT"
-        
-        elif up_sample == True and down_sample == True:
-            # Sensor is forcefully driving the line HIGH (Voltage present)
-            return "HIGH"
-            
-        elif up_sample == False and down_sample == False:
-            # Sensor is forcefully driving the line LOW (Ground present)
-            return "LOW"
-            
-        else:
-            # Highly improbable (False / True) - indicates rapid electrical flapping
-            print("[WARN] Tank sensor signal is severely oscillating — returning FAULT.")
+
+        # ── Stage 2: Settle on PULL_UP for stable Active-Low reading ─────────
+        # With Black (Mode) on 5V the sensor is Active-Low. The internal PULL_UP
+        # keeps the signal HIGH when idle; the sensor pulls it LOW when water is
+        # detected, giving us a clean, noise-resistant signal.
+        GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+        # ── Stage 3: 200 ms debounce ──────────────────────────────────────────
+        # Take two readings 200 ms apart. If they disagree the signal is still
+        # transitioning (noise / EMI) → return FAULT to avoid writing a false
+        # tank-empty or tank-full state to Firebase.
+        sample_a = GPIO.input(config.XKC_LEVEL_PIN)
+        time.sleep(0.2)   # 200 ms debounce window
+        sample_b = GPIO.input(config.XKC_LEVEL_PIN)
+
+        if sample_a != sample_b:
+            print("[WARN] Tank sensor signal unstable (debounce mismatch) — returning FAULT.")
             return "FAULT"
+
+        # ── Active-Low mapping ────────────────────────────────────────────────
+        # GPIO LOW  (0) → sensor sinking current → water present → "FULL"
+        # GPIO HIGH (1) → sensor idle / open     → no water      → "LOW"
+        if sample_a == GPIO.LOW:
+            return "FULL"
+        else:
+            return "LOW"
 
     except Exception as e:
         print(f"[ERROR] Tank level read failed: {e}")
