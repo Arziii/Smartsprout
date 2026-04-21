@@ -30,7 +30,7 @@ To prevent I2C `[Errno 5]` errors and system instability, the project utilizes a
 
 *   **Soil Moisture:** Capacitive v1.2 (Analog 1.2V-2.5V). Requires the **ADS1115 I2C ADC** to convert analog signals to digital values for the Pi.
 *   **Temp/Humidity/Pressure:** BME280 (I2C). A precision sensor that communicates over the I2C bus (Address: 0x76).
-*   **Water Level:** XKC-Y26-V Non-contact Liquid Level Sensor. Powered by 5V. Outputs a digital signal passed through a voltage divider. **System uses Active-Low logic (GPIO.LOW = FULL) with an internal software pull-up resistor and a 200ms debounce loop to prevent false alerts.**
+*   **Water Level:** XKC-Y26-V Non-contact Liquid Level Sensor. Powered by 5V. Outputs a digital signal passed through a 10kΩ/20kΩ voltage divider. **System uses Fail-Safe Active-High logic (Black Mode wire to GND).** Because the voltage divider acts as a physical pull-down to Ground, a disconnected sensor sits at 0V (LOW). Active-High ensures a disconnected sensor safely reports as "LOW" (Empty), protecting the pumps.
 *   **Irrigation Control:** 12V Solenoid Valves - Normally Closed (NC). Valves stay CLOSED when unpowered and open via the relay module using 12V DC.
 *   **Water Pump:** 5V Submersible Pump.
 
@@ -71,7 +71,7 @@ All software implementation must reference the **BCM (Broadcom)** numbering used
 | **Soil Moisture (Z1)** | Sensor 1 Signal | **ADS1115 A0** | Capacitive v1.2 (Analog) |
 | **Soil Moisture (Z2)** | Sensor 2 Signal | **ADS1115 A1** | Capacitive v1.2 (Analog) |
 | **Soil Moisture (Z3)** | Sensor 3 Signal | **ADS1115 A2** | Capacitive v1.2 (Analog) |
-| **Water Level (XKC)** | Yellow (Signal) | **BCM 5** (Pin 29) | Active-Low / Internal Pull-Up / 1kΩ/2kΩ Div |
+| **Water Level (XKC)** | Yellow (Signal) | **BCM 5** (Pin 29) | Active-High (Black to GND) / Hardware Pull-Down |
 | **Relay Module (5V)** | VCC | **5V** (Pin 2 or 4) | Powered by Pi 5V Rail |
 | | IN1 (Pump) | **BCM 17** (Pin 11) | COM: Buck OUT+ / NO: Pump Red |
 | | IN2 (Valve 1) | **BCM 27** (Pin 13) | COM: 12V+ (IN+) / NO: Valve 1+ |
@@ -149,6 +149,10 @@ The XKC-Y26-V liquid level sensor requires 5V to scan through container walls ef
     *   Place the **10kΩ resistor** in series between the yellow signal wire and the destination **Raspberry Pi GPIO pin**.
     *   Place the **20kΩ resistor** between the GPIO pin side of the 10kΩ resistor and the shared logic **Ground**. 
     *   This precisely safely steps the 5V signal down to ~3.3V before it hits the Raspberry Pi.
+
+> [!TIP]
+> **Why Active-High? (Fail-Safe Strategy)**
+> Because the 20kΩ resistor anchors the GPIO pin to Ground, it inherently prevents the Raspberry Pi from detecting a "floating" disconnected wire. If the sensor is unplugged, the pin is physically tied to 0V. By wiring the sensor in **Active-High** Mode (connecting its Black wire to **GND**), 0V logically becomes "Tank Empty." This guarantees that if the sensor wire falls out or the sensor dies, the Pi stops the pumps instead of incorrectly assuming the tank is full.
 
 ---
 ## 8. Maintenance Note & Troubleshooting

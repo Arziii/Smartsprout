@@ -46,7 +46,7 @@ except (ImportError, ValueError, RuntimeError, AttributeError) as e:
 # ═══════════════════════════════════════════════════════
 # ADS1115 — 3-Channel Soil Moisture via I2C ADC
 # ═══════════════════════════════════════════════════════
-CALIBRATION_FILE = os.path.join(os.path.dirname(__file__), 'calibration_offsets.json')
+CALIBRATION_FILE = os.path.join(os.path.dirname(__file__), '..', 'storage', 'calibration_offsets.json')
 _calibration_data = None
 
 def load_calibration():
@@ -267,64 +267,43 @@ def read_tank_level() -> str:
     """
     Returns tank fill state: 'FULL', 'LOW', or 'FAULT'.
 
-    Wiring — Active-Low (Black/Mode on 5V, Yellow/Signal on GPIO BCM 5):
-      GPIO LOW  (0) = water detected = "FULL"
-      GPIO HIGH (1) = no water / dry = "LOW"
-
-    Three-stage read:
-      1. Dual-pull disconnection guard — detects an open-circuit wire before
-         committing to a reading. A floating pin follows both internal resistors;
-         a driven pin resists at least one of them.
-      2. Settle on PULL_UP — keeps the signal stable at 3.3 V when the sensor
-         is idle (no water), matching the Active-Low convention.
-      3. 200 ms debounce — two readings 200 ms apart must agree before we trust
-         the result. Disagreement → FAULT, preventing the flickering transitions
-         that were caused by electrical noise on the signal line.
+    Wiring — Active-High (Black/Mode on GND, Yellow/Signal via Voltage Divider to BCM 5):
+      GPIO HIGH (1) = water detected = "FULL"
+      GPIO LOW  (0) = no water / dry   = "LOW"
+    
+    Note: A hardware voltage divider (pull-down) is present on this pin.
+    This means 'Disconnected' reads as 0 (LOW), which is our safe fail-state.
     """
     if not _GPIO_AVAILABLE:
         print("[WARN] read_tank_level: GPIO not available — returning FAULT sentinel.")
         return "FAULT"
 
     try:
-        # ── Stage 1: Disconnection guard (dual-pull test) ─────────────────────
-        # A floating (disconnected) wire blindly follows whichever resistor we
-        # apply. A sensor that is actively driving the line will resist at least
-        # one direction — that proves the wire is actually connected.
-        GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        time.sleep(0.02)   # 20 ms for wire capacitance to settle
-        up_sample = GPIO.input(config.XKC_LEVEL_PIN)
-
+        # ── Setup ──
+        # We use an internal PULL_DOWN to assist the hardware divider.
         GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-        time.sleep(0.02)
-        down_sample = GPIO.input(config.XKC_LEVEL_PIN)
+        time.sleep(0.05)
 
-        if up_sample == GPIO.HIGH and down_sample == GPIO.LOW:
-            # Pin blindly followed both resistors → nothing is driving the wire.
-            print("[WARN] Tank sensor pin is floating (DISCONNECTED) — returning FAULT.")
+        # ── Multi-sample anti-aliasing debounce ──
+        # We take 11 samples over ~120ms. If the pin is truly floating 
+        # (divider failing) or noisy, it will 'FAULT'.
+        samples = []
+        for _ in range(11):
+            samples.append(GPIO.input(config.XKC_LEVEL_PIN))
+            time.sleep(0.011)
+
+        unique_states = set(samples)
+        if len(unique_states) > 1:
+            print(f"[WARN] Tank sensor signal unstable {samples} — returning FAULT.")
             return "FAULT"
 
-        # ── Stage 2: Settle on PULL_UP for stable Active-Low reading ─────────
-        # With Black (Mode) on 5V the sensor is Active-Low. The internal PULL_UP
-        # keeps the signal HIGH when idle; the sensor pulls it LOW when water is
-        # detected, giving us a clean, noise-resistant signal.
-        GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        # Trust the solid state
+        solid_state = samples[0]
 
-        # ── Stage 3: 200 ms debounce ──────────────────────────────────────────
-        # Take two readings 200 ms apart. If they disagree the signal is still
-        # transitioning (noise / EMI) → return FAULT to avoid writing a false
-        # tank-empty or tank-full state to Firebase.
-        sample_a = GPIO.input(config.XKC_LEVEL_PIN)
-        time.sleep(0.2)   # 200 ms debounce window
-        sample_b = GPIO.input(config.XKC_LEVEL_PIN)
-
-        if sample_a != sample_b:
-            print("[WARN] Tank sensor signal unstable (debounce mismatch) — returning FAULT.")
-            return "FAULT"
-
-        # ── Active-Low mapping ────────────────────────────────────────────────
-        # GPIO LOW  (0) → sensor sinking current → water present → "FULL"
-        # GPIO HIGH (1) → sensor idle / open     → no water      → "LOW"
-        if sample_a == GPIO.LOW:
+        # ── Active-High mapping (Fail-Safe) ──
+        # GPIO HIGH (1) → Sensor driving signal  → water present → "FULL"
+        # GPIO LOW  (0) → Sensor idle / Unplugged → no water      → "LOW"
+        if solid_state == GPIO.HIGH:
             return "FULL"
         else:
             return "LOW"
@@ -332,6 +311,12 @@ def read_tank_level() -> str:
     except Exception as e:
         print(f"[ERROR] Tank level read failed: {e}")
         return "FAULT"
+
+
+    except Exception as e:
+        print(f"[ERROR] Tank level read failed: {e}")
+        return "FAULT"
+
 
 
 

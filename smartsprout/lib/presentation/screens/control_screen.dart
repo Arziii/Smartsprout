@@ -39,8 +39,6 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
   // Track active auto strategy instead of a global boolean
   IrrigationStrategy _activeStrategy = IrrigationStrategy.none;
 
-  // Master lockdown state — like a real industrial e-stop
-  bool _masterLockdown = false;
 
   // ── Per-zone enabled toggles for each strategy ──
   // If a zone is false it is skipped when that strategy runs.
@@ -306,15 +304,16 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
       });
     }
 
-    final notifier = ref.read(sensorDataProvider.notifier);
     final isConnected = Platform.isLinux || !sensorData.isOffline;
 
     // Read hardware safety statuses
     final isTankLow = sensorData.isTankLow;
     final isPumpLockedSafe = sensorData.pumpLocked;
+    // Cloud-synced master lockdown (Emergency Stop) — persists across navigation
+    final masterLockdown = ref.watch(systemLockProvider);
 
     // Auto-lock watering if tank is low, pump locked, or MASTER LOCKDOWN active
-    if (isTankLow || isPumpLockedSafe || _masterLockdown) {
+    if (isTankLow || isPumpLockedSafe || masterLockdown) {
       for (var z in [1, 2, 3]) {
         _wateringActive[z] = false;
       }
@@ -523,7 +522,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                 disabled: isPumpLockedSafe ||
                                     !isConnected ||
                                     isTankLow ||
-                                    _masterLockdown,
+                                    masterLockdown,
                               ),
                               const SizedBox(height: 12),
                               _buildZoneToggle(
@@ -537,7 +536,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                 disabled: isPumpLockedSafe ||
                                     !isConnected ||
                                     isTankLow ||
-                                    _masterLockdown,
+                                    masterLockdown,
                               ),
                               const SizedBox(height: 12),
                               _buildZoneToggle(
@@ -551,7 +550,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                 disabled: isPumpLockedSafe ||
                                     !isConnected ||
                                     isTankLow ||
-                                    _masterLockdown,
+                                    masterLockdown,
                               ),
                             ],
                           ),
@@ -564,6 +563,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                       isConnected: isConnected,
                       isPumpLockedSafe: isPumpLockedSafe,
                       isTankLow: isTankLow,
+                      masterLockdown: masterLockdown,
                       rawSoil: rawSoil,
                       sensorData: sensorData,
                     )),
@@ -575,15 +575,15 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                       3,
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 300),
-                        padding: _masterLockdown
+                        padding: masterLockdown
                             ? const EdgeInsets.all(16)
                             : EdgeInsets.zero,
                         decoration: BoxDecoration(
-                            color: _masterLockdown
+                            color: masterLockdown
                                 ? Colors.redAccent.withValues(alpha: 0.1)
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(24),
-                            border: _masterLockdown
+                            border: masterLockdown
                                 ? Border.all(
                                     color:
                                         Colors.redAccent.withValues(alpha: 0.3),
@@ -591,7 +591,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                 : null,
                             boxShadow: [
                               BoxShadow(
-                                color: _masterLockdown
+                                color: masterLockdown
                                     ? Colors.redAccent.withValues(alpha: 0.1)
                                     : Colors.redAccent.withValues(alpha: 0.3),
                                 blurRadius: 20,
@@ -601,7 +601,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (_masterLockdown) ...[
+                            if (masterLockdown) ...[
                               Row(
                                 children: [
                                   const Icon(Icons.report_problem_rounded,
@@ -639,10 +639,10 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                 onPressed: isConnected
                                     ? () {
                                         HapticFeedback.heavyImpact();
-                                        if (!_masterLockdown) {
-                                          notifier.emergencyStop();
+                                        if (!masterLockdown) {
+                                          // Lock: write to Firestore (syncs to all platforms)
+                                          ref.read(systemLockProvider.notifier).setLock(true);
                                           setState(() {
-                                            _masterLockdown = true;
                                             _wateringActive[1] = false;
                                             _wateringActive[2] = false;
                                             _wateringActive[3] = false;
@@ -650,18 +650,18 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                                 IrrigationStrategy.none;
                                           });
                                         } else {
-                                          setState(
-                                              () => _masterLockdown = false);
+                                          // Unlock: write false to Firestore
+                                          ref.read(systemLockProvider.notifier).setLock(false);
                                         }
                                       }
                                     : null,
                                 icon: Icon(
-                                    _masterLockdown
+                                    masterLockdown
                                         ? Icons.lock_open_rounded
                                         : Icons.power_settings_new_rounded,
                                     size: 24),
                                 label: Text(
-                                    _masterLockdown
+                                    masterLockdown
                                         ? "RELEASE SYSTEM LOCK"
                                         : "EMERGENCY STOP",
                                     style: GoogleFonts.outfit(
@@ -669,7 +669,7 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
                                         fontWeight: FontWeight.w800,
                                         letterSpacing: 1.0)),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: _masterLockdown
+                                  backgroundColor: masterLockdown
                                       ? const Color(0xFF1B1B1B)
                                       : Colors.redAccent,
                                   foregroundColor: Colors.white,
@@ -1106,12 +1106,13 @@ class _ControlScreenState extends ConsumerState<ControlScreen>
     required bool isConnected,
     required bool isPumpLockedSafe,
     required bool isTankLow,
+    required bool masterLockdown,
     required List<double> rawSoil,
     required dynamic sensorData,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bool globalDisabled =
-        !isConnected || isPumpLockedSafe || isTankLow || _masterLockdown;
+        !isConnected || isPumpLockedSafe || isTankLow || masterLockdown;
 
     // Tab accent colours
     const sensorColor = Color(0xFF29B6F6);

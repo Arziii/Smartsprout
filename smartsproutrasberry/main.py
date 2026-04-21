@@ -10,11 +10,10 @@ import time
 import signal
 import threading
 import config
-import firebase_manager
-import auth_bouncer
-import local_db
-
-from sensors import SensorManager
+from network import firebase_manager
+from network import auth_bouncer
+from storage import local_db
+from drivers.sensors import SensorManager
 
 # ═══════════════════════════════════════════════════════
 # Global State
@@ -22,6 +21,7 @@ _auth_bouncer_listener = None
 # ═══════════════════════════════════════════════════════
 _running = True
 _pump_locked = False  # True when XKC tank sensor reads LOW or FAULT (binary sensor, no percentage)
+_system_locked = False  # Cloud-synced Emergency Stop flag (system_lock in Firestore)
 sensor_manager = None
 _current_mode = "manual"
 _auto_strategy = "sensor"
@@ -165,10 +165,22 @@ def _manual_heartbeat_monitor(zone: int):
 
 def handle_firebase_command(payload: dict):
     """Handle incoming commands from Firebase Cloud Firestore."""
-    global _pump_locked, _force_sync
+    global _pump_locked, _force_sync, _system_locked
     command = payload.get("command", "")
     print(f"[FIREBASE_CMD_PROCESS] {payload}")
-    
+
+    # ── System Lock Enforcement ──
+    # If the system is locked (Emergency Stop active), block ALL watering commands.
+    # The only allowed commands are stop_all (to ensure pumps are OFF) and
+    # administrative commands (sync, reboot, etc.).
+    watering_commands = {"force_water", "set_mode"}
+    if _system_locked and command in watering_commands:
+        print(f"[SAFETY] Command '{command}' BLOCKED — System Lock (Emergency Stop) is active.")
+        # Safety guard: make absolutely sure pumps are off
+        if sensor_manager:
+            sensor_manager.deactivate_all()
+        return
+
     if command == "force_water":
         zone = payload.get("zone", 0)
         if _pump_locked:
@@ -378,6 +390,7 @@ def collect_telemetry() -> dict:
         "pressure": env["pressure"],
         "tank_level": tank,
         "pump_locked": _pump_locked,
+        "system_lock": _system_locked,  # Cloud-synced Emergency Stop flag
         "system_status": system_status,
         "hardware_status": hardware_status,
         "alerts": alerts,
@@ -502,11 +515,11 @@ def main():
           f"Size: {stats.get('db_size_kb', 0)} KB")
 
     # ── Start Hardware Reset Button Monitor ──
-    import reset_button
+    from tools import reset_button
     reset_button.start_reset_button_monitor()
 
     # ── Start Pump Safety Watchdog ──
-    import pump_watchdog
+    from drivers import pump_watchdog
     pump_watchdog.start_pump_watchdog()
 
     # ── Start Heartbeat Thread ──
@@ -524,7 +537,7 @@ def main():
     # ── Start Wi-Fi Bridge (Linux Kiosk only) ──
     # Runs a lightweight HTTP server on port 7788 so the Flutter UI can
     # scan/connect/forget Wi-Fi networks via nmcli without needing a plugin.
-    import wifi_bridge
+    from network import wifi_bridge
     threading.Thread(target=wifi_bridge.start_bridge, daemon=True).start()
     print("[INIT] Wi-Fi bridge started on http://127.0.0.1:7788")
 
@@ -533,10 +546,48 @@ def main():
     # ── Connect Firebase ──
     if firebase_manager.init_firebase():
         firebase_manager.listen_for_commands(handle_firebase_command)
+
+        # ── System Lock Listener ──
+        # Watches the system_lock field on the device document in real time.
+        # When the flag changes (from mobile OR kiosk), the Pi reacts immediately:
+        #   locked=True  → deactivate all pumps + block watering commands
+        #   locked=False → release lock, normal operations resume
+        def _on_system_lock_change(doc_snapshot, changes, read_time):
+            global _system_locked, _pump_running, _manual_pump_active
+            for doc in doc_snapshot:
+                new_lock = doc.to_dict().get("system_lock", False)
+                if new_lock != _system_locked:
+                    _system_locked = new_lock
+                    if _system_locked:
+                        print("[SYSTEM_LOCK] 🔒 Emergency Stop received remotely — shutting down all pumps.")
+                        _manual_pump_active = False
+                        _pump_running = False
+                        if sensor_manager:
+                            sensor_manager.deactivate_all()
+                        # Clear all per-zone pump status flags in Firestore
+                        for z in [1, 2, 3]:
+                            try:
+                                firebase_manager.update_pump_status(z, False)
+                            except Exception:
+                                pass
+                    else:
+                        print("[SYSTEM_LOCK] 🔓 System Lock released — normal operations resumed.")
+
+        try:
+            from firebase_admin import firestore as _fstore
+            _db = _fstore.client()
+            _system_lock_watcher = _db.collection("devices").document(
+                config.DEVICE_ID
+            ).on_snapshot(_on_system_lock_change)
+            print("[INIT] system_lock Firestore listener registered.")
+        except Exception as _lock_ex:
+            print(f"[WARN] Could not register system_lock listener: {_lock_ex}")
+
         # ── Start Pi-Bouncer Auth Daemon ──
         from firebase_admin import firestore as _fs
         global _auth_bouncer_listener
         _auth_bouncer_listener = auth_bouncer.start_auth_bouncer(_fs.client())
+
 
     interval = config.TELEMETRY_INTERVAL          # Local sensor read cadence (3 s)
     cloud_sync_interval = config.CLOUD_SYNC_INTERVAL  # Eco-Mode ceiling (1800 s = 30 min)
@@ -697,7 +748,8 @@ def main():
                             _prev_moisture[bed_key] = val
 
                 # ── Auto Watering AI ──
-                if _current_mode == "auto" and telemetry["system_status"] != "tank_low":
+                # Guard: never run auto watering while the Emergency Stop is active
+                if _current_mode == "auto" and telemetry["system_status"] != "tank_low" and not _system_locked:
                     if _auto_strategy == "sensor":
                         # Precision Saturation: fetch per-zone targets from Firestore
                         zone_targets = firebase_manager.get_zone_targets()

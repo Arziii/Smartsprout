@@ -25,7 +25,7 @@ try:
     # main.py already calls firebase_admin.initialize_app() via firebase_manager.
     # We REUSE that existing app here instead of creating a second one.
     # Only initialize if no app exists yet (e.g., when wifi_bridge is run standalone).
-    _SERVICE_ACCOUNT = os.path.join(os.path.dirname(__file__), 'firebase-adminsdk.json')
+    _SERVICE_ACCOUNT = os.path.join(os.path.dirname(__file__), '..', 'storage', 'firebase-adminsdk.json')
     if not firebase_admin._apps:
         _cred = credentials.Certificate(_SERVICE_ACCOUNT)
         firebase_admin.initialize_app(_cred)
@@ -43,7 +43,7 @@ PORT = 7788
 _DEVICE_ID = 'SPROUT_A1B2'
 
 # ── Path to the local SQLite database written by local_db.py ──
-_DB_PATH = os.path.join(os.path.dirname(__file__), 'telemetry.db')
+_DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'storage', 'telemetry.db')
 
 
 

@@ -11,7 +11,7 @@ load_dotenv()
 # ═══════════════════════════════════════════════════════
 # Dynamic Device Config (device_config.json)
 # ═══════════════════════════════════════════════════════
-_DEVICE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'device_config.json')
+_DEVICE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'storage', 'device_config.json')
 
 def _load_device_config() -> dict:
     """Load the device config JSON, falling back to defaults if missing."""
@@ -42,7 +42,7 @@ def update_device_id(new_id: str):
 def factory_reset():
     """Reset device_config.json to defaults and wipe calibration."""
     _save_device_config({"device_id": "SPROUT_A1B2", "password": "1234"})
-    cal_file = os.path.join(os.path.dirname(__file__), 'calibration_offsets.json')
+    cal_file = os.path.join(os.path.dirname(__file__), 'storage', 'calibration_offsets.json')
     if os.path.exists(cal_file):
         os.remove(cal_file)
     print("[CONFIG] Factory reset complete.")
@@ -87,7 +87,7 @@ SOIL_WET = int(os.getenv("SOIL_SENSOR_WET", "6165"))
 
 
 # ── Firebase ──
-FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase-adminsdk.json")
+FIREBASE_CREDENTIALS_PATH = os.path.join(os.path.dirname(__file__), 'storage', 'firebase-adminsdk.json')
 
 # HW_MAC_ID is the IMMUTABLE hardware identity baked into .env at provisioning time.
 # It is the canonical Firestore document key (devices/{HW_MAC_ID}) and the UID

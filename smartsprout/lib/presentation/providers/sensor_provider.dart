@@ -36,6 +36,43 @@ final pumpLoadingProvider =
 );
 
 // ═══════════════════════════════════════════════════════
+// Cloud-Synced System Lock (Emergency Stop)
+// ═══════════════════════════════════════════════════════
+/// Holds the cloud-persisted master lockdown state (`system_lock` in Firestore).
+/// When either platform writes this flag, both the Linux kiosk and the mobile
+/// app reflect the change in real time via their telemetry stream listeners.
+///
+/// Usage:
+///   Read:  ref.watch(systemLockProvider)
+///   Lock:  ref.read(systemLockProvider.notifier).setLock(true)
+///   Unlock:ref.read(systemLockProvider.notifier).setLock(false)
+class SystemLockNotifier extends Notifier<bool> {
+  @override
+  bool build() => false; // Initial state; overwritten by Firestore stream
+
+  /// Called by SensorDataNotifier every time a telemetry snapshot arrives.
+  /// This is the only source of truth — remote value always wins so both
+  /// platforms stay in sync even after an app restart.
+  void syncFromCloud(bool cloudValue) {
+    if (state != cloudValue) state = cloudValue;
+  }
+
+  /// Writes the lock state to Firestore (device document), which the
+  /// telemetry stream then propagates to ALL connected platforms.
+  Future<void> setLock(bool locked) async {
+    // Optimistic local update — prevents UI flicker before Firestore acks.
+    state = locked;
+    final dataService = ref.read(dataServiceProvider);
+    await dataService?.setSystemLock(locked);
+  }
+}
+
+final systemLockProvider = NotifierProvider<SystemLockNotifier, bool>(
+  SystemLockNotifier.new,
+);
+
+
+// ═══════════════════════════════════════════════════════
 // Pending Trigger Settings (Optimistic — persisted locally)
 // ═══════════════════════════════════════════════════════
 /// Stores the most recently SUBMITTED trigger rules per zone so they survive
@@ -71,27 +108,12 @@ class TriggerSettings {
     );
   }
 
-  /// Merge: local wins over remote for any zone where local differs from default.
+  /// Merge: Remote values always win to ensure true 2-way synchronization across platforms.
   TriggerSettings mergeWith(TriggerSettings remote) {
-    const d = TriggerSettings();
-    final newStarts = List<double>.from(remote.startThreshold);
-    final newTargets = List<double>.from(remote.targetMoisture);
-    final newTimeouts = List<int>.from(remote.maxPumpRuntime);
-    for (int i = 0; i < 3; i++) {
-      if (startThreshold[i] != d.startThreshold[i]) {
-        newStarts[i] = startThreshold[i];
-      }
-      if (targetMoisture[i] != d.targetMoisture[i]) {
-        newTargets[i] = targetMoisture[i];
-      }
-      if (maxPumpRuntime[i] != d.maxPumpRuntime[i]) {
-        newTimeouts[i] = maxPumpRuntime[i];
-      }
-    }
     return TriggerSettings(
-      startThreshold: newStarts,
-      targetMoisture: newTargets,
-      maxPumpRuntime: newTimeouts,
+      startThreshold: List<double>.from(remote.startThreshold),
+      targetMoisture: List<double>.from(remote.targetMoisture),
+      maxPumpRuntime: List<int>.from(remote.maxPumpRuntime),
     );
   }
 
@@ -124,6 +146,12 @@ class TriggerSettings {
 }
 
 class TriggerSettingsNotifier extends Notifier<TriggerSettings> {
+  /// Per-zone grace-period deadlines.
+  /// When the user submits trigger rules, the affected zone is "locked" for
+  /// 90 s so that stale Pi telemetry arriving before the command is processed
+  /// cannot overwrite the pending optimistic update.
+  final _pendingZoneDeadlines = <int, DateTime>{};
+
   @override
   TriggerSettings build() {
     _load();
@@ -139,13 +167,49 @@ class TriggerSettingsNotifier extends Notifier<TriggerSettings> {
   }) {
     state = state.copyWithZone(zone,
         start: start, target: target, timeout: timeout);
+    // Grace period: protect this zone from remote overwrites for 90 s.
+    // The Pi typically confirms via force-sync within 5-15 s, but network
+    // lag can vary. Once the deadline passes, remote (Pi-confirmed) values win.
+    _pendingZoneDeadlines[zone] =
+        DateTime.now().add(const Duration(seconds: 90));
     _persist();
   }
 
-  /// Called from SensorDataNotifier when Pi confirms new values.
-  /// Uses local-wins merge so pending user changes are never overwritten.
+  /// Called from SensorDataNotifier each time Pi telemetry arrives.
+  /// Per-zone grace-period logic:
+  ///   - Zone has a pending deadline → keep local value (Pi hasn't confirmed yet).
+  ///   - Deadline expired or no pending update → accept remote (Pi-confirmed) value.
   void mergeRemote(TriggerSettings remote) {
-    state = state.mergeWith(remote);
+    final now = DateTime.now();
+    final newStarts = List<double>.from(state.startThreshold);
+    final newTargets = List<double>.from(state.targetMoisture);
+    final newTimeouts = List<int>.from(state.maxPumpRuntime);
+
+    for (int i = 0; i < 3; i++) {
+      final zone = i + 1;
+      final deadline = _pendingZoneDeadlines[zone];
+      if (deadline != null && now.isBefore(deadline)) {
+        // Still within grace period — local pending value wins.
+        continue;
+      }
+      // Grace period expired or zone not pending — adopt Pi-confirmed values.
+      if (i < remote.startThreshold.length) {
+        newStarts[i] = remote.startThreshold[i];
+      }
+      if (i < remote.targetMoisture.length) {
+        newTargets[i] = remote.targetMoisture[i];
+      }
+      if (i < remote.maxPumpRuntime.length) {
+        newTimeouts[i] = remote.maxPumpRuntime[i];
+      }
+      _pendingZoneDeadlines.remove(zone);
+    }
+
+    state = TriggerSettings(
+      startThreshold: newStarts,
+      targetMoisture: newTargets,
+      maxPumpRuntime: newTimeouts,
+    );
   }
 
   Future<void> _load() async {
@@ -222,6 +286,13 @@ class SensorDataNotifier extends Notifier<SensorData> {
             targetMoisture: triggers.targetMoisture,
             maxPumpRuntime: triggers.maxPumpRuntime,
           );
+
+          // Propagate cloud system_lock to the global provider so every
+          // screen reacts instantly - this enables cross-platform sync.
+          ref
+              .read(systemLockProvider.notifier)
+              .syncFromCloud(data.systemLock);
+
           _resetTimeout();
         },
         onError: (error) {

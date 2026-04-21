@@ -10,7 +10,7 @@ class ZoneCard extends ConsumerStatefulWidget {
   final String zoneId;
   final String zoneName;
   final int rawMoisture; // Actual sensor reading from the Pi/database
-  final double calibratedValue; // User-set threshold from Calibration screen
+  final double startThreshold; // User-set threshold from Calibration screen
   final double targetMoisture; // Precision saturation target
   final int temp;
   final Animation<double> pulseAnim;
@@ -22,7 +22,7 @@ class ZoneCard extends ConsumerStatefulWidget {
     required this.zoneId,
     required this.zoneName,
     this.rawMoisture = 0,
-    this.calibratedValue = 0.0,
+    this.startThreshold = 0.0,
     this.targetMoisture = 65.0,
     required this.temp,
     required this.pulseAnim,
@@ -210,12 +210,15 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                       // Current Moisture
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: isDark
-                              ? Colors.white.withValues(alpha: 0.12)
-                              : Colors.white.withValues(alpha: 0.9),
+                              ? const Color(0xFFFFF3E0).withValues(alpha: 0.15)
+                              : const Color(0xFFFFF3E0).withValues(alpha: 0.95),
                           borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color: const Color(0xFFF57C00).withValues(alpha: 0.4),
+                              width: 1),
                           boxShadow: [
                             BoxShadow(
                                 color: Colors.black.withValues(alpha: 0.05),
@@ -226,17 +229,17 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.water_drop_rounded,
-                                size: 14, color: Color(0xFF0277BD)),
-                            const SizedBox(width: 4),
+                            const Icon(Icons.arrow_upward_rounded,
+                                size: 12, color: Color(0xFFF57C00)),
+                            const SizedBox(width: 3),
                             Text(
-                              '${widget.calibratedValue.round()}%',
+                              'Start ${widget.startThreshold.round()}%',
                               style: TextStyle(
                                 fontWeight: FontWeight.w800,
-                                fontSize: 13,
+                                fontSize: 11,
                                 color: isDark
-                                    ? Colors.white
-                                    : const Color(0xFF0277BD),
+                                    ? const Color(0xFFFFCC80)
+                                    : const Color(0xFFE65100),
                               ),
                             ),
                           ],
@@ -246,12 +249,15 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                       // Target Moisture
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: isDark
                               ? Colors.white.withValues(alpha: 0.12)
                               : Colors.white.withValues(alpha: 0.9),
                           borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color: const Color(0xFF2BCC71).withValues(alpha: 0.4),
+                              width: 1),
                           boxShadow: [
                             BoxShadow(
                                 color: Colors.black.withValues(alpha: 0.05),
@@ -262,14 +268,14 @@ class _ZoneCardState extends ConsumerState<ZoneCard> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.eco_rounded,
-                                size: 14, color: Color(0xFF1B8E4F)),
-                            const SizedBox(width: 4),
+                            const Icon(Icons.flag_rounded,
+                                size: 12, color: Color(0xFF1B8E4F)),
+                            const SizedBox(width: 3),
                             Text(
-                              '${widget.targetMoisture.round()}%',
+                              'Goal ${widget.targetMoisture.round()}%',
                               style: TextStyle(
                                 fontWeight: FontWeight.w800,
-                                fontSize: 13,
+                                fontSize: 11,
                                 color: isDark
                                     ? Colors.white
                                     : const Color(0xFF1B8E4F),

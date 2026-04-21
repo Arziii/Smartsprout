@@ -272,7 +272,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             children: [
               _buildAnimatedWidget(
-                  1, _buildVitals(tankLevelStr, temperature, isEnvFault)),
+                  1, _buildVitals(tankLevelStr, temperature, isEnvFault, sensorData.isTankFault)),
               const SizedBox(height: 30),
         _buildAnimatedWidget(
             2,
@@ -305,7 +305,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   zoneId: '1',
                   zoneName: "Zone 1 (Left)",
                   rawMoisture: rawSoil.isNotEmpty ? rawSoil[0].toInt() : 0,
-                  calibratedValue:
+                  startThreshold:
                       startThresholds.isNotEmpty ? startThresholds[0] : 0.0,
                   targetMoisture: targets.isNotEmpty ? targets[0] : 65.0,
                   temp: temperature.toInt(),
@@ -323,7 +323,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   zoneId: '2',
                   zoneName: "Zone 2 (Center)",
                   rawMoisture: rawSoil.length > 1 ? rawSoil[1].toInt() : 0,
-                  calibratedValue:
+                  startThreshold:
                       startThresholds.length > 1 ? startThresholds[1] : 0.0,
                   targetMoisture: targets.length > 1 ? targets[1] : 65.0,
                   temp: temperature.toInt(),
@@ -341,7 +341,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   zoneId: '3',
                   zoneName: "Zone 3 (Right)",
                   rawMoisture: rawSoil.length > 2 ? rawSoil[2].toInt() : 0,
-                  calibratedValue:
+                  startThreshold:
                       startThresholds.length > 2 ? startThresholds[2] : 0.0,
                   targetMoisture: targets.length > 2 ? targets[2] : 65.0,
                   temp: temperature.toInt(),
@@ -485,7 +485,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   }
 
   Widget _buildVitals(String tankLevelStr, double systemTemp,
-      bool isEnvFault) {
+      bool isEnvFault, bool isTankFault) {
     // Tank logic
     Color tankColor;
     String tankLabel;
@@ -493,7 +493,12 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     IconData tankIcon;
     // 'FULL' = new Active-Low label (Black/Mode on 5V, GPIO LOW = water detected).
     // 'HIGH' = legacy label kept for backward compat with old Firestore documents.
-    if (tankLevelStr == 'FULL' || tankLevelStr == 'HIGH') {
+    if (isTankFault || tankLevelStr == 'FAULT') {
+      tankColor = Colors.orange;
+      tankLabel = 'FAULT';
+      tankStatus = 'Sensor Disconnected';
+      tankIcon = Icons.warning_amber_rounded;
+    } else if (tankLevelStr == 'FULL' || tankLevelStr == 'HIGH') {
       tankColor = const Color(0xFF2BCC71);
       tankLabel = 'FULL';
       tankStatus = 'Level Sufficient';
@@ -517,7 +522,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           child: Container(
             height: 140, // Match design
             decoration: BoxDecoration(
-              color: (tankLevelStr == 'FULL' || tankLevelStr == 'HIGH')
+              color: (!isTankFault && (tankLevelStr == 'FULL' || tankLevelStr == 'HIGH'))
                   ? (Theme.of(context).brightness == Brightness.dark
                       ? const Color(0xFF0F172A).withValues(alpha: 0.9)
                       : Colors.white.withValues(alpha: 0.9))
@@ -525,7 +530,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                   color: tankColor.withValues(
-                      alpha: (tankLevelStr == 'FULL' || tankLevelStr == 'HIGH') ? 0.3 : 0.8),
+                      alpha: (!isTankFault && (tankLevelStr == 'FULL' || tankLevelStr == 'HIGH')) ? 0.3 : 0.8),
                   width: 1.5),
               boxShadow: isLiteMode
                   ? null

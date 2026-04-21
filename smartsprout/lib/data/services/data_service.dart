@@ -522,11 +522,54 @@ class DataService {
     }
   }
 
-  Future<void> emergencyStop() async {
-    await sendCommand({
-      'command': 'stop_all',
-    });
+  /// Sets or releases the cloud-synced system lock (Emergency Stop).
+  ///
+  /// Writes `system_lock: true/false` directly to the device document
+  /// (NOT to the commands subcollection) so both the mobile app and the
+  /// Linux kiosk see the change via their real-time listeners instantly.
+  ///
+  /// When locking (locked=true), also sends a `stop_all` command to the Pi
+  /// to immediately cut power to all pump relays.
+  Future<void> setSystemLock(bool locked) async {
+    // 1. Write the lock flag to the device document for cross-platform sync
+    if (Platform.isLinux) {
+      try {
+        final url =
+            '$_baseUrl?updateMask.fieldPaths=system_lock&key=$_apiKey';
+        final token = await _getAuthToken();
+        final headers = <String, String>{'Content-Type': 'application/json'};
+        if (token != null) headers['Authorization'] = 'Bearer $token';
+        await http.patch(
+          Uri.parse(url),
+          headers: headers,
+          body: json.encode({
+            'fields': {
+              'system_lock': {'booleanValue': locked},
+            }
+          }),
+        );
+      } catch (e) {
+        debugPrint('[REST_ERROR] setSystemLock: $e');
+      }
+    } else {
+      try {
+        await _firestore.collection('devices').doc(deviceId).set(
+          {'system_lock': locked},
+          SetOptions(merge: true),
+        );
+      } catch (e) {
+        debugPrint('[FIREBASE_ERROR] setSystemLock: $e');
+      }
+    }
+
+    // 2. If locking, also send stop_all command so the Pi halts pumps NOW
+    if (locked) {
+      await sendCommand({'command': 'stop_all'});
+    }
   }
+
+  /// Legacy alias kept for call-sites that haven't been migrated yet.
+  Future<void> emergencyStop() => setSystemLock(true);
 
   Future<void> setWateringMode(String mode,
       {String? strategy,

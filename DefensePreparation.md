@@ -398,7 +398,7 @@ If a user is manually watering via the app, what happens if their phone loses in
 5. **4-Channel 5V Relay Module (SRD-05VDC)** (Acting as a galvanic isolation barrier).
 6. **Submersible USB Pump** (Spliced and powered by the Buck Module secondary output).
 7. **Normally Closed (NC) 12V Solenoid Valves** (Failsafe state; wired to NO relay terminals for logic isolation).
-8. **XKC-Y26-V Non-contact Liquid Level Sensor** (With 1kΩ/2kΩ voltage divider for 3.3V GPIO safety).
+8. **XKC-Y26-V Non-contact Liquid Level Sensor** (With 10kΩ/20kΩ voltage divider and Active-High fail-safe wiring).
 9. **XL4016 8A DC-DC Buck Module** (Centralized power distributor from 12V 8A source).
 10. **Active Ventilation System** (Exhaust Fan integrated for thermal management of XL4016 and Pi 4).
 
@@ -663,7 +663,7 @@ All pins use **BCM (Broadcom) numbering**. Change only if rewiring hardware.
 | Solenoid Valve — Zone 1 | `RELAY_VALVE1_PIN` | **27** |
 | Solenoid Valve — Zone 2 | `RELAY_VALVE2_PIN` | **22** |
 | Solenoid Valve — Zone 3 | `RELAY_VALVE3_PIN` | **23** |
-| XKC Tank Level Sensor | `XKC_LEVEL_PIN` | **5 (Active-Low / PULL_UP)** |
+| XKC Tank Level Sensor | `XKC_LEVEL_PIN` | **5 (Active-High / Fail-Safe)** |
 | Factory Reset Button | `RESET_BUTTON_PIN` | **24** |
 | Reset Indicator LED | `RESET_LED_PIN` | **18** |
 | ADS1115 I2C Bus | `ADS1115_I2C_BUS` | **1** |

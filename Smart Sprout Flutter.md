@@ -112,6 +112,10 @@ The Smart Sprout hardware system integrates:
 │ User Authentication     │ Credential-based secure login           │ P0       │
 │                         │ (Device ID + PIN) via Firestore         │          │
 ├─────────────────────────┼─────────────────────────────────────────┼──────────┤
+│ Emergency Stop          │ Global Master Lockdown: Synchronized    │ P0       │
+│ (System Lock)           │ across all platforms. Deactivates relays │          │
+│                         │ and blocks all watering commands.        │          │
+├─────────────────────────┼─────────────────────────────────────────┼──────────┤
 │ Data Synchronization    │ Consistent telemetry and commands via   │ P0       │
 │                         │ Cloud Firestore                         │          │
 ├─────────────────────────┼─────────────────────────────────────────┼──────────┤
@@ -218,7 +222,8 @@ Document Structure:
   • lastSync: Timestamp
   • status: "online" | "offline"
   • system_status: string
-  • pump_locked: boolean
+  • pump_locked: boolean   (Safety: Low Water Level)
+  • system_lock: boolean   (Emergency Stop / Master Lockdown)
   • tank_level: double
   • soil_moisture: [double, double, double]
   • temperature: double
@@ -410,7 +415,8 @@ PHASE 4.10: EMERGENCY FORCE SYNC ("ECO-MODE BYPASS") [COMPLETED]
 
 PHASE 4.11: ADVANCED CONTROL & SAFETY REDESIGN [COMPLETED]
 ☑ Single-Button Toggle: Replaced separate "Water/Stop" buttons with smart toggles (Continuous vs Pulse & Soak).
-☑ Master Lockdown Switch: Implemented a global safety switch that prevents all watering until manually released.
+☑ Master Lockdown (Emergency Stop): Implemented a persistent, cloud-synced safety system. Activating the lock on any device (Mobile/Kiosk) instantly triggers a relay shutdown on the Raspberry Pi and blocks all subsequent watering commands.
+☑ Riverpod Integration: Managed via `systemLockProvider` for sub-second UI responsiveness and persistence across navigation.
 ☑ Non-Intrusive Notifications: Replaced obstructive banners with a space-efficient status row on the Dashboard.
 ☑ Visual Feedback: Active watering cards now pulse with a thematic glow and functional icons.
 
@@ -534,7 +540,7 @@ PHASE 4.26: AUTO-WATERING STRATEGY REFACTOR [COMPLETED]
 ☑ Mutually Exclusive Strategies: Sensor Target and Daily Timer are now strictly mutually exclusive. Enabling one automatically disables the other via card-based UI selection.
 ☑ Corrected Trigger Logic: Sensor Target now triggers when moisture ≤ startThreshold (was incorrectly == threshold), ensuring reliable debounced auto-watering.
 ☑ UI Conflict Resolved: Removed the legacy SegmentedButton and redundant _autoStrategy field that caused the Daily Timer to override Sensor Target mode.
-☑ Emergency Stop Lockdown: Both auto-watering strategies are fully disabled while the Emergency Stop is engaged, preventing any irrigation regardless of sensor state.
+☑ Emergency Stop Lockdown (v2): Both auto-watering strategies are fully disabled while `system_lock` is active. The Raspberry Pi backend enforces this by deactivating all relays via an `on_snapshot` listener, ensuring sub-second response time.
 ☑ Low Tank Warning: Manual watering with empty tank now shows "The water is Low, Please check your tank!" instead of the generic hardware error string.
 ☑ Analytics Color Coding: Offline data shown in red, sensor faults in amber, valid readings in green — consistent with System Health screen.
 
@@ -563,7 +569,7 @@ PHASE 4.31: HARDWARE FAULT MITIGATION & PROTECTIVE WIRING [COMPLETED]
 ☑ Overcurrent Protection: Integrated physical fuses to protect against short circuits.
 ☑ Back-EMF Suppression: Integrated Flyback Diodes on Solenoid Valves.
 ☑ Brownout Prevention: Added Bulk Capacitors for the Pump to prevent voltage drops.
-☑ Logic Level Shifting: Used Voltage Dividers (1kΩ/2kΩ) for 5V-to-3.3V reduction on the XKC-Y26-V liquid sensor.
+☑ Logic Level Shifting: Used Voltage Dividers (10kΩ/20kΩ) for 5V-to-3.3V reduction on the XKC-Y26-V liquid sensor.
 
 PHASE 4.32: WI-FI NETWORK MANAGEMENT & SUDOERS ARCHITECTURE [COMPLETED]
 ☑ Zero-Trust Wi-Fi Controls: Added network discovery and connection interface via the Kiosk Settings.
@@ -571,7 +577,7 @@ PHASE 4.32: WI-FI NETWORK MANAGEMENT & SUDOERS ARCHITECTURE [COMPLETED]
 ☑ Kiosk Guard: Enforced startup guard in `start_smartsprout.sh` to copy the sudoers file on every boot, ensuring Wi-Fi capability is always injected correctly.
 
 PHASE 4.33: SENSOR ROBUSTNESS & COMMAND PRECISION [COMPLETED]
-☑ Active-Low XKC-Y26-V Logic: Updated the water sensor GPIO reading to use Active-Low (`LOW = FULL`) paired with an internal Pi Pull-Up resistor to stabilize floating signals.
+☑ Fail-Safe Active-High XKC-Y26-V Logic: Updated the water sensor GPIO reading to use Active-High (`HIGH = FULL`) because the physical voltage divider grounds the pin, ensuring a disconnected sensor safely reports Tank Empty.
 ☑ Hardware Debounce Loop: Added a 200ms `time.sleep` confirmation loop in sensor polling to ignore fleeting water splashes and transient electrical noise before locking in an "Empty" state.
 ☑ RESTART_APP Precision Fix: Refactored the UI restart command to use `pkill -f 'bundle/smartsprout'` instead of just `smartsprout`, successfully isolating the Flutter binary and protecting the immortal backend shell script from accidental termination.
 ☑ Snappy UI Relaunch: Reduced Kiosk bash relaunch delay from 5s to 2s to minimize blank VNC time.
@@ -715,7 +721,7 @@ overridden locally via the `.env` configuration file.
 ├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
 │ BME280 (Temp/Hum/Pres)  │ SDA / SCL               │ BCM 2 / BCM 3         │ I2C addr: 0x76 (shared bus)        │
 ├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
-│ Water Level (XKC-Y26-V) │ Yellow (Signal)         │ BCM 5  (Pin 29)       │ 1kΩ/2kΩ Voltage Divider (5V→3.3V) │
+│ Water Level (XKC-Y26-V) │ Yellow (Signal)         │ BCM 5  (Pin 29)       │ 10kΩ/20kΩ Voltage Divider (5V→3.3V) & Active-High Fail-Safe │
 ├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
 │ Relay VCC               │ VCC                     │ 5V (Pin 2 or 4)       │ Powered by Pi 5V Rail              │
 │ Relay IN1 — Pump        │ IN1                     │ BCM 17 (Pin 11)       │ COM: XL4016 5V OUT+ / NO: Pump (+) │
@@ -735,7 +741,7 @@ To ensure the safety of the sensitive 3.3V Raspberry Pi GPIO pins when interfaci
 • Overcurrent Protection (Fuses): Placed on the main 12V supply line to prevent catastrophic failure in the event of a short circuit.
 • Back-EMF Suppression (Flyback Diodes): Reverse-biased 1N4007 diodes are installed across the terminals of all Solenoid Valves and the Pump. This gives the high-voltage spike generated when the coil is de-energized a safe path to dissipate, protecting the relay module and Pi.
 • Brownout Prevention (Bulk Capacitor): A large electrolytic capacitor (e.g., 1000μF 25V) is placed across the power rails near the pump to supply the sudden burst of current required during motor startup, preventing voltage dips that could reset the Pi.
-• Logic Level Shifting: The XKC-Y26-V liquid level sensor outputs a 5V signal. To safely read this on the Pi's 3.3V GPIO 5, a 1kΩ/2kΩ voltage divider is used to step down the signal to ~3.3V.
+• Logic Level Shifting & Active-High Fail-Safe: The XKC-Y26-V liquid level sensor outputs a 5V signal. To safely read this on the Pi's 3.3V GPIO 5, a 10kΩ/20kΩ voltage divider is used to step down the signal to ~3.3V. Because this divider physically anchors the pin to Ground, the sensor is wired in **Active-High** Mode (Black to GND). If the sensor disconnects, the pin correctly drops to 0V ("Empty"), preventing the pumps from running dry.
 
 
 7.5 LINUX KIOSK DATA ARCHITECTURE

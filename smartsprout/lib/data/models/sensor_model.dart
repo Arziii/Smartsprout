@@ -11,6 +11,7 @@ class SensorData {
   final String tankLevel;
   final double flowRate;
   final bool pumpLocked;
+  final bool systemLock; // Cloud-synced master lockdown (Emergency Stop)
   final List<bool> pumpStatus; // Per-zone pump active state confirmed by Pi
   final String systemStatus; // 'ok', 'sensor_fault', 'tank_low', 'offline'
   final Map<String, String>
@@ -30,6 +31,7 @@ class SensorData {
     this.tankLevel = 'FAULT',
     this.flowRate = 0.0,
     this.pumpLocked = false,
+    this.systemLock = false,
     this.pumpStatus = const [false, false, false],
     this.systemStatus = 'offline',
     this.hardwareStatus = const {},
@@ -153,6 +155,7 @@ class SensorData {
       tankLevel: json['tank_level']?.toString() ?? 'FAULT',
       flowRate: (json['flow_rate'] as num?)?.toDouble() ?? 0.0,
       pumpLocked: json['pump_locked'] as bool? ?? false,
+      systemLock: json['system_lock'] as bool? ?? false,
       pumpStatus: [
         json['pump_status_zone1'] as bool? ?? false,
         json['pump_status_zone2'] as bool? ?? false,
@@ -202,8 +205,18 @@ class SensorData {
     return index < soilMoistureRaw.length && soilMoistureRaw[index] < 0;
   }
 
+  /// True when any of the Pi-side fault signals are present, OR if the whole 
+  /// controller is offline:
+  ///   1. hardwareStatus['tank'] == 'fault'  — explicit HW flag
+  ///   2. tankLevel == 'FAULT'               — raw tank-level reading
+  ///   3. alerts contains 'tank_sensor_fault' — alert list signal
+  ///   4. isOffline == true                  — system offline fallback
+  /// Using all prevents "Sufficient" if one field is stale.
   bool get isTankFault =>
-      hardwareStatus['tank'] == 'fault' || tankLevel == 'FAULT';
+      hardwareStatus['tank'] == 'fault' ||
+      tankLevel == 'FAULT' ||
+      alerts.contains('tank_sensor_fault') ||
+      isOffline;
 
   bool get isControllerDisconnected {
     try {
@@ -224,6 +237,7 @@ class SensorData {
     String? tankLevel,
     double? flowRate,
     bool? pumpLocked,
+    bool? systemLock,
     List<bool>? pumpStatus,
     String? systemStatus,
     Map<String, String>? hardwareStatus,
@@ -242,6 +256,7 @@ class SensorData {
       tankLevel: tankLevel ?? this.tankLevel,
       flowRate: flowRate ?? this.flowRate,
       pumpLocked: pumpLocked ?? this.pumpLocked,
+      systemLock: systemLock ?? this.systemLock,
       pumpStatus: pumpStatus ?? this.pumpStatus,
       systemStatus: systemStatus ?? this.systemStatus,
       hardwareStatus: hardwareStatus ?? this.hardwareStatus,
