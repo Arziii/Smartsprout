@@ -256,23 +256,25 @@ def read_environment() -> dict:
 
 
 # ═══════════════════════════════════════════════════════
-# XKC-Y26-V — Non-contact Tank Level (Digital, Active-Low)
-# Wiring: Black (Mode) → 5V  |  Yellow (Signal) → GPIO BCM 5 (Pin 29)
-# Because Black is on 5V the sensor operates in Active-Low mode:
-#   GPIO LOW  (0) → sensor sinking current → water detected → "FULL"
-#   GPIO HIGH (1) → sensor idle / high-Z   → no water       → "LOW"
+# XKC-Y26-V — Non-contact Tank Level (Digital, Active-High)
+# Wiring: Black (Mode) → GND  |  Yellow (Signal) → GPIO BCM 6 (Pin 31)
+# A physical pull-down resistor is wired on BCM 6 (hardware resistor).
+# Software PUD is disabled (PUD_OFF) to avoid interfering with it.
+#   GPIO HIGH (1) → sensor driving signal  → water detected → "FULL"
+#   GPIO LOW  (0) → sensor idle / Unplugged → no water      → "LOW"
 # ═══════════════════════════════════════════════════════
 
 def read_tank_level() -> str:
     """
     Returns tank fill state: 'FULL', 'LOW', or 'FAULT'.
 
-    Wiring — Active-High (Black/Mode on GND, Yellow/Signal via Voltage Divider to BCM 5):
+    Wiring — Active-High (Black/Mode on GND, Yellow/Signal via Voltage Divider to BCM 6):
       GPIO HIGH (1) = water detected = "FULL"
       GPIO LOW  (0) = no water / dry   = "LOW"
     
-    Note: A hardware voltage divider (pull-down) is present on this pin.
-    This means 'Disconnected' reads as 0 (LOW), which is our safe fail-state.
+    Note: A physical pull-down resistor is wired on this pin — software PUD is
+    disabled (PUD_OFF) so it does not interfere with the hardware resistor.
+    Disconnected pin reads as 0 (LOW) = safe fail-state.
     """
     if not _GPIO_AVAILABLE:
         print("[WARN] read_tank_level: GPIO not available — returning FAULT sentinel.")
@@ -280,8 +282,8 @@ def read_tank_level() -> str:
 
     try:
         # ── Setup ──
-        # We use an internal PULL_DOWN to assist the hardware divider.
-        GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        # PUD_OFF: physical resistor on BCM 6 handles biasing — no software pull needed.
+        GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN, pull_up_down=GPIO.PUD_OFF)
         time.sleep(0.05)
 
         # ── Multi-sample anti-aliasing debounce ──

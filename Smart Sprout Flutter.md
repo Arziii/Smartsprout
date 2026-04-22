@@ -721,7 +721,7 @@ overridden locally via the `.env` configuration file.
 ├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
 │ BME280 (Temp/Hum/Pres)  │ SDA / SCL               │ BCM 2 / BCM 3         │ I2C addr: 0x76 (shared bus)        │
 ├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
-│ Water Level (XKC-Y26-V) │ Yellow (Signal)         │ BCM 5  (Pin 29)       │ 10kΩ/20kΩ Voltage Divider (5V→3.3V) & Active-High Fail-Safe │
+│ Water Level (XKC-Y26-V) │ Yellow (Signal)         │ BCM 6  (Pin 31)       │ 10kΩ/20kΩ Voltage Divider (5V→3.3V) & Active-High Fail-Safe │
 ├─────────────────────────┼─────────────────────────┼───────────────────────┼────────────────────────────────────┤
 │ Relay VCC               │ VCC                     │ 5V (Pin 2 or 4)       │ Powered by Pi 5V Rail              │
 │ Relay IN1 — Pump        │ IN1                     │ BCM 17 (Pin 11)       │ COM: XL4016 5V OUT+ / NO: Pump (+) │

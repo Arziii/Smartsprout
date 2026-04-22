@@ -259,7 +259,7 @@ All BCM numbers are used in `main.py`, `sensors.py`, and `pump_watchdog.py`.
 | **Soil Moisture Zone 1** | Sensor 1 Signal | **ADS1115 A0** | Capacitive v1.2 (Analog) |
 | **Soil Moisture Zone 2** | Sensor 2 Signal | **ADS1115 A1** | Capacitive v1.2 (Analog) |
 | **Soil Moisture Zone 3** | Sensor 3 Signal | **ADS1115 A2** | Capacitive v1.2 (Analog) |
-| **Water Level (XKC)** | Yellow (Signal) | **BCM 5** (Pin 29) | Active-Low / Pull-Up / 1kΩ/2kΩ Divider |
+| **Water Level (XKC)** | Yellow (Signal) | **BCM 6** (Pin 31) | Active-Low / Pull-Up / 1kΩ/2kΩ Divider |
 | **Relay Module VCC** | VCC | **5V** (Pin 2 or 4) | Powered by Pi 5V Rail |
 | **Relay IN1 — Pump** | IN1 | **BCM 17** (Pin 11) | COM: XL4016 5V OUT+ / NO: Pump (+) |
 | **Relay IN2 — Valve 1** | IN2 | **BCM 27** (Pin 13) | COM: 12V+ / NO: Valve 1+ |

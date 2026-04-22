@@ -55,7 +55,7 @@ BMP280_I2C_ADDRESS = int(os.getenv("BMP280_I2C_ADDRESS", "0x76"), 16)  # Chip ID
 # ── Digital Sensors ──
 # XKC-Y26-V is a binary non-contact sensor: output is HIGH, LOW, or FAULT (string).
 # No percentage threshold applies — do NOT add TANK_LOW_THRESHOLD here.
-XKC_LEVEL_PIN = int(os.getenv("XKC_LEVEL_PIN", "5"))
+XKC_LEVEL_PIN = int(os.getenv("XKC_LEVEL_PIN", "6"))
 
 # ── Relay Module (Active LOW) ──
 RELAY_PUMP = int(os.getenv("RELAY_PUMP_PIN", "17"))
