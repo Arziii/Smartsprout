@@ -129,6 +129,18 @@ class DataService {
           if (!await file.exists()) {
             return const SensorData(systemStatus: 'offline');
           }
+          // ── Stale-cache guard ──
+          // main.py writes this file every 3 seconds. If it hasn't been
+          // modified within 15 seconds, main.py is not running (or just
+          // started and hasn't completed its first sensor read). Treat as
+          // offline rather than showing stale data from a previous session.
+          final stat = await file.stat();
+          final cacheAge = DateTime.now().difference(stat.modified);
+          if (cacheAge.inSeconds > 15) {
+            debugPrint(
+                '[LOCAL_TELEMETRY] Cache is ${cacheAge.inSeconds}s old — main.py not running, returning offline.');
+            return const SensorData(systemStatus: 'offline');
+          }
           final contents = await file.readAsString();
           final data = json.decode(contents) as Map<String, dynamic>;
           final parsed = SensorData.fromJson(data);

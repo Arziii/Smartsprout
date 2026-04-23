@@ -68,8 +68,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     final targets = triggers.targetMoisture; // locally persisted
     final tankLevelStr = sensorData.tankLevel;
     final temperature = sensorData.temperature;
-    // On Linux (Pi), never show as offline — the Pi IS the system.
-    final isOffline = Platform.isLinux ? false : sensorData.isOffline;
+    // On Linux (Pi kiosk): isOffline is true only when main.py is not running
+    // (cache file missing or stale). See SensorData.isOffline and data_service.dart
+    // stale-cache guard.
+    final isOffline = sensorData.isOffline;
     final hasFault = sensorData.hasSensorFault;
     final isEnvFault = sensorData.isEnvFault;
     final isTankLow = sensorData.isTankLow;

@@ -125,6 +125,14 @@ def read_soil_moisture() -> tuple[dict, dict, bool]:
                 wet_raw = cal_data[zone_key].get("wet_raw", config.SOIL_WET)
                 offset = cal_data[zone_key].get("manual_offset_pct", 0)
 
+                # ── MUX settling read ──
+                # The ADS1115 multiplexer's internal sample-and-hold capacitor
+                # retains charge from the previous channel. On a disconnected
+                # (high-impedance) input, this causes "ghost" readings that mirror
+                # the last connected channel. A dummy read settles the MUX on the
+                # new channel before the real measurement.
+                _read_ads1115_channel(bus, ch)  # Discard — settling only
+
                 raw = _read_ads1115_channel(bus, ch)
 
                 # Fault detection for physically disconnected probes
@@ -259,7 +267,7 @@ def read_environment() -> dict:
 # XKC-Y26-V — Non-contact Tank Level (Digital, Active-High)
 # Wiring: Black (Mode) → GND  |  Yellow (Signal) → GPIO BCM 6 (Pin 31)
 # A physical pull-down resistor is wired on BCM 6 (hardware resistor).
-# Software PUD is disabled (PUD_OFF) to avoid interfering with it.
+# Software PUD is disabled (PUD_OFF) — the physical resistor handles biasing.
 #   GPIO HIGH (1) → sensor driving signal  → water detected → "FULL"
 #   GPIO LOW  (0) → sensor idle / Unplugged → no water      → "LOW"
 # ═══════════════════════════════════════════════════════
@@ -272,9 +280,9 @@ def read_tank_level() -> str:
       GPIO HIGH (1) = water detected = "FULL"
       GPIO LOW  (0) = no water / dry   = "LOW"
     
-    Note: A physical pull-down resistor is wired on this pin — software PUD is
-    disabled (PUD_OFF) so it does not interfere with the hardware resistor.
-    Disconnected pin reads as 0 (LOW) = safe fail-state.
+    Note: A physical pull-down resistor is wired on this pin.
+    Software PUD is disabled (PUD_OFF) so it does not interfere with the
+    hardware resistor. The physical resistor handles the fail-safe biasing.
     """
     if not _GPIO_AVAILABLE:
         print("[WARN] read_tank_level: GPIO not available — returning FAULT sentinel.")
@@ -282,12 +290,16 @@ def read_tank_level() -> str:
 
     try:
         # ── Setup ──
-        # PUD_OFF: physical resistor on BCM 6 handles biasing — no software pull needed.
-        GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN, pull_up_down=GPIO.PUD_OFF)
+        # PUD_DOWN: software pull-down (~50kΩ) as a safety net for when the
+        # sensor is physically disconnected (floating pin → reads HIGH → false "FULL").
+        # When the sensor IS connected, the voltage divider outputs 3.2V which
+        # easily overpowers the weak internal pull-down (drops to ~3.0V, still
+        # well above the 1.8V HIGH threshold). No impact on normal readings.
+        GPIO.setup(config.XKC_LEVEL_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
         time.sleep(0.05)
 
         # ── Multi-sample anti-aliasing debounce ──
-        # We take 11 samples over ~120ms. If the pin is truly floating 
+        # We take 11 samples over ~120ms. If the pin is truly floating
         # (divider failing) or noisy, it will 'FAULT'.
         samples = []
         for _ in range(11):
@@ -309,11 +321,6 @@ def read_tank_level() -> str:
             return "FULL"
         else:
             return "LOW"
-
-    except Exception as e:
-        print(f"[ERROR] Tank level read failed: {e}")
-        return "FAULT"
-
 
     except Exception as e:
         print(f"[ERROR] Tank level read failed: {e}")

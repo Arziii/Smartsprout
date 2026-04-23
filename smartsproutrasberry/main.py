@@ -606,6 +606,19 @@ def main():
     last_cloud_sync = 0
     _last_sent_telemetry = {}  # Empty — forces eco_due push on first loop
 
+    # ── Clear Stale Telemetry Cache ──
+    # Delete any leftover /tmp/smartsprout_telemetry.json from a previous run.
+    # Without this, the Flutter kiosk reads stale data (e.g. "FULL" tank) before
+    # the first sensor cycle completes, giving a false reading on boot.
+    _cache_path_init = '/tmp/smartsprout_telemetry.json'
+    try:
+        import os as _os_init
+        if _os_init.path.exists(_cache_path_init):
+            _os_init.remove(_cache_path_init)
+            print("[INIT] Stale telemetry cache cleared.")
+    except Exception as _del_err:
+        print(f"[WARN] Could not clear stale cache: {_del_err}")
+
     # Give Firebase a moment to stabilize after init before the first push
     print("[MAIN] Waiting 5s for Firebase connection to stabilize...")
     time.sleep(5)
@@ -751,8 +764,9 @@ def main():
                 # Guard: never run auto watering while the Emergency Stop is active
                 if _current_mode == "auto" and telemetry["system_status"] != "tank_low" and not _system_locked:
                     if _auto_strategy == "sensor":
-                        # Precision Saturation: fetch per-zone targets from Firestore
-                        zone_targets = firebase_manager.get_zone_targets()
+                        # Precision Saturation: prefer local calibration data.
+                        # Only fetch from Firestore when online (avoids blocking call when offline).
+                        zone_targets = firebase_manager.get_zone_targets() if firebase_manager._db else {}
                         cal_data = sensor_manager.load_calibration()
                         for key, raw_moisture in telemetry["soil_moisture_raw"].items():
                             if raw_moisture < 0:  # Skip fault readings

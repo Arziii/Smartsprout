@@ -30,7 +30,7 @@ To prevent I2C `[Errno 5]` errors and system instability, the project utilizes a
 
 *   **Soil Moisture:** Capacitive v1.2 (Analog 1.2V-2.5V). Requires the **ADS1115 I2C ADC** to convert analog signals to digital values for the Pi.
 *   **Temp/Humidity/Pressure:** BME280 (I2C). A precision sensor that communicates over the I2C bus (Address: 0x76).
-*   **Water Level:** XKC-Y26-V Non-contact Liquid Level Sensor. Powered by 5V. Outputs a digital signal passed through a 10kΩ/20kΩ voltage divider. **System uses Fail-Safe Active-High logic (Black Mode wire to GND).** Because the voltage divider acts as a physical pull-down to Ground, a disconnected sensor sits at 0V (LOW). Active-High ensures a disconnected sensor safely reports as "LOW" (Empty), protecting the pumps.
+*   **Water Level:** XKC-Y26-V Non-contact Liquid Level Sensor. Powered by 5V. Outputs a digital signal passed through a 10kΩ/20kΩ voltage divider. **System uses Fail-Safe Active-High logic (Black Mode wire to GND).** The voltage divider acts as a physical pull-down to Ground, and software `PUD_DOWN` (~50kΩ) provides a secondary safety net. When the sensor is disconnected, the pin is pulled to LOW ("Empty"), protecting the pumps from running dry.
 *   **Irrigation Control:** 12V Solenoid Valves - Normally Closed (NC). Valves stay CLOSED when unpowered and open via the relay module using 12V DC.
 *   **Water Pump:** 5V Submersible Pump.
 
@@ -71,7 +71,7 @@ All software implementation must reference the **BCM (Broadcom)** numbering used
 | **Soil Moisture (Z1)** | Sensor 1 Signal | **ADS1115 A0** | Capacitive v1.2 (Analog) |
 | **Soil Moisture (Z2)** | Sensor 2 Signal | **ADS1115 A1** | Capacitive v1.2 (Analog) |
 | **Soil Moisture (Z3)** | Sensor 3 Signal | **ADS1115 A2** | Capacitive v1.2 (Analog) |
-| **Water Level (XKC)** | Yellow (Signal) | **BCM 6** (Pin 31) | Active-High (Black to GND) / Hardware Pull-Down |
+| **Water Level (XKC)** | Yellow (Signal) | **BCM 6** (Pin 31) | Active-High (Black to GND) / Hardware Pull-Down + Software PUD_DOWN |
 | **Relay Module (5V)** | VCC | **5V** (Pin 2 or 4) | Powered by Pi 5V Rail |
 | | IN1 (Pump) | **BCM 17** (Pin 11) | COM: Buck OUT+ / NO: Pump Red |
 | | IN2 (Valve 1) | **BCM 27** (Pin 13) | COM: 12V+ (IN+) / NO: Valve 1+ |
@@ -153,6 +153,8 @@ The XKC-Y26-V liquid level sensor requires 5V to scan through container walls ef
 > [!TIP]
 > **Why Active-High? (Fail-Safe Strategy)**
 > Because the 20kΩ resistor anchors the GPIO pin to Ground, it inherently prevents the Raspberry Pi from detecting a "floating" disconnected wire. If the sensor is unplugged, the pin is physically tied to 0V. By wiring the sensor in **Active-High** Mode (connecting its Black wire to **GND**), 0V logically becomes "Tank Empty." This guarantees that if the sensor wire falls out or the sensor dies, the Pi stops the pumps instead of incorrectly assuming the tank is full.
+>
+> **Dual-Layer Biasing:** In addition to the hardware pull-down (voltage divider), the software enables `GPIO.PUD_DOWN` (~50kΩ internal pull-down). This acts as a secondary safety net for scenarios where the entire sensor circuit (including the voltage divider resistors) is physically removed. The weak 50kΩ pull-down does not affect the sensor's 3.2V output (drops to ~3.0V, still above the 1.8V HIGH threshold).
 
 ---
 ## 8. Maintenance Note & Troubleshooting
@@ -166,6 +168,9 @@ The Smart Sprout system features a **Hardware-Aware Maintenance Mode**. If the a
 
 ### Safety Hard-lock:
 When a sensor is in "FAULT" state, the backend **automatically disables (Hard-locks)** all irrigation logic for that specific zone. This prevents the pump from running indefinitely due to a faulty "dry" sensor reading.
+
+### ADS1115 ADC Crosstalk (Ghost Readings):
+The ADS1115's internal multiplexer shares a single sample-and-hold capacitor across all channels. When switching from a connected sensor to a disconnected channel, the capacitor retains charge from the previous reading, causing "ghost" values on empty inputs. The software mitigates this by performing a **dummy settling read** before each real measurement, allowing the capacitor to discharge to the actual channel voltage. If ghost readings persist, tie unused ADS1115 inputs to GND via a 10kΩ resistor.
 
 ---
 

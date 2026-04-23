@@ -582,6 +582,12 @@ PHASE 4.33: SENSOR ROBUSTNESS & COMMAND PRECISION [COMPLETED]
 ☑ RESTART_APP Precision Fix: Refactored the UI restart command to use `pkill -f 'bundle/smartsprout'` instead of just `smartsprout`, successfully isolating the Flutter binary and protecting the immortal backend shell script from accidental termination.
 ☑ Snappy UI Relaunch: Reduced Kiosk bash relaunch delay from 5s to 2s to minimize blank VNC time.
 
+PHASE 4.35: GPIO FLOATING PIN PROTECTION & ADC CROSSTALK ELIMINATION [COMPLETED]
+☑ GPIO PUD_DOWN Safety Net: Enabled the Pi's internal software pull-down (~50kΩ) on BCM 6 (XKC tank sensor pin). When the sensor is physically disconnected, the floating pin was falsely reading HIGH ("FULL"). The weak internal pull-down safely pulls it to LOW ("Empty") without affecting the real 3.2V sensor signal — the voltage divider's low impedance easily overpowers the 50kΩ pull-down (drops to ~3.0V, still above the 1.8V HIGH threshold).
+☑ ADS1115 MUX Crosstalk Fix: Added a dummy "settling read" before each real ADC channel read. The ADS1115's internal multiplexer sample-and-hold capacitor retains charge from the previous channel. On disconnected (high-impedance) inputs, this caused "ghost" readings that mirrored the last connected sensor. The dummy read lets the capacitor settle on the correct channel before the actual measurement, ensuring disconnected channels correctly report fault values.
+☑ Stale Telemetry Cache Guard: Implemented a dual-layer cache protection system: (1) `main.py` deletes `/tmp/smartsprout_telemetry.json` on every boot to prevent the kiosk from displaying stale sensor data from a previous session. (2) `data_service.dart` rejects cache files older than 15 seconds, treating them as `offline` state to avoid showing incorrect readings during Pi reboot or backend restart.
+☑ Offline Status Propagation: Updated `SensorData.isOffline` in `sensor_model.dart` to respect `systemStatus` on Linux instead of hardcoding `false`, allowing the kiosk UI to accurately display "offline" state when `main.py` is not running.
+
 PHASE 4.34: BLACK SCREEN HOTFIX & UI SOFT REFRESH [COMPLETED]
 ☑ Kiosk Black Screen Mitigation: Removed the `RESTART_APP` `pkill` OS-level execution from `main.py` backends. Hard-killing the graphic session process occasionally failed to re-attach to the Wayland/X11 output correctly, resulting in an indefinite black screen.
 ☑ Stateful Soft Restart: Re-routed the "Restart Dashboard" function in `system_settings_dialog.dart` to rely on entirely internal state destruction. A call to `ref.invalidate(dataServiceProvider)` now successfully drops and re-establishes all MQTT/Firebase data sockets seamlessly in under 1ms.
@@ -1134,6 +1140,9 @@ for the capstone defense. Key milestones reached:
 • Firestore quota optimized to <50,000 reads/day and <20,000 writes/day
 • Platform-adaptive UI (Mobile: glassmorphism / Kiosk: optimized for ARM64 GPU)
 • Complete horizontal scaling architecture: one codebase, unlimited Pi units
+• GPIO floating-pin protection via PUD_DOWN prevents false "Tank Full" on disconnected sensors
+• ADS1115 MUX crosstalk elimination via dummy settling reads prevents ghost soil readings
+• Stale telemetry cache guard ensures accurate kiosk display on boot/restart cycles
 
 All critical Linux kiosk initialization failures (blank screens on Calibration,
 Settings, Analytics) have been resolved by fixing the eager FirebaseFirestore.instance

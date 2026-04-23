@@ -181,7 +181,11 @@ class SensorData {
       tankLevel == 'LOW';
   bool get isOffline {
     try {
-      if (Platform.isLinux) return false;
+      // On Linux (Pi kiosk), we never check lastHeartbeat (no cloud heartbeat
+      // needed — the kiosk IS the Pi). But we DO respect systemStatus: the
+      // local cache reader sets this to 'offline' when main.py is not running
+      // or the cache file is stale.
+      if (Platform.isLinux) return systemStatus == 'offline';
     } catch (_) {}
     return systemStatus == 'offline' || isControllerDisconnected;
   }

@@ -65,3 +65,6 @@ The folder architecture is designed to support the following Firestore structure
 - **Adding Sensors**: New hardware drivers should be placed in `smartsproutrasberry/drivers/` and imported into `main.py`.
 - **Database Changes**: If adding new Firestore collections, update `lib/data/services/data_service.dart` and define a corresponding model in `lib/data/models/`.
 - **Local Persistence**: The `storage/telemetry.db` is the primary data source for the Linux Kiosk when internet connectivity is lost.
+- **GPIO Biasing**: Digital sensor inputs (e.g., BCM 6 for the XKC tank sensor) should use `GPIO.PUD_DOWN` to prevent floating pins from triggering false readings when hardware is disconnected. This supplements (but does not replace) physical voltage dividers.
+- **ADC Crosstalk**: When reading multiple channels on the ADS1115, always perform a "dummy read" before the real measurement to let the MUX sample-and-hold capacitor settle. Without this, disconnected high-impedance channels will mirror readings from the previously sampled channel.
+- **Telemetry Cache**: `main.py` deletes `/tmp/smartsprout_telemetry.json` on boot to prevent the kiosk UI from displaying stale data from a previous session.

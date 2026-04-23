@@ -15,10 +15,10 @@ class SystemHealthPage extends ConsumerWidget {
 
     // Overall Status
     final isHealthy = sensorData.isHealthy;
-    // On Linux (Raspberry Pi kiosk) the app reads sensors directly from
-    // local hardware — there is no remote controller to go "offline".
-    // Force isOffline = false so every card and the banner show live data.
-    final isOffline = Platform.isLinux ? false : sensorData.isOffline;
+    // isOffline: on Linux, this reflects whether main.py is running (cache
+    // file present and fresh). See SensorData.isOffline — on Linux it checks
+    // systemStatus == 'offline' (set by the stale-cache guard in data_service).
+    final isOffline = sensorData.isOffline;
 
     Color overallColor = isOffline
         ? Colors.grey
