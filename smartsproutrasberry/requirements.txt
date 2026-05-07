@@ -2,7 +2,8 @@
 # Install: pip install -r requirements.txt
 
 # Sensor Drivers
-adafruit-circuitpython-bmp280==3.3.21
+adafruit-circuitpython-dht==4.0.4     # DHT22 temperature/humidity (replaces bmp280)
+adafruit-blinka==8.38.0               # Required by adafruit-circuitpython-dht
 adafruit-circuitpython-ads1x15==2.2.23
 gpiozero==2.0.1
 

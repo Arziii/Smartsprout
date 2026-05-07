@@ -42,7 +42,7 @@ _manual_pump_zone = 0
 
 # External Hydration Detection
 _prev_moisture = {}  # {"bed1": 42.0, "bed2": 55.0, ...}
-_pump_running = False  # True when any pump/valve is active
+_pump_running = False  # True when any pump is active
 _last_hydration_alert = {} # Track last alert time per zone
 
 
@@ -290,6 +290,21 @@ def handle_firebase_command(payload: dict):
         cal_data[zone_key]["max_pump_runtime"] = timeout
         sensor_manager.save_calibration()
         _force_sync = True
+    elif command == "RESET_PASSWORD":
+        # ── Reset PIN to factory default (1234) with PBKDF2 ──
+        # This is the software equivalent of the hardware reset button,
+        # but ONLY resets the password — does NOT wipe calibration.
+        from network.auth_bouncer import _hash_pin_pbkdf2
+        default_pin = "1234"
+        hex_salt, hex_hash = _hash_pin_pbkdf2(default_pin)
+        credential = f"pbkdf2:{hex_salt}:{hex_hash}"
+        cfg = config._load_device_config()
+        cfg["pbkdf2_pin"] = credential
+        cfg.pop("hashed_pin", None)
+        cfg.pop("password", None)
+        config._save_device_config(cfg)
+        print("[SECURITY] ✅ Password reset to factory default (1234) via kiosk command.")
+        _force_sync = True
     elif command == "RESTART_APP":
         print("[MAINTENANCE] Kiosk UI refresh requested. (Handled locally by Flutter)")
     elif command == "REBOOT_PI":
@@ -357,7 +372,7 @@ def collect_telemetry() -> dict:
         alerts.append("soil_sensor_fault")
         system_status = "sensor_fault"
     if hardware_status["environment"] == "fault":
-        alerts.append("environment_sensor_fault")
+        alerts.append("dht22_fault")
         if system_status == "ok":
             system_status = "sensor_fault"
     if tank == "FAULT":
@@ -387,7 +402,6 @@ def collect_telemetry() -> dict:
         "max_pump_runtime": max_pump_runtime,
         "temperature": env["temperature"],
         "humidity": env["humidity"],
-        "pressure": env["pressure"],
         "tank_level": tank,
         "pump_locked": _pump_locked,
         "system_lock": _system_locked,  # Cloud-synced Emergency Stop flag
@@ -727,6 +741,7 @@ def main():
                     f"[TEL] Soil={telemetry['soil_moisture']} | "
                     f"Tank={telemetry['tank_level']} | "
                     f"Temp={telemetry['temperature']}°C | "
+                    f"Humidity={telemetry['humidity']}% | "
                     f"Status={telemetry['system_status']}"
                 )
 
@@ -762,7 +777,7 @@ def main():
 
                 # ── Auto Watering AI ──
                 # Guard: never run auto watering while the Emergency Stop is active
-                if _current_mode == "auto" and telemetry["system_status"] != "tank_low" and not _system_locked:
+                if _current_mode == "auto" and telemetry["system_status"] != "tank_low" and not _system_locked and not _manual_pump_active:
                     if _auto_strategy == "sensor":
                         # Precision Saturation: prefer local calibration data.
                         # Only fetch from Firestore when online (avoids blocking call when offline).

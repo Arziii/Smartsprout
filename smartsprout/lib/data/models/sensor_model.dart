@@ -8,6 +8,7 @@ class SensorData {
   final List<double> targetMoisture; // 3 zone saturation targets (stop pump)
   final List<int> maxPumpRuntime; // 3 zone safety timeouts (seconds)
   final double temperature;
+  final double humidity;
   final String tankLevel;
   final double flowRate;
   final bool pumpLocked;
@@ -28,6 +29,7 @@ class SensorData {
     this.targetMoisture = const [65.0, 65.0, 65.0],
     this.maxPumpRuntime = const [30, 30, 30],
     this.temperature = 0.0,
+    this.humidity = -1.0,
     this.tankLevel = 'FAULT',
     this.flowRate = 0.0,
     this.pumpLocked = false,
@@ -152,6 +154,7 @@ class SensorData {
       targetMoisture: List.from(targets),
       maxPumpRuntime: List.from(runtimes),
       temperature: (json['temperature'] as num?)?.toDouble() ?? -1.0,
+      humidity: (json['humidity'] as num?)?.toDouble() ?? -1.0,
       tankLevel: json['tank_level']?.toString() ?? 'FAULT',
       flowRate: (json['flow_rate'] as num?)?.toDouble() ?? 0.0,
       pumpLocked: json['pump_locked'] as bool? ?? false,
@@ -238,6 +241,7 @@ class SensorData {
     List<double>? targetMoisture,
     List<int>? maxPumpRuntime,
     double? temperature,
+    double? humidity,
     String? tankLevel,
     double? flowRate,
     bool? pumpLocked,
@@ -257,6 +261,7 @@ class SensorData {
       targetMoisture: targetMoisture ?? this.targetMoisture,
       maxPumpRuntime: maxPumpRuntime ?? this.maxPumpRuntime,
       temperature: temperature ?? this.temperature,
+      humidity: humidity ?? this.humidity,
       tankLevel: tankLevel ?? this.tankLevel,
       flowRate: flowRate ?? this.flowRate,
       pumpLocked: pumpLocked ?? this.pumpLocked,

@@ -30,17 +30,20 @@ except ImportError:
 
 try:
     import board
-    import adafruit_bmp280
-    _BME_AVAILABLE = True
-    
-    # Initialize I2C and the BMP280 sensor (Chip ID 0x58)
-    _i2c = board.I2C()
-    _bme_device = adafruit_bmp280.Adafruit_BMP280_I2C(_i2c, address=config.BMP280_I2C_ADDRESS)
-    
+    import adafruit_dht
+    _DHT_AVAILABLE = True
+
+    # DHT22 is powered from Pi 3.3V (Pin 1) — DATA line idles at ≤3.3V,
+    # which is within the Pi's GPIO spec. No pull-down or voltage divider needed.
+    # use_pulseio=False avoids the need for libpulseio on Raspberry Pi.
+    _dht_pin = getattr(board, f"D{config.DHT22_PIN}")
+    _dht_device = adafruit_dht.DHT22(_dht_pin, use_pulseio=False)
+
 except (ImportError, ValueError, RuntimeError, AttributeError) as e:
-    _BME_AVAILABLE = False
-    _bme_device = None
-    print(f"[WARN] BMP280 init failed ({e}) — Temp/Pres will return mock data.")
+    _DHT_AVAILABLE = False
+    _dht_device = None
+    print(f"[WARN] DHT22 init failed ({e}) — Temp/Humidity will return mock data.")
+
 
 
 # ═══════════════════════════════════════════════════════
@@ -239,28 +242,63 @@ def run_wet_calibration(target_zone=None) -> dict:
 
 
 # ═══════════════════════════════════════════════════════
-# BMP280 — Temperature & Pressure (NO humidity support)
-# Chip ID: 0x58. Humidity is hardcoded to None because
-# the BMP280 physically lacks a humidity sensor.
+# DHT22 — Temperature & Humidity (GPIO, NOT I2C)
+# Module version with built-in 10kΩ pull-up resistor.
+# No external resistor or software PUD_UP needed.
 # ═══════════════════════════════════════════════════════
+# Last known-good DHT22 reading — prevents transient failures from
+# flickering -1.0 to Firebase when the sensor misses a single read cycle.
+_dht_last_good: dict = {"temperature": -1.0, "humidity": -1.0}
+
 def read_environment() -> dict:
     """
-    Returns {"temperature": float, "humidity": None, "pressure": float}.
-    humidity is always None — BMP280 does not support humidity measurement.
-    temperature and pressure return -1.0 on sensor fault or simulation.
-    """
-    if not _BME_AVAILABLE or not _bme_device:
-        return {"temperature": -1.0, "humidity": None, "pressure": -1.0}
+    Returns {"temperature": float, "humidity": float}.
 
-    try:
-        return {
-            "temperature": round(_bme_device.temperature, 1),
-            "humidity": None,  # BMP280 has no humidity sensor (hardware mismatch resolved)
-            "pressure": round(_bme_device.pressure, 1),
-        }
-    except Exception as e:
-        print(f"[ERROR] BMP280 read failure: {e}")
-        return {"temperature": -1.0, "humidity": None, "pressure": -1.0}
+    DHT22 on Linux fails ~30-50% of reads due to OS scheduling jitter
+    on the timing-sensitive single-wire protocol. This function retries
+    up to DHT_MAX_RETRIES times (0.5s apart) and falls back to the last
+    known-good reading so transient failures never reach Firebase as -1.0.
+
+    Returns -1.0 only if EVERY retry fails AND no prior good reading exists.
+    """
+    global _dht_last_good
+
+    if not _DHT_AVAILABLE or not _dht_device:
+        return {"temperature": -1.0, "humidity": -1.0}
+
+    max_retries = getattr(config, "DHT_MAX_RETRIES", 5)
+    retry_delay = getattr(config, "DHT_RETRY_DELAY_S", 0.5)
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            temp = _dht_device.temperature
+            hum  = _dht_device.humidity
+
+            if temp is not None and hum is not None:
+                result = {"temperature": round(temp, 1), "humidity": round(hum, 1)}
+                _dht_last_good = result          # Cache the good reading
+                return result
+
+            # None → checksum/timing error — wait and retry
+            print(f"[WARN] DHT22 attempt {attempt}/{max_retries}: None returned, retrying...")
+
+        except RuntimeError as e:
+            # adafruit_dht raises RuntimeError on bad reads (e.g. "DHT sensor not found")
+            print(f"[WARN] DHT22 attempt {attempt}/{max_retries}: {e}, retrying...")
+        except Exception as e:
+            print(f"[ERROR] DHT22 unexpected error on attempt {attempt}: {e}")
+            break   # Non-recoverable error — stop early
+
+        if attempt < max_retries:
+            time.sleep(retry_delay)
+
+    # All retries exhausted — return last good value if available
+    if _dht_last_good["temperature"] != -1.0:
+        print(f"[WARN] DHT22 all {max_retries} retries failed — using cached value: {_dht_last_good}")
+        return _dht_last_good
+
+    print(f"[ERROR] DHT22 all {max_retries} retries failed — no cached value, returning fault.")
+    return {"temperature": -1.0, "humidity": -1.0}
 
 
 # ═══════════════════════════════════════════════════════
@@ -459,7 +497,7 @@ def get_firmware_info() -> dict:
 
 
 # ═══════════════════════════════════════════════════════
-# Relay Module — Pump + 3 Solenoid Valves
+# Relay Module — 3 Independent Pumps (one per zone)
 # ═══════════════════════════════════════════════════════
 def setup_relays():
     """Initialize all relay pins to OFF (HIGH for active-low relay)."""
@@ -485,32 +523,31 @@ def set_relay(pin: int, state: bool):
 
 
 def activate_zone(zone: int):
-    """Turn on the pump and the valve for the specified zone (1-3)."""
-    valve_map = {1: config.RELAY_VALVE_1, 2: config.RELAY_VALVE_2, 3: config.RELAY_VALVE_3}
-    if zone not in valve_map:
+    """Turn on the pump for the specified zone (1-3). Each zone has its own independent pump."""
+    pump_map = {1: config.RELAY_PUMP_1, 2: config.RELAY_PUMP_2, 3: config.RELAY_PUMP_3}
+    if zone not in pump_map:
         print(f"[ERROR] Invalid zone: {zone}")
         return
-    set_relay(config.RELAY_PUMP, True)
-    set_relay(valve_map[zone], True)
-    print(f"[RELAY] Zone {zone} ACTIVATED (Pump ON, Valve {zone} OPEN)")
+    set_relay(pump_map[zone], True)
+    print(f"[RELAY] Zone {zone} ACTIVATED (Pump {zone} ON)")
 
 
 def deactivate_zone(zone: int):
     """
-    Close the solenoid valve for the specified zone (1-3) only.
-    Does NOT affect the main pump or any other active zones.
+    Turn off the pump for the specified zone (1-3).
+    Each zone is fully independent — deactivating one zone does not affect others.
     Call deactivate_all() for a full emergency stop.
     """
-    valve_map = {1: config.RELAY_VALVE_1, 2: config.RELAY_VALVE_2, 3: config.RELAY_VALVE_3}
-    if zone not in valve_map:
+    pump_map = {1: config.RELAY_PUMP_1, 2: config.RELAY_PUMP_2, 3: config.RELAY_PUMP_3}
+    if zone not in pump_map:
         print(f"[ERROR] deactivate_zone: Invalid zone: {zone}")
         return
-    set_relay(valve_map[zone], False)  # Close valve only
-    print(f"[RELAY] Zone {zone} valve CLOSED (pump state unchanged)")
+    set_relay(pump_map[zone], False)
+    print(f"[RELAY] Zone {zone} DEACTIVATED (Pump {zone} OFF)")
 
 
 def deactivate_all():
-    """Emergency stop: turn off pump and all valves."""
+    """Emergency stop: turn off all pumps."""
     for pin in config.ALL_RELAY_PINS:
         set_relay(pin, False)
     print("[RELAY] ALL ZONES DEACTIVATED")
@@ -531,9 +568,9 @@ def cleanup():
 class SensorManager:
     """
     SensorManager object wrapper prioritizing encapsulation for main.py.
-    Provides initialization logic for ADS1115 (A0, A1, A2) and BMP280 (I2C)
+    Provides initialization logic for ADS1115 (A0, A1, A2) and DHT22 (GPIO)
     per architectural requirements, and proxies commands to the module-level functions.
-    NOTE: Physical sensor confirmed as BMP280 (Chip ID 0x58). Humidity unsupported.
+    NOTE: DHT22 provides Temperature + Humidity. Pressure is no longer supported.
     """
     def __init__(self):
         print("[INIT] Initializing SensorManager...")
@@ -550,23 +587,24 @@ class SensorManager:
             except Exception as e:
                 print(f"[WARN] ADS1115 not detected at startup: {e}")
         
-        # Confirm BMP280 configuration (humidity NOT available on this chip)
-        if _BME_AVAILABLE:
-            print(f"[INIT] BMP280 initialized on I2C (Address {hex(config.BMP280_I2C_ADDRESS)}). [Temp+Pressure only]")
+        # Confirm DHT22 configuration (Temperature + Humidity)
+        if _DHT_AVAILABLE:
+            print(f"[INIT] DHT22 initialized on GPIO BCM {config.DHT22_PIN}. [Temp+Humidity]")
         else:
-            print("[WARN] BMP280 hardware not found.")
+            print("[WARN] DHT22 hardware not found.")
             
         print("[INIT] SensorManager ready for polling.")
 
     def setup_relays(self):
-        """Map relays to GPIO 17, 27, 22, 23 (Pump on 17, Zones on 27,22,23)."""
+        """Map relays to GPIO pins (Pump 1 on BCM {}, Pump 2 on BCM {}, Pump 3 on BCM {}).""".format(
+            config.RELAY_PUMP_1, config.RELAY_PUMP_2, config.RELAY_PUMP_3)
         setup_relays()
 
     def activate_zone(self, zone: int):
         activate_zone(zone)
 
     def deactivate_zone(self, zone: int):
-        """Close only the specified zone's valve — does not stop the pump."""
+        """Turn off only the specified zone's pump."""
         deactivate_zone(zone)
 
     def deactivate_all(self):
@@ -593,7 +631,7 @@ class SensorManager:
         return read_soil_moisture()
 
     def read_environment(self):
-        # Reads Temp/Pressure from BMP280. humidity is always None (BMP280 has no humidity sensor).
+        # Reads Temp/Humidity from DHT22. Pressure is not available.
         return read_environment()
 
     def read_tank_level(self):
@@ -601,4 +639,10 @@ class SensorManager:
         
     def cleanup(self):
         # No persistent i2c_bus fd to close — all handles are short-lived context managers.
+        # DHT22 cleanup: release the GPIO pin.
+        if _DHT_AVAILABLE and _dht_device:
+            try:
+                _dht_device.exit()
+            except Exception:
+                pass
         cleanup()

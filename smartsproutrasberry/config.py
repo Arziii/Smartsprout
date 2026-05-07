@@ -50,7 +50,17 @@ def factory_reset():
 # ── I2C Bus Address ──
 ADS1115_I2C_BUS = int(os.getenv("ADS1115_I2C_BUS", "1"))
 ADS1115_I2C_ADDRESS = int(os.getenv("ADS1115_I2C_ADDRESS", "0x48"), 16)
-BMP280_I2C_ADDRESS = int(os.getenv("BMP280_I2C_ADDRESS", "0x76"), 16)  # Chip ID 0x58 — confirmed BMP280, not BME280
+
+# ── DHT22 Temperature/Humidity Sensor (GPIO, not I2C) ──
+# Module version powered from 3.3V — DATA line stays ≤3.3V, GPIO-safe.
+DHT22_PIN = int(os.getenv("DHT22_PIN", "4"))
+
+# Retry settings for DHT22 reads.
+# DHT22 on Linux misses ~30-50% of reads due to OS scheduling jitter.
+# The driver retries up to DHT_MAX_RETRIES times (DHT_RETRY_DELAY_S apart)
+# before falling back to the last-known-good cached value.
+DHT_MAX_RETRIES  = int(os.getenv("DHT_MAX_RETRIES", "5"))
+DHT_RETRY_DELAY_S = float(os.getenv("DHT_RETRY_DELAY_S", "0.5"))
 
 # ── Digital Sensors ──
 # XKC-Y26-V is a binary non-contact sensor: output is HIGH, LOW, or FAULT (string).
@@ -58,12 +68,12 @@ BMP280_I2C_ADDRESS = int(os.getenv("BMP280_I2C_ADDRESS", "0x76"), 16)  # Chip ID
 XKC_LEVEL_PIN = int(os.getenv("XKC_LEVEL_PIN", "6"))
 
 # ── Relay Module (Active LOW) ──
-RELAY_PUMP = int(os.getenv("RELAY_PUMP_PIN", "17"))
-RELAY_VALVE_1 = int(os.getenv("RELAY_VALVE1_PIN", "27"))
-RELAY_VALVE_2 = int(os.getenv("RELAY_VALVE2_PIN", "22"))
-RELAY_VALVE_3 = int(os.getenv("RELAY_VALVE3_PIN", "23"))
+# 3 independent pumps — one per zone. No shared main pump.
+RELAY_PUMP_1 = int(os.getenv("RELAY_PUMP1_PIN", "17"))
+RELAY_PUMP_2 = int(os.getenv("RELAY_PUMP2_PIN", "27"))
+RELAY_PUMP_3 = int(os.getenv("RELAY_PUMP3_PIN", "22"))
 
-ALL_RELAY_PINS = [RELAY_PUMP, RELAY_VALVE_1, RELAY_VALVE_2, RELAY_VALVE_3]
+ALL_RELAY_PINS = [RELAY_PUMP_1, RELAY_PUMP_2, RELAY_PUMP_3]
 
 # ── Hardware Reset Button (Active LOW with internal pull-up) ──
 RESET_BUTTON_PIN = int(os.getenv("RESET_BUTTON_PIN", "24"))

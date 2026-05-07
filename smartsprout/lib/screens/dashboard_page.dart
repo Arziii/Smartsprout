@@ -68,6 +68,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     final targets = triggers.targetMoisture; // locally persisted
     final tankLevelStr = sensorData.tankLevel;
     final temperature = sensorData.temperature;
+    final humidity = sensorData.humidity;
     // On Linux (Pi kiosk): isOffline is true only when main.py is not running
     // (cache file missing or stale). See SensorData.isOffline and data_service.dart
     // stale-cache guard.
@@ -168,6 +169,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                     child: _buildMainList(
                         tankLevelStr,
                         temperature,
+                        humidity,
                         rawSoil,
                         startThresholds,
                         targets,
@@ -180,6 +182,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                 : _buildMainList(
                     tankLevelStr,
                     temperature,
+                    humidity,
                     rawSoil,
                     startThresholds,
                     targets,
@@ -254,6 +257,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   Widget _buildMainList(
       String tankLevelStr,
       double temperature,
+      double humidity,
       List<double> rawSoil,
       List<double> startThresholds,
       List<double> targets,
@@ -274,7 +278,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             children: [
               _buildAnimatedWidget(
-                  1, _buildVitals(tankLevelStr, temperature, isEnvFault, sensorData.isTankFault)),
+                  1, _buildVitals(tankLevelStr, temperature, humidity, isEnvFault, sensorData.isTankFault)),
               const SizedBox(height: 30),
         _buildAnimatedWidget(
             2,
@@ -487,7 +491,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   }
 
   Widget _buildVitals(String tankLevelStr, double systemTemp,
-      bool isEnvFault, bool isTankFault) {
+      double humidity, bool isEnvFault, bool isTankFault) {
     // Tank logic
     Color tankColor;
     String tankLabel;
@@ -682,7 +686,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            "TEMPERATURE",
+                            "ENVIRONMENT",
                             style: GoogleFonts.outfit(
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
@@ -694,8 +698,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                           ),
                           Text(
                             isEnvFault
-                                ? "--°C"
-                                : "${systemTemp.toStringAsFixed(1)}°C",
+                                ? "--°C / --%"
+                                : "${systemTemp.toStringAsFixed(1)}°C / ${humidity < 0 ? '--' : humidity.toStringAsFixed(0)}%",
                             style: GoogleFonts.outfit(
                               fontSize: 18,
                               fontWeight: FontWeight.w900,
@@ -735,6 +739,32 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13,
                                 color: Color(0xFF0277BD)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF26A69A).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.water_drop_outlined,
+                              color: Color(0xFF00897B), size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            isEnvFault || humidity < 0
+                                ? "--%"
+                                : "${humidity.toStringAsFixed(0)}%",
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: Color(0xFF00897B)),
                           ),
                         ],
                       ),

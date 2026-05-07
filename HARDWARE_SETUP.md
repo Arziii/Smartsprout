@@ -36,25 +36,25 @@ To prevent I2C `[Errno 5]` errors and system instability, the project utilizes a
 
 ### DHT22 Module Wiring (3-Pin)
 
-The DHT22 **module** (3-pin breakout board, not the bare 4-pin chip) has a built-in 10kΩ pull-up resistor. No external resistor or software pull-up is needed.
+The DHT22 module is powered from Pi **3.3V (Pin 1)**. Because VCC is 3.3V, the built-in 10kΩ pull-up on the DATA line idles at ≤3.3V — fully within the Pi's GPIO tolerance. No voltage divider or pull-down resistor is required.
 
 | Module Pin | Label | Connect To | Pi Physical Pin | Notes |
 |:----------:|-------|------------|:---------------:|-------|
-| **1** | `VCC` / `+` | **5V** | Pin 2 or Pin 4 | Power supply (5V tolerant) |
-| **2** | `DATA` / `OUT` / `S` | **GPIO BCM 4** | **Pin 7** | Signal — pull-up is on the module PCB |
-| **3** | `GND` / `–` | **GND** | Pin 6, 9, 14, etc. | Ground |
+| **1** | `VCC` / `+` | **3.3V** | **Pin 1** | Keeps DATA line ≤3.3V — GPIO safe |
+| **2** | `DATA` / `OUT` / `S` | **GPIO BCM 4** | **Pin 7** | Single-wire protocol, no divider needed |
+| **3** | `GND` / `–` | **GND** | Pin 6, 9, 14, etc. | Shared GND with Pi |
 
 ```
    DHT22 Module          Raspberry Pi
    ┌──────────┐
-   │  VCC (+) │ ────────► 5V   (Pin 2)
+   │  VCC (+) │ ────────► 3.3V (Pin 1)
    │ DATA (S) │ ────────► BCM4 (Pin 7)
    │  GND (–) │ ────────► GND  (Pin 6)
    └──────────┘
 ```
 
 > [!TIP]
-> The module version is the small blue or white PCB with 3 pins already soldered. If your board has **4 pins** and no PCB, that's the bare chip — you'd need an external 10kΩ pull-up resistor between VCC and DATA.
+> Do **not** power the DHT22 module from 5V. At 5V, the module's internal 10kΩ pull-up drives the DATA line to ~4.7V, which exceeds the Pi's 3.3V GPIO limit and will damage the pin over time.
 
 ---
 
@@ -79,7 +79,7 @@ Before running the backend, ensure the Pi's hardware interfaces and memory are c
 *   [ ] **Step 2:** Run `ls /dev/i2c*` or `i2cdetect -y 1` in the terminal to verify the I2C bus is active and sees your connected ADS1115 sensor.
 *   [ ] **Step 3:** Verify the **2GB permanent swap file** is active by running `free -h` (check that 'Swap' shows ~2.0G total).
 *   [ ] **Step 4:** Using a multimeter, manually tune the XL4016 brass screw until the output is exactly 5.1V before plugging in the Raspberry Pi.
-*   [ ] **Step 5:** Wire DHT22 module: VCC→5V (Pin 2), DATA→BCM 4 (Pin 7), GND→GND (Pin 6).
+*   [ ] **Step 5:** Wire DHT22 module: VCC → **3.3V (Pin 1)**, DATA → BCM 4 (Pin 7), GND → GND (Pin 6). No voltage divider needed.
 *   [ ] **Step 6:** Wire 3 pumps to relay channels on BCM 17 (Pin 11), BCM 27 (Pin 13), BCM 22 (Pin 15).
 
 ---
@@ -95,18 +95,17 @@ All software implementation must reference the **BCM (Broadcom)** numbering used
 | | SCL | **BCM 3** (Pin 5) | Shared GND with Pi |
 | **ADS1115 ADC** | VDD / GND | **3.3V / GND** | Powers the ADC |
 | | ADDR | **GND** | Sets I2C to 0x48 |
-| **DHT22 Module** | VCC (+) | **5V** (Pin 2) | Powers the sensor module |
-| | DATA (S) | **BCM 4** (Pin 7) | Signal — module has built-in 10kΩ pull-up |
+| **DHT22 Module** | VCC (+) | **3.3V** (Pin 1) | DATA line ≤3.3V — GPIO safe, no divider needed |
+| | DATA (S) | **BCM 4** (Pin 7) | Single-wire protocol |
 | | GND (–) | **GND** (Pin 6) | Shared GND with Pi |
 | **Soil Moisture (Z1)** | Sensor 1 Signal | **ADS1115 A0** | Capacitive v1.2 (Analog) |
 | **Soil Moisture (Z2)** | Sensor 2 Signal | **ADS1115 A1** | Capacitive v1.2 (Analog) |
 | **Soil Moisture (Z3)** | Sensor 3 Signal | **ADS1115 A2** | Capacitive v1.2 (Analog) |
 | **Water Level (XKC)** | Yellow (Signal) | **BCM 6** (Pin 31) | Active-High (Black to GND) / Hardware Pull-Down + Software PUD_DOWN |
-| **Relay Module (5V)** | VCC | **5V** (Pin 2 or 4) | Powered by Pi 5V Rail |
+| **Relay Module (5V)** | VCC | **5V** (Pin 2 or 4) | Powered by Buck 5V Rail |
 | | IN1 (Pump 1 — Zone 1) | **BCM 17** (Pin 11) | COM: Buck OUT+ / NO: Pump 1 Red |
 | | IN2 (Pump 2 — Zone 2) | **BCM 27** (Pin 13) | COM: Buck OUT+ / NO: Pump 2 Red |
 | | IN3 (Pump 3 — Zone 3) | **BCM 22** (Pin 15) | COM: Buck OUT+ / NO: Pump 3 Red |
-| | IN4 *(unused)* | **BCM 23** (Pin 16) | *Freed — previously Valve 3* |
 | **User Interface** | Reset Button | **BCM 24** (Pin 18) | One side to Pin, one to GND |
 | | Feedback LED | **BCM 18** (Pin 12) | Heartbeat Pulse / Rapid Blink |
 
@@ -131,7 +130,6 @@ All 3 relay channels use the **5V Buck Converter output** (no 12V rail needed an
 | CH1 | BCM 17 (Pin 11) | Pump 1 (Zone 1) | COM: Buck 5V+ / NO: Pump 1 Red |
 | CH2 | BCM 27 (Pin 13) | Pump 2 (Zone 2) | COM: Buck 5V+ / NO: Pump 2 Red |
 | CH3 | BCM 22 (Pin 15) | Pump 3 (Zone 3) | COM: Buck 5V+ / NO: Pump 3 Red |
-| CH4 | BCM 23 (Pin 16) | *(unused)* | *(leave disconnected)* |
 
 *   **The "Common Ground" Rule:** The XL4016 5V GND, the Pi GND, and all Pump GNDs must be physically connected together to share a single ground reference.
 
@@ -157,8 +155,8 @@ To ensure industrial-grade uptime and protect the Raspberry Pi from erratic powe
 | **Inline Fuse** | 5A Automotive Type | 1 pc | 5.1V Buck Converter Output Line |
 | **Flyback Diode** | 1N4007 Rectifier Diode | 3 pcs | 1x per Pump (3 total) |
 | **Bulk Capacitor** | 1000µF Electrolytic | 1 pc | 5.1V Power Rail (Buck Converter Output) |
-| **Resistor** | 10kΩ | 1 pc | Water Sensor Signal Line |
-| **Resistor** | 20kΩ | 1 pc | Water Sensor Signal to Ground |
+| **Resistor** | 10kΩ | 1 pc | XKC Water Sensor Signal Line (R1 of voltage divider) |
+| **Resistor** | 20kΩ | 1 pc | XKC Water Sensor Signal to Ground (R2 of voltage divider) |
 
 ### 7.1 Overcurrent Protection (Fuses)
 Fusing prevents catastrophic thermal runaway and limits damage during short-circuit events within the power rail.
@@ -234,7 +232,7 @@ The Smart Sprout system features a **Hardware-Aware Maintenance Mode**. If the a
 
 ### Common Fault Triggers:
 1.  **I2C Bus Error ([Errno 5]):** Usually indicates a loose SDA or SCL wire, or that the system experienced a power-drop (ensure your 1000µF capacitor is installed securely).
-2.  **DHT22 Checksum Error:** The DHT22 sensor occasionally returns `None` due to timing-sensitive single-wire protocol issues. The software retries automatically and reports `-1.0` (fault sentinel) until a valid read is obtained. If readings consistently fail, check the wiring to BCM 4.
+2.  **DHT22 Checksum Error:** The DHT22 sensor occasionally returns `None` due to timing-sensitive single-wire protocol issues. The software retries automatically and reports `-1.0` (fault sentinel) until a valid read is obtained. If readings consistently fail, check the wiring to BCM 4. **Also verify that the 20kΩ voltage-divider resistor is installed on the DATA line** — if the 4.7V signal hits the GPIO directly, it can cause erratic reads or permanent pin damage.
 3.  **Address Conflict:** The system expects the **ADS1115 at 0x48**. Use `i2cdetect -y 1` to verify this address is visible on the bus.
 
 ### Safety Hard-lock:

@@ -43,12 +43,23 @@ class SystemSettingsDialog extends ConsumerWidget {
     // Close the settings dialog
     Navigator.of(context).pop();
 
+    // User-friendly snackbar for specific commands
+    final String snackMessage;
+    final Color snackColor;
+    if (command == 'RESET_PASSWORD') {
+      snackMessage = 'Password reset to default: 1234';
+      snackColor = const Color(0xFFFFA726);
+    } else {
+      snackMessage = 'Command sent: $command';
+      snackColor = Theme.of(context).brightness == Brightness.dark
+          ? Colors.white
+          : const Color(0xFF0F2027);
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Command sent: $command'),
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? Colors.white
-            : const Color(0xFF0F2027),
+        content: Text(snackMessage),
+        backgroundColor: snackColor,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -132,6 +143,20 @@ class SystemSettingsDialog extends ConsumerWidget {
               ),
 
               const SizedBox(height: 16),
+
+              // Reset Password Button (Linux Kiosk only)
+              if (Platform.isLinux)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _buildControlButton(
+                    context: context,
+                    icon: Icons.lock_reset_rounded,
+                    title: "Reset Password",
+                    subtitle: "Resets device PIN to default (1234)",
+                    color: const Color(0xFFFFA726),
+                    onTap: () => _showConfirmResetPassword(context, ref),
+                  ),
+                ),
 
               // Reboot Hardware Button
               _buildControlButton(
@@ -274,6 +299,92 @@ class SystemSettingsDialog extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(12)),
             ),
             child: Text('REBOOT',
+                style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w800, color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showConfirmResetPassword(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E1E1E)
+            : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          'Reset Password',
+          style: GoogleFonts.outfit(
+            fontWeight: FontWeight.w800,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : const Color(0xFF0F2027),
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This will reset the device password to the factory default.',
+              style: GoogleFonts.outfit(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white70
+                    : const Color(0xFF37474F),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFA726).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: const Color(0xFFFFA726).withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded,
+                      color: Color(0xFFFFA726), size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'New default password: 1234',
+                      style: GoogleFonts.outfit(
+                        color: const Color(0xFFFFA726),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text(
+              'CANCEL',
+              style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w800, color: Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx); // Close confirm
+              _sendCommand(context, ref, 'RESET_PASSWORD');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFA726),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text('RESET PASSWORD',
                 style: GoogleFonts.outfit(
                     fontWeight: FontWeight.w800, color: Colors.white)),
           ),
