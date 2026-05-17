@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../core/utils/platform_utils.dart';
 import '../presentation/providers/sensor_provider.dart';
 
 class SystemHealthPage extends ConsumerWidget {
@@ -11,83 +12,214 @@ class SystemHealthPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sensorData = ref.watch(sensorDataProvider);
-    
+
     // Overall Status
     final isHealthy = sensorData.isHealthy;
+    // isOffline: on Linux, this reflects whether main.py is running (cache
+    // file present and fresh). See SensorData.isOffline — on Linux it checks
+    // systemStatus == 'offline' (set by the stale-cache guard in data_service).
     final isOffline = sensorData.isOffline;
-    
-    Color overallColor = isOffline ? Colors.grey : (isHealthy ? const Color(0xFF2BCC71) : Colors.redAccent);
-    IconData overallIcon = isOffline ? Icons.wifi_off_rounded : (isHealthy ? Icons.verified_rounded : Icons.report_problem_rounded);
-    String overallText = isOffline ? "System Offline" : (isHealthy ? "System Healthy" : "Issues Detected");
+
+    Color overallColor = isOffline
+        ? Colors.grey
+        : (isHealthy ? const Color(0xFF2BCC71) : Colors.redAccent);
+    IconData overallIcon = isOffline
+        ? Icons.wifi_off_rounded
+        : (isHealthy ? Icons.verified_rounded : Icons.report_problem_rounded);
+    String overallText = isOffline
+        ? "System Offline"
+        : (isHealthy ? "System Healthy" : "Issues Detected");
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFE8F1F2),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text(
           "System Health",
           style: GoogleFonts.outfit(
             fontSize: 24,
             fontWeight: FontWeight.w800,
-            color: const Color(0xFF0F2027),
+            color: isDark ? Colors.white : const Color(0xFF0F2027),
+            letterSpacing: -0.5,
           ),
         ),
-        backgroundColor: const Color(0xFFE8F1F2),
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F2027)),
-          onPressed: () => Navigator.of(context).pop(),
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.white.withValues(alpha: 0.5),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.arrow_back_rounded,
+                  color: isDark ? Colors.white : const Color(0xFF0F2027),
+                  size: 20),
+            ),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
         ),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ── OVERALL STATUS BANNER ──
-              _buildStatusBanner(overallText, overallIcon, overallColor),
-              const SizedBox(height: 24),
-
-              // ── CONTROLLER CONNECTION ──
-              _buildDetailCard(
-                title: "Controller Connection",
-                icon: Icons.router_rounded,
-                statusText: isOffline ? "Offline" : "Online",
-                statusColor: isOffline ? Colors.redAccent : const Color(0xFF2BCC71),
-                description: isOffline 
-                    ? "The Raspberry Pi controller cannot be reached over the network."
-                    : "Securely connected and synchronizing data.",
+      body: Stack(
+        children: [
+          // ── Gradient Background ──
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: isDark
+                      ? [const Color(0xFF0F172A), const Color(0xFF064E3B)]
+                      : const [
+                          Color(0xFFF0FDF4),
+                          Color(0xFFCCFBF1),
+                        ],
+                ),
               ),
-              const SizedBox(height: 16),
-
-              // ── WATER RESERVOIR ──
-              _buildDetailCard(
-                title: "Water Reservoir",
-                icon: Icons.water_drop_rounded,
-                statusText: sensorData.isTankLow ? "Low Water" : "Sufficient",
-                statusColor: sensorData.isTankLow ? Colors.redAccent : const Color(0xFF2BCC71),
-                description: sensorData.isTankLow 
-                    ? "Water level is deeply critical (${sensorData.tankLevel.toStringAsFixed(0)}%). Pump protection is active."
-                    : "Water level is at ${sensorData.tankLevel.toStringAsFixed(0)}%.",
-              ),
-              const SizedBox(height: 16),
-
-              // ── SENSOR INTEGRITY ──
-              _buildDetailCard(
-                title: "Sensor Integrity",
-                icon: Icons.memory_rounded,
-                statusText: sensorData.hasSensorFault ? "Fault Detected" : "All Systems Nominal",
-                statusColor: sensorData.hasSensorFault ? Colors.redAccent : const Color(0xFF2BCC71),
-                description: _getSensorDescription(sensorData),
-              ),
-              const SizedBox(height: 16),
-
-              // ── ZONE BREAKDOWN ──
-              _buildZoneBreakdownCard(sensorData),
-              const SizedBox(height: 40),
-            ],
+            ),
           ),
-        ),
+          // Blobs
+          Positioned(
+            top: -100,
+            right: -50,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF2BCC71).withValues(alpha: 0.15),
+                    const Color(0xFF2BCC71).withValues(alpha: 0.05),
+                    const Color(0xFF2BCC71).withValues(alpha: 0.0),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 100,
+            left: -100,
+            child: Container(
+              width: 400,
+              height: 400,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    Colors.blue.withValues(alpha: 0.1),
+                    Colors.blue.withValues(alpha: 0.03),
+                    Colors.blue.withValues(alpha: 0.0),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: SingleChildScrollView(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── OVERALL STATUS BANNER ──
+                  _buildStatusBanner(
+                      context, overallText, overallIcon, overallColor),
+                  const SizedBox(height: 24),
+
+                  // ── CONTROLLER CONNECTION ──
+                  // On Linux the app runs ON the Raspberry Pi itself,
+                  // so there is no remote controller to go offline.
+                  // Bypass the isOffline check and lock this card to Online.
+                  _buildDetailCard(
+                    context,
+                    title: "Controller Connection",
+                    icon: Icons.router_rounded,
+                    statusText: Platform.isLinux
+                        ? "Online"
+                        : (isOffline ? "Offline" : "Online"),
+                    statusColor: Platform.isLinux
+                        ? const Color(0xFF2BCC71)
+                        : (isOffline
+                            ? Colors.redAccent
+                            : const Color(0xFF2BCC71)),
+                    description: Platform.isLinux
+                        ? "Running directly on the Raspberry Pi controller. "
+                            "Connection is always active — this device is the controller."
+                        : (isOffline
+                            ? "The Raspberry Pi controller cannot be reached over the network."
+                            : "Securely connected and synchronizing data."),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── WATER RESERVOIR ──
+                  _buildDetailCard(
+                    context,
+                    title: "Water Reservoir",
+                    icon: Icons.water_drop_rounded,
+                    statusText: isOffline
+                        ? "Unknown"
+                        : sensorData.isTankFault
+                            ? "Sensor Fault"
+                            : (sensorData.isTankLow
+                                ? "Low Water"
+                                : "Sufficient"),
+                    statusColor: isOffline
+                        ? Colors.grey
+                        : sensorData.isTankFault
+                            ? Colors.orange
+                            : (sensorData.isTankLow
+                                ? Colors.redAccent
+                                : const Color(0xFF2BCC71)),
+                    description: isOffline
+                        ? "Reservoir level unavailable while disconnected."
+                        : sensorData.isTankFault
+                            ? "The XKC non-contact water level sensor is not responding. Check wiring on GPIO pin and verify sensor power. Pump is locked for safety."
+                            : (sensorData.isTankLow
+                                ? "The XKC sensor reports the reservoir is LOW. Refill the water tank to restore automatic irrigation. Pump is locked until water is detected."
+                                : "The XKC sensor reports the reservoir is at a sufficient level (HIGH). Irrigation is permitted."),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── SENSOR INTEGRITY ──
+                  _buildDetailCard(
+                    context,
+                    title: "Sensor Integrity",
+                    icon: Icons.memory_rounded,
+                    statusText: isOffline
+                        ? "Status Unknown"
+                        : (sensorData.hasSensorFault
+                            ? "Fault Detected"
+                            : "All Systems Nominal"),
+                    statusColor: isOffline
+                        ? Colors.grey
+                        : (sensorData.hasSensorFault
+                            ? Colors.orange
+                            : const Color(0xFF2BCC71)),
+                    description: isOffline
+                        ? "Sensor data unavailable while disconnected."
+                        : _getSensorDescription(sensorData),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── ZONE BREAKDOWN ──
+                  _buildZoneBreakdownCard(context, sensorData),
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -105,25 +237,47 @@ class SystemHealthPage extends ConsumerWidget {
     return "Air sensor and all soil moisture sensors are reporting correctly.";
   }
 
-  Widget _buildStatusBanner(String text, IconData icon, Color color) {
+  Widget _buildStatusBanner(
+      BuildContext context, String text, IconData icon, Color color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: isDark
+            ? const Color(0xFF0F172A).withValues(alpha: 0.9)
+            : Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withOpacity(0.3), width: 2),
+        border:
+            Border.all(color: isDark ? Colors.white12 : Colors.white, width: 2),
+        boxShadow: isLiteMode
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                )
+              ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: color, size: 36),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 28),
+          ),
           const SizedBox(width: 16),
-          Text(
-            text,
-            style: GoogleFonts.outfit(
-              fontSize: 26,
-              fontWeight: FontWeight.w900,
-              color: color,
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.outfit(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                color: isDark ? Colors.white : const Color(0xFF0F2027),
+                letterSpacing: -0.5,
+              ),
             ),
           ),
         ],
@@ -131,26 +285,33 @@ class SystemHealthPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildDetailCard({
+  Widget _buildDetailCard(
+    BuildContext context, {
     required String title,
     required IconData icon,
     required String statusText,
     required Color statusColor,
     required String description,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.8),
+        color: isDark
+            ? const Color(0xFF0F172A).withValues(alpha: isLiteMode ? 1.0 : 0.9)
+            : Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.9),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white, width: 2),
-        boxShadow: Platform.isLinux ? null : [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          )
-        ],
+        border:
+            Border.all(color: isDark ? Colors.white12 : Colors.white, width: 2),
+        boxShadow: isLiteMode
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                )
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -158,35 +319,45 @@ class SystemHealthPage extends ConsumerWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF4A6164).withOpacity(0.08),
-                  shape: BoxShape.circle,
+                  color: isDark
+                      ? const Color(0xFF29B6F6).withValues(alpha: 0.2)
+                      : const Color(0xFF29B6F6).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(icon, color: const Color(0xFF4A6164), size: 22),
+                child: Icon(icon,
+                    color: isDark
+                        ? Colors.lightBlueAccent
+                        : const Color(0xFF0277BD),
+                    size: 24),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Text(
                   title,
                   style: GoogleFonts.outfit(
-                    fontSize: 20,
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF0F2027),
+                    color: isDark ? Colors.white : const Color(0xFF0F2027),
                   ),
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  color: statusColor.withValues(alpha: isDark ? 0.2 : 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: statusColor.withValues(alpha: isDark ? 0.5 : 0.3),
+                      width: 1),
                 ),
                 child: Text(
                   statusText,
                   style: GoogleFonts.outfit(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
                     color: statusColor,
                   ),
                 ),
@@ -194,13 +365,33 @@ class SystemHealthPage extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 16),
-          Text(
-            description,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF4A6164),
-              fontWeight: FontWeight.w500,
-              height: 1.4,
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey.shade900 : const Color(0xFFFAFAFA),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                  color: isDark ? Colors.white12 : const Color(0xFFEEEEEE),
+                  width: 1),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline_rounded,
+                    size: 18, color: Colors.grey.shade500),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    description,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.white70 : const Color(0xFF4A6164),
+                      fontWeight: FontWeight.w500,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -208,20 +399,26 @@ class SystemHealthPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildZoneBreakdownCard(sensorData) {
+  Widget _buildZoneBreakdownCard(BuildContext context, sensorData) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(Platform.isLinux ? 1.0 : 0.8),
+        color: isDark
+            ? const Color(0xFF0F172A).withValues(alpha: isLiteMode ? 1.0 : 0.9)
+            : Colors.white.withValues(alpha: isLiteMode ? 1.0 : 0.9),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white, width: 2),
-        boxShadow: Platform.isLinux ? null : [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          )
-        ],
+        border:
+            Border.all(color: isDark ? Colors.white12 : Colors.white, width: 2),
+        boxShadow: isLiteMode
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                )
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -229,79 +426,116 @@ class SystemHealthPage extends ConsumerWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF4A6164).withOpacity(0.08),
-                  shape: BoxShape.circle,
+                  color: isDark
+                      ? Colors.grey.withValues(alpha: 0.2)
+                      : const Color(0xFF4A6164).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.grass_rounded, color: Color(0xFF4A6164), size: 22),
+                child: Icon(Icons.grass_rounded,
+                    color: isDark ? Colors.white70 : const Color(0xFF4A6164),
+                    size: 24),
               ),
               const SizedBox(width: 16),
               Text(
                 "Zone Breakdown",
                 style: GoogleFonts.outfit(
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: const Color(0xFF0F2027),
+                  color: isDark ? Colors.white : const Color(0xFF0F2027),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
-          _buildZoneRow("Zone 1 (Left)", sensorData, 0),
-          const Divider(height: 24, thickness: 1, color: Color(0xFFE8F1F2)),
-          _buildZoneRow("Zone 2 (Center)", sensorData, 1),
-          const Divider(height: 24, thickness: 1, color: Color(0xFFE8F1F2)),
-          _buildZoneRow("Zone 3 (Right)", sensorData, 2),
+          _buildZoneRow(context, "Zone 1 (Left)", sensorData, 0),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Divider(
+                height: 24,
+                thickness: 1,
+                color: isDark ? Colors.white12 : const Color(0xFFE8F1F2)),
+          ),
+          _buildZoneRow(context, "Zone 2 (Center)", sensorData, 1),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Divider(
+                height: 24,
+                thickness: 1,
+                color: isDark ? Colors.white12 : const Color(0xFFE8F1F2)),
+          ),
+          _buildZoneRow(context, "Zone 3 (Right)", sensorData, 2),
         ],
       ),
     );
   }
 
-  Widget _buildZoneRow(String title, sensorData, int index) {
-    double moisture = sensorData.soilMoisture.length > index ? sensorData.soilMoisture[index] : 0.0;
-    double target = sensorData.soilOffsets.length > index ? sensorData.soilOffsets[index] : 0.0;
-    bool hasTarget = target > 0.0;
+  Widget _buildZoneRow(
+      BuildContext context, String title, sensorData, int index) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    double moisture = sensorData.soilMoisture.length > index
+        ? sensorData.soilMoisture[index]
+        : 0.0;
+    bool hasFault = sensorData.hasBedFault(index);
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 15,
-            color: Color(0xFF4A6164),
+            color: isDark ? Colors.white : const Color(0xFF0F2027),
             fontWeight: FontWeight.w700,
           ),
         ),
         Row(
           children: [
-            Text(
-              "Current: ${moisture.toStringAsFixed(0)}%",
-              style: const TextStyle(
-                fontSize: 14,
-                color: Color(0xFF0F2027),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (hasTarget) ...[
-              const SizedBox(width: 8),
+            if (hasFault)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF29B6F6).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(6),
+                  color: isDark
+                      ? Colors.orange.withValues(alpha: 0.2)
+                      : Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: isDark
+                          ? Colors.orange.withValues(alpha: 0.5)
+                          : Colors.orange.withValues(alpha: 0.3)),
+                ),
+                child: const Text(
+                  "FAULT",
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.orange),
+                ),
+              )
+            else
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color:
+                      isDark ? Colors.grey.shade900 : const Color(0xFFF5F7F8),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  "Target: ${target.toStringAsFixed(0)}%",
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0277BD),
+                  sensorData.isOffline
+                      ? "--%"
+                      : "${moisture.toStringAsFixed(0)}%",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark
+                        ? Colors.lightBlueAccent
+                        : const Color(0xFF0277BD),
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-            ],
           ],
         ),
       ],

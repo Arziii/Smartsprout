@@ -10,21 +10,63 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 import time
 import threading
 import sys
+import os
 import datetime
 from datetime import timedelta
 import config
 
 _db = None
 _command_listener = None
-_last_cleanup_time = 0
+
+# ── PHASE 1 FIX: Persist cleanup time across reboots ──
+# The cleanup timestamp is saved to a local file so that if the Pi reboots
+# or the script restarts at night, it does NOT trigger a full cleanup batch
+# (500 reads + 500 deletes) immediately. Without this, every nightly restart
+# was the most likely cause of the 43,000 Firestore read spike.
+_CLEANUP_STAMP_FILE = os.path.join(os.path.dirname(__file__), '.last_cleanup')
+
+def _read_persisted_cleanup_time() -> float:
+    """Reads the last cleanup timestamp from disk. Returns 0.0 if not found."""
+    try:
+        if os.path.exists(_CLEANUP_STAMP_FILE):
+            with open(_CLEANUP_STAMP_FILE, 'r') as f:
+                return float(f.read().strip())
+    except Exception:
+        pass
+    return 0.0
+
+def _write_persisted_cleanup_time(ts: float):
+    """Saves the last cleanup timestamp to disk."""
+    try:
+        with open(_CLEANUP_STAMP_FILE, 'w') as f:
+            f.write(str(ts))
+    except Exception as e:
+        print(f"[FIREBASE] Warning: Could not persist cleanup time: {e}")
+
+# Load on module startup — survives reboots
+_last_cleanup_time: float = _read_persisted_cleanup_time()
+
+# ── Heartbeat Cache ──
+# The Dead-Man's Switch monitor used to call _db.get() every 3 seconds — a
+# Firestore READ for every check. Instead, we cache the last heartbeat value
+# locally and update it only when the device document's on_snapshot listener
+# fires. This drops Dead-Man reads from ~600/10min-session to near 0.
+_cached_heartbeat_ts: float = 0.0   # epoch seconds of last received heartbeat
+_heartbeat_listener = None          # Firestore listener handle
 
 def init_firebase():
     global _db
     try:
-        cred = credentials.Certificate(config.FIREBASE_CREDENTIALS_PATH)
-        firebase_admin.initialize_app(cred)
+        # Guard: reuse existing app if wifi_bridge (or any other module) already
+        # called initialize_app() before us. Calling it twice raises ValueError.
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(config.FIREBASE_CREDENTIALS_PATH)
+            firebase_admin.initialize_app(cred)
+            print(f"[FIREBASE] Initialized fresh Firebase app for device: {config.DEVICE_ID}")
+        else:
+            print(f"[FIREBASE] Reusing existing Firebase app (initialized by wifi_bridge).")
         _db = firestore.client()
-        print(f"[FIREBASE] Initialized with device ID: {config.DEVICE_ID}")
+        print(f"[FIREBASE] Firestore client ready. Device ID: {config.DEVICE_ID}")
         return True
     except FileNotFoundError:
         print(f"[FIREBASE_ERROR] Service account key not found at {config.FIREBASE_CREDENTIALS_PATH}")
@@ -47,15 +89,54 @@ def send_heartbeat():
     except Exception as e:
         print(f"[HEARTBEAT] Error sending heartbeat: {e}")
 
-def push_telemetry(telemetry_data):
-    """Pushes the latest telemetry array as historical entries and updates current status."""
-    if not _db:
+
+def _start_device_listener():
+    """
+    Opens a single persistent Firestore listener on the device document.
+    Whenever the mobile app writes 'manual_heartbeat', this snapshot fires
+    and updates the local _cached_heartbeat_ts in memory — completely
+    eliminating the per-check .get() calls inside the Dead-Man's switch.
+    """
+    global _heartbeat_listener, _cached_heartbeat_ts
+    if not _db or _heartbeat_listener:
         return
+
+    doc_ref = _db.collection('devices').document(config.DEVICE_ID)
+
+    def _on_device_snapshot(snapshots, changes, read_time):
+        global _cached_heartbeat_ts
+        for snap in snapshots:
+            if not snap.exists:
+                continue
+            data = snap.to_dict()
+            hb = data.get('manual_heartbeat')
+            if hb is None:
+                continue
+            if hasattr(hb, 'timestamp'):
+                _cached_heartbeat_ts = hb.timestamp()
+            elif isinstance(hb, (int, float)):
+                _cached_heartbeat_ts = float(hb)
+
+    _heartbeat_listener = doc_ref.on_snapshot(_on_device_snapshot)
+    print("[FIREBASE] Device document listener started (heartbeat caching active).")
+
+def push_telemetry(telemetry_data: dict, write_history: bool = True) -> bool:
+    """
+    Pushes current status to the device document. If write_history=True,
+    also appends a record to the telemetry subcollection (historical log).
+
+    Returns True if the Firestore write succeeded, False otherwise.
+    The caller MUST check the return value before updating its local
+    baseline — a False return means the cloud was NOT updated.
+    """
+    if not _db:
+        print("[FIREBASE_ERROR] push_telemetry called but Firestore client (_db) is not initialised.")
+        return False
         
     try:
         doc_ref = _db.collection('devices').document(config.DEVICE_ID)
         
-        # 1. Update the main device document with current status
+        # 1. Always update the main device document (current UI state)
         doc_ref.set({
             'status': 'online',
             'system_status': telemetry_data.get('system_status', 'unknown'),
@@ -63,17 +144,29 @@ def push_telemetry(telemetry_data):
             'tank_level': telemetry_data.get('tank_level', 0),
             'pump_locked': telemetry_data.get('pump_locked', False),
             'soil_moisture': telemetry_data.get('soil_moisture', [0.0, 0.0, 0.0]),
+            'soil_moisture_raw': telemetry_data.get('soil_moisture_raw', [-1.0, -1.0, -1.0]),
             'temperature': telemetry_data.get('temperature', 0.0),
             'humidity': telemetry_data.get('humidity', 0.0),
             'flow_rate': telemetry_data.get('flow_rate', 0.0),
             'alerts': telemetry_data.get('alerts', []),
+            'soil_offsets': telemetry_data.get('soil_offsets', [0.0, 0.0, 0.0]),
+            'start_threshold': telemetry_data.get('start_threshold', {}),
+            'target_moisture': telemetry_data.get('target_moisture', {}),
+            'max_pump_runtime': telemetry_data.get('max_pump_runtime', {}),
+            'hardware_status': telemetry_data.get('hardware_status', {}),
         }, merge=True)
         
-        # 2. Add historical reading to subcollection
-        doc_ref.collection('telemetry').add(telemetry_data)
+        # 2. Only add to the historical subcollection when explicitly requested.
+        # Differential Sync passes write_history=False to skip this write,
+        # reducing historical document creation by ~90%.
+        if write_history:
+            doc_ref.collection('telemetry').add(telemetry_data)
+
+        return True  # ← Confirmed success
         
     except Exception as e:
-        print(f"[FIREBASE_ERROR] Failed to push telemetry: {e}")
+        print(f"[FIREBASE_ERROR] push_telemetry FAILED: {e}")
+        return False  # ← Caller must not update baseline
 
 def push_alerts(alerts):
     """Pushes alerts to Firestore."""
@@ -92,7 +185,49 @@ def push_alerts(alerts):
     except Exception as e:
         print(f"[FIREBASE_ERROR] Failed to push alerts: {e}")
 
+def push_history_batch(records: list) -> list:
+    """
+    Uploads a batch of locally-stored telemetry records to the Firebase
+    telemetry subcollection. Used by the Recovery Engine in main.py to
+    backfill data that was captured by SQLite during an internet outage.
+
+    Args:
+        records: List of dicts as returned by local_db.get_unsynced_records().
+                 Each dict has: timestamp, soil_moisture, temperature, humidity.
+
+    Returns:
+        List of record IDs that were successfully uploaded.
+    """
+    if not _db or not records:
+        return []
+
+    doc_ref = _db.collection('devices').document(config.DEVICE_ID)
+    synced_ids = []
+
+    for record in records:
+        try:
+            doc_ref.collection('telemetry').add({
+                'timestamp':    record['timestamp'],
+                'soil_moisture': record['soil_moisture'],
+                'temperature':  record['temperature'],
+                'humidity':     record['humidity'],
+                '_source':      'local_db_recovery',  # Tag to distinguish from live pushes
+            })
+            synced_ids.append(record['id'])
+        except Exception as e:
+            print(f"[FIREBASE_ERROR] Failed to upload recovery record "
+                  f"(ts={record.get('timestamp')}): {e}")
+            # Stop on first failure — remaining unsynced rows stay for next attempt
+            break
+
+    if synced_ids:
+        print(f"[FIREBASE] Recovery batch: uploaded {len(synced_ids)} "
+              f"of {len(records)} record(s) ✓")
+    return synced_ids
+
+
 def listen_for_commands(callback):
+
     """Listens for remote commands added to the commands subcollection."""
     global _command_listener
     if not _db:
@@ -126,6 +261,10 @@ def listen_for_commands(callback):
                         
         _command_listener = commands_ref.on_snapshot(on_snapshot)
         print("[FIREBASE] Listening for remote commands.")
+
+        # Start the device document listener for zero-cost heartbeat caching
+        _start_device_listener()
+
     except Exception as e:
         print(f"[FIREBASE_ERROR] Failed to setup command listener: {e}")
 
@@ -177,6 +316,8 @@ def perform_storage_cleanup(force=False):
             print(f"[FIREBASE] Cleanup finished: Deleted {deleted_count} telemetry and {cmd_deleted_count} commands.")
         
         _last_cleanup_time = current_time
+        # PHASE 1 FIX: Persist to disk so reboots don't re-trigger cleanup
+        _write_persisted_cleanup_time(current_time)
             
     except Exception as e:
         print(f"[FIREBASE_ERROR] Storage cleanup failed: {e}")
@@ -233,9 +374,19 @@ def get_zone_targets() -> dict:
 
 def get_manual_heartbeat() -> float:
     """
-    Reads the manual_heartbeat timestamp from the device document.
-    Returns seconds since last heartbeat, or 999 if unavailable.
+    Returns seconds since last manual_heartbeat from the mobile app.
+    Uses the local in-memory cache (_cached_heartbeat_ts) that is updated
+    by the Firestore on_snapshot listener — zero Firestore Reads per call.
+    Falls back to a direct .get() only if the cache is uninitialised.
     """
+    global _cached_heartbeat_ts
+
+    # Fast-path: cache is populated — no network call needed
+    if _cached_heartbeat_ts > 0:
+        age = time.time() - _cached_heartbeat_ts
+        return max(0.0, age)
+
+    # Slow-path: cache is empty (first call before listener fires)
     if not _db:
         return 999.0
     try:
@@ -244,20 +395,41 @@ def get_manual_heartbeat() -> float:
             data = doc.to_dict()
             hb = data.get('manual_heartbeat')
             if hb and hasattr(hb, 'timestamp'):
-                # Firestore Timestamp → epoch seconds
-                age = time.time() - hb.timestamp()
-                return max(0, age)
+                _cached_heartbeat_ts = hb.timestamp()
+                return max(0.0, time.time() - _cached_heartbeat_ts)
             elif isinstance(hb, (int, float)):
-                return max(0, time.time() - hb)
+                _cached_heartbeat_ts = float(hb)
+                return max(0.0, time.time() - _cached_heartbeat_ts)
         return 999.0
     except Exception as e:
-        print(f"[FIREBASE_ERROR] get_manual_heartbeat: {e}")
+        print(f"[FIREBASE_ERROR] get_manual_heartbeat fallback: {e}")
         return 999.0
+
+
+def update_pump_status(zone: int, is_active: bool):
+    """
+    Immediately patches pump_status_zoneN on the device document.
+    This is a fast, dedicated write so the Flutter UI can confirm
+    activation in ~1-2 seconds without waiting for a full telemetry push.
+    """
+    if not _db:
+        return
+    field_key = f"pump_status_zone{zone}"
+    try:
+        doc_ref = _db.collection('devices').document(config.DEVICE_ID)
+        doc_ref.set({field_key: is_active}, merge=True)
+        state = "ON" if is_active else "OFF"
+        print(f"[PUMP_STATUS] Zone {zone} -> {state} ({field_key}={is_active})")
+    except Exception as e:
+        print(f"[FIREBASE_ERROR] update_pump_status zone {zone}: {e}")
 
 
 def cleanup():
     """Clean up Firebase listeners."""
-    global _command_listener
+    global _command_listener, _heartbeat_listener
     if _command_listener:
         _command_listener.unsubscribe()
         _command_listener = None
+    if _heartbeat_listener:
+        _heartbeat_listener.unsubscribe()
+        _heartbeat_listener = None

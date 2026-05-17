@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-import 'dart:io';
+import '../core/utils/platform_utils.dart';
 
 class WaterWave extends StatefulWidget {
   final double value; // 0 to 100
@@ -24,8 +24,8 @@ class _WaterWaveState extends State<WaterWave>
       vsync: this,
       duration: const Duration(seconds: 2),
     );
-    // CRITICAL PERF: Don't repeat animation loop on Linux
-    if (!Platform.isLinux) {
+    // CRITICAL PERF: Don't repeat animation loop on Pi 3B (Lite mode)
+    if (!isLiteMode) {
       _controller.repeat();
     }
   }
@@ -70,20 +70,21 @@ class _WavePainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.fill;
-    
+
     final path = Path();
 
     // Adjusted levels to make sure 0% really looks empty and 100% full
     final yBase = size.height * (1 - fillLevel);
-    
+
     // Wave parameters
-    final double waveHeight = fillLevel > 0 && fillLevel < 1 && !Platform.isLinux ? 4.0 : 0.0;
+    final double waveHeight =
+        fillLevel > 0 && fillLevel < 1 && !isLiteMode ? 4.0 : 0.0;
     const double waveFrequency = 1.5;
 
     path.moveTo(0, yBase);
 
     if (fillLevel > 0) {
-      if (Platform.isLinux) {
+      if (isLiteMode) {
         // PERF: Draw flat level to skip heavy sine generation on Kiosk
         path.lineTo(size.width, yBase);
       } else {
@@ -102,17 +103,17 @@ class _WavePainter extends CustomPainter {
     path.close();
 
     canvas.drawPath(path, paint);
-    
+
     // Optional: Draw a second, darker wave for depth
     final paintDark = Paint()
-      ..color = color.withOpacity(0.3)
+      ..color = color.withValues(alpha: 0.3)
       ..style = PaintingStyle.fill;
-    
+
     final pathDark = Path();
     pathDark.moveTo(0, yBase);
-    
+
     if (fillLevel > 0) {
-      if (Platform.isLinux) {
+      if (isLiteMode) {
         pathDark.lineTo(size.width, yBase);
       } else {
         for (double x = 0; x <= size.width; x += 1) {
@@ -124,11 +125,11 @@ class _WavePainter extends CustomPainter {
         }
       }
     }
-    
+
     pathDark.lineTo(size.width, size.height);
     pathDark.lineTo(0, size.height);
     pathDark.close();
-    
+
     canvas.drawPath(pathDark, paintDark);
   }
 

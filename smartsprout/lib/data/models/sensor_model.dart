@@ -1,17 +1,22 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 class SensorData {
-  final List<double> soilMoisture;    // 3 zones (calibrated = raw + offset)
+  final List<double> soilMoisture; // 3 zones (calibrated = raw + offset)
   final List<double> soilMoistureRaw; // 3 zones (raw sensor, before offset)
-  final List<double> soilOffsets;     // 3 zone offsets
-  final List<double> targetMoisture;  // 3 zone saturation targets
-  final List<int> maxPumpRuntime;     // 3 zone safety timeouts (seconds)
+  final List<double> soilOffsets; // 3 zone offsets
+  final List<double> startThreshold; // 3 zone start thresholds (start pump)
+  final List<double> targetMoisture; // 3 zone saturation targets (stop pump)
+  final List<int> maxPumpRuntime; // 3 zone safety timeouts (seconds)
   final double temperature;
   final double humidity;
-  final double tankLevel;
+  final String tankLevel;
   final double flowRate;
   final bool pumpLocked;
+  final bool systemLock; // Cloud-synced master lockdown (Emergency Stop)
+  final List<bool> pumpStatus; // Per-zone pump active state confirmed by Pi
   final String systemStatus; // 'ok', 'sensor_fault', 'tank_low', 'offline'
+  final Map<String, String>
+      hardwareStatus; // explicit fault flags e.g. {'bed1': 'ok', 'environment': 'fault'}
   final List<String> alerts;
   final int timestamp;
   final DateTime? lastHeartbeat;
@@ -20,14 +25,18 @@ class SensorData {
     this.soilMoisture = const [0.0, 0.0, 0.0],
     this.soilMoistureRaw = const [0.0, 0.0, 0.0],
     this.soilOffsets = const [0.0, 0.0, 0.0],
+    this.startThreshold = const [50.0, 50.0, 50.0],
     this.targetMoisture = const [65.0, 65.0, 65.0],
     this.maxPumpRuntime = const [30, 30, 30],
     this.temperature = 0.0,
-    this.humidity = 0.0,
-    this.tankLevel = 0.0,
+    this.humidity = -1.0,
+    this.tankLevel = 'FAULT',
     this.flowRate = 0.0,
     this.pumpLocked = false,
+    this.systemLock = false,
+    this.pumpStatus = const [false, false, false],
     this.systemStatus = 'offline',
+    this.hardwareStatus = const {},
     this.alerts = const [],
     this.timestamp = 0,
     this.lastHeartbeat,
@@ -47,16 +56,16 @@ class SensorData {
       ];
     }
 
-    // Parse raw sensor moisture (before offsets)
+    // Parse raw sensor moisture — preserve -1 sentinel (disconnected sensor)
     final soilRawJson = json['soil_moisture_raw'];
-    List<double> rawSoil = [0.0, 0.0, 0.0];
+    List<double> rawSoil = [-1.0, -1.0, -1.0];
     if (soilRawJson is List) {
       rawSoil = soilRawJson.map<double>((e) => (e as num).toDouble()).toList();
     } else if (soilRawJson is Map) {
       rawSoil = [
-        (soilRawJson['bed1'] as num?)?.toDouble() ?? 0.0,
-        (soilRawJson['bed2'] as num?)?.toDouble() ?? 0.0,
-        (soilRawJson['bed3'] as num?)?.toDouble() ?? 0.0,
+        (soilRawJson['bed1'] as num?)?.toDouble() ?? -1.0,
+        (soilRawJson['bed2'] as num?)?.toDouble() ?? -1.0,
+        (soilRawJson['bed3'] as num?)?.toDouble() ?? -1.0,
       ];
     }
 
@@ -76,6 +85,14 @@ class SensorData {
     List<String> alerts = [];
     if (alertsRaw is List) {
       alerts = alertsRaw.map<String>((e) => e.toString()).toList();
+    }
+
+    final hwStatusRaw = json['hardware_status'];
+    Map<String, String> hwStatus = {};
+    if (hwStatusRaw is Map) {
+      hwStatusRaw.forEach((key, value) {
+        hwStatus[key.toString()] = value.toString();
+      });
     }
 
     // Parse last_heartbeat from Firestore
@@ -114,30 +131,104 @@ class SensorData {
         (runtimeJson['bed3'] as num?)?.toInt() ?? 30,
       ];
     }
+    // Parse start thresholds per zone
+    final startJson = json['start_threshold'];
+    List<double> starts = [
+      targets[0] - 15.0,
+      targets[1] - 15.0,
+      targets[2] - 15.0
+    ];
+    if (startJson is Map) {
+      starts = [
+        (startJson['bed1'] as num?)?.toDouble() ?? (targets[0] - 15.0),
+        (startJson['bed2'] as num?)?.toDouble() ?? (targets[1] - 15.0),
+        (startJson['bed3'] as num?)?.toDouble() ?? (targets[2] - 15.0),
+      ];
+    }
 
     return SensorData(
       soilMoisture: soil,
-      soilMoistureRaw: rawSoil,
-      soilOffsets: offsets,
-      targetMoisture: targets,
-      maxPumpRuntime: runtimes,
+      soilMoistureRaw: List.from(rawSoil),
+      soilOffsets: List.from(offsets),
+      startThreshold: List.from(starts),
+      targetMoisture: List.from(targets),
+      maxPumpRuntime: List.from(runtimes),
       temperature: (json['temperature'] as num?)?.toDouble() ?? -1.0,
       humidity: (json['humidity'] as num?)?.toDouble() ?? -1.0,
-      tankLevel: (json['tank_level'] as num?)?.toDouble() ?? -1.0,
+      tankLevel: json['tank_level']?.toString() ?? 'FAULT',
       flowRate: (json['flow_rate'] as num?)?.toDouble() ?? 0.0,
       pumpLocked: json['pump_locked'] as bool? ?? false,
+      systemLock: json['system_lock'] as bool? ?? false,
+      pumpStatus: [
+        json['pump_status_zone1'] as bool? ?? false,
+        json['pump_status_zone2'] as bool? ?? false,
+        json['pump_status_zone3'] as bool? ?? false,
+      ],
       systemStatus: json['system_status'] as String? ?? 'offline',
+      hardwareStatus: hwStatus,
       alerts: alerts,
       timestamp: json['timestamp'] as int? ?? 0,
       lastHeartbeat: heartbeat,
     );
   }
 
-  bool get hasSensorFault => systemStatus == 'sensor_fault' || alerts.contains('soil_sensor_fault') || alerts.contains('dht22_fault');
-  bool get isTankLow => systemStatus == 'tank_low' || alerts.contains('tank_empty') || tankLevel < 20.0;
-  bool get isOffline => systemStatus == 'offline';
+  bool get hasSensorFault =>
+      systemStatus == 'sensor_fault' ||
+      alerts.contains('soil_sensor_fault') ||
+      alerts.contains('dht22_fault') ||
+      alerts.contains('environment_sensor_fault') ||
+      isTankFault;
+  bool get isTankLow =>
+      systemStatus == 'tank_low' ||
+      alerts.contains('tank_empty') ||
+      tankLevel == 'LOW';
+  bool get isOffline {
+    try {
+      // On Linux (Pi kiosk), we never check lastHeartbeat (no cloud heartbeat
+      // needed — the kiosk IS the Pi). But we DO respect systemStatus: the
+      // local cache reader sets this to 'offline' when main.py is not running
+      // or the cache file is stale.
+      if (Platform.isLinux) return systemStatus == 'offline';
+    } catch (_) {}
+    return systemStatus == 'offline' || isControllerDisconnected;
+  }
+
   bool get isHealthy => !hasSensorFault && !isTankLow && !isOffline;
+
+  bool get isEnvFault => hardwareStatus['environment'] == 'fault';
+
+  /// Returns true if the bed has a hardware fault flag OR its raw sensor reads
+  /// the -1 sentinel (disconnected / open-circuit sensor).
+  /// Returns true only when the Pi has explicitly flagged this bed as 'fault'.
+  /// Falls back to the raw -1 sentinel ONLY when the Pi has never sent a
+  /// hardware_status entry for this bed (e.g. first-boot before telemetry arrives).
+  bool hasBedFault(int index) {
+    final bedKey = 'bed${index + 1}';
+    // Primary: trust the Pi's explicit hardware_status flag
+    if (hardwareStatus.containsKey(bedKey)) {
+      return hardwareStatus[bedKey] == 'fault';
+    }
+    // Fallback (no status received yet): treat -1 raw sentinel as fault
+    return index < soilMoistureRaw.length && soilMoistureRaw[index] < 0;
+  }
+
+  /// True when any of the Pi-side fault signals are present, OR if the whole 
+  /// controller is offline:
+  ///   1. hardwareStatus['tank'] == 'fault'  — explicit HW flag
+  ///   2. tankLevel == 'FAULT'               — raw tank-level reading
+  ///   3. alerts contains 'tank_sensor_fault' — alert list signal
+  ///   4. isOffline == true                  — system offline fallback
+  /// Using all prevents "Sufficient" if one field is stale.
+  bool get isTankFault =>
+      hardwareStatus['tank'] == 'fault' ||
+      tankLevel == 'FAULT' ||
+      alerts.contains('tank_sensor_fault') ||
+      isOffline;
+
   bool get isControllerDisconnected {
+    try {
+      if (Platform.isLinux) return false;
+    } catch (_) {}
     if (lastHeartbeat == null) return true;
     return DateTime.now().difference(lastHeartbeat!).inMinutes > 2;
   }
@@ -146,14 +237,18 @@ class SensorData {
     List<double>? soilMoisture,
     List<double>? soilMoistureRaw,
     List<double>? soilOffsets,
+    List<double>? startThreshold,
     List<double>? targetMoisture,
     List<int>? maxPumpRuntime,
     double? temperature,
     double? humidity,
-    double? tankLevel,
+    String? tankLevel,
     double? flowRate,
     bool? pumpLocked,
+    bool? systemLock,
+    List<bool>? pumpStatus,
     String? systemStatus,
+    Map<String, String>? hardwareStatus,
     List<String>? alerts,
     int? timestamp,
     DateTime? lastHeartbeat,
@@ -162,6 +257,7 @@ class SensorData {
       soilMoisture: soilMoisture ?? this.soilMoisture,
       soilMoistureRaw: soilMoistureRaw ?? this.soilMoistureRaw,
       soilOffsets: soilOffsets ?? this.soilOffsets,
+      startThreshold: startThreshold ?? this.startThreshold,
       targetMoisture: targetMoisture ?? this.targetMoisture,
       maxPumpRuntime: maxPumpRuntime ?? this.maxPumpRuntime,
       temperature: temperature ?? this.temperature,
@@ -169,7 +265,10 @@ class SensorData {
       tankLevel: tankLevel ?? this.tankLevel,
       flowRate: flowRate ?? this.flowRate,
       pumpLocked: pumpLocked ?? this.pumpLocked,
+      systemLock: systemLock ?? this.systemLock,
+      pumpStatus: pumpStatus ?? this.pumpStatus,
       systemStatus: systemStatus ?? this.systemStatus,
+      hardwareStatus: hardwareStatus ?? this.hardwareStatus,
       alerts: alerts ?? this.alerts,
       timestamp: timestamp ?? this.timestamp,
       lastHeartbeat: lastHeartbeat ?? this.lastHeartbeat,

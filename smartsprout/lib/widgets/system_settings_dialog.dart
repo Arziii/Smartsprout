@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
+import 'dart:io';
 
 import '../data/services/data_service.dart';
 
@@ -10,23 +11,57 @@ class SystemSettingsDialog extends ConsumerWidget {
   const SystemSettingsDialog({super.key});
 
   void _sendCommand(BuildContext context, WidgetRef ref, String command) {
+    if (Platform.isLinux) {
+      if (command == 'REBOOT_PI') {
+        Process.run('sudo', ['reboot']);
+      }
+    }
+    if (command == 'RESTART_APP') {
+      Navigator.of(context).pop();
+      context.go('/dashboard');
+      
+      // Soft restart: invalidate the main provider to force a data reconnect
+      // without tearing down the Linux OS process (which causes a black screen).
+      ref.invalidate(dataServiceProvider);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Dashboard UI Refreshed.'),
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : const Color(0xFF0F2027),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      return;
+    }
+
     ref.read(dataServiceProvider)?.sendCommand({'command': command});
 
     // Close the settings dialog
     Navigator.of(context).pop();
 
-    // If it's a restart command, automatically go back to the Home/Dashboard
-    if (command == 'RESTART_APP') {
-      context.go('/dashboard');
+    // User-friendly snackbar for specific commands
+    final String snackMessage;
+    final Color snackColor;
+    if (command == 'RESET_PASSWORD') {
+      snackMessage = 'Password reset to default: 1234';
+      snackColor = const Color(0xFFFFA726);
+    } else {
+      snackMessage = 'Command sent: $command';
+      snackColor = Theme.of(context).brightness == Brightness.dark
+          ? Colors.white
+          : const Color(0xFF0F2027);
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(command == 'RESTART_APP'
-            ? 'Restarting Dashboard...'
-            : 'Command sent: $command'),
-        backgroundColor: const Color(0xFF0F2027),
+        content: Text(snackMessage),
+        backgroundColor: snackColor,
         behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
@@ -42,13 +77,19 @@ class SystemSettingsDialog extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.95),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF1E1E1E).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.95),
             borderRadius: BorderRadius.circular(32),
             boxShadow: const [
               BoxShadow(
                   color: Colors.black26, blurRadius: 30, offset: Offset(0, 10))
             ],
-            border: Border.all(color: Colors.white, width: 2),
+            border: Border.all(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white12
+                    : Colors.white,
+                width: 2),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -56,11 +97,16 @@ class SystemSettingsDialog extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F2027).withOpacity(0.05),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white12
+                      : const Color(0xFF0F2027).withValues(alpha: 0.05),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.settings_system_daydream_rounded,
-                    size: 48, color: Color(0xFF0F2027)),
+                child: Icon(Icons.settings_system_daydream_rounded,
+                    size: 48,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : const Color(0xFF0F2027)),
               ),
               const SizedBox(height: 24),
               Text(
@@ -68,7 +114,9 @@ class SystemSettingsDialog extends ConsumerWidget {
                 style: GoogleFonts.outfit(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,
-                  color: const Color(0xFF0F2027),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : const Color(0xFF0F2027),
                   letterSpacing: -0.5,
                 ),
               ),
@@ -86,6 +134,7 @@ class SystemSettingsDialog extends ConsumerWidget {
 
               // Restart Dashboard Button
               _buildControlButton(
+                context: context,
                 icon: Icons.refresh_rounded,
                 title: "Restart Dashboard",
                 subtitle: "Relaunches the Flutter UI only",
@@ -95,8 +144,23 @@ class SystemSettingsDialog extends ConsumerWidget {
 
               const SizedBox(height: 16),
 
+              // Reset Password Button (Linux Kiosk only)
+              if (Platform.isLinux)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _buildControlButton(
+                    context: context,
+                    icon: Icons.lock_reset_rounded,
+                    title: "Reset Password",
+                    subtitle: "Resets device PIN to default (1234)",
+                    color: const Color(0xFFFFA726),
+                    onTap: () => _showConfirmResetPassword(context, ref),
+                  ),
+                ),
+
               // Reboot Hardware Button
               _buildControlButton(
+                context: context,
                 icon: Icons.power_settings_new_rounded,
                 title: "Reboot Hardware",
                 subtitle: "Full Raspberry Pi core reboot",
@@ -124,6 +188,7 @@ class SystemSettingsDialog extends ConsumerWidget {
   }
 
   Widget _buildControlButton({
+    required BuildContext context,
     required IconData icon,
     required String title,
     required String subtitle,
@@ -138,16 +203,16 @@ class SystemSettingsDialog extends ConsumerWidget {
         child: Ink(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+            border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5),
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.2),
+                  color: color.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, color: color, size: 28),
@@ -162,7 +227,9 @@ class SystemSettingsDialog extends ConsumerWidget {
                       style: GoogleFonts.outfit(
                         fontWeight: FontWeight.w800,
                         fontSize: 18,
-                        color: const Color(0xFF0F2027),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : const Color(0xFF0F2027),
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -177,7 +244,8 @@ class SystemSettingsDialog extends ConsumerWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: color.withOpacity(0.5)),
+              Icon(Icons.chevron_right_rounded,
+                  color: color.withValues(alpha: 0.5)),
             ],
           ),
         ),
@@ -189,18 +257,26 @@ class SystemSettingsDialog extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E1E1E)
+            : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Text(
           'Confirm Hardware Reboot',
           style: GoogleFonts.outfit(
             fontWeight: FontWeight.w800,
-            color: const Color(0xFF0F2027),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : const Color(0xFF0F2027),
           ),
         ),
         content: Text(
           'Are you sure you want to reboot the Raspberry Pi? This will temporarily take the system offline and halt any active watering.',
-          style: GoogleFonts.outfit(color: const Color(0xFF37474F)),
+          style: GoogleFonts.outfit(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white70
+                : const Color(0xFF37474F),
+          ),
         ),
         actions: [
           TextButton(
@@ -223,6 +299,92 @@ class SystemSettingsDialog extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(12)),
             ),
             child: Text('REBOOT',
+                style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w800, color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showConfirmResetPassword(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E1E1E)
+            : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          'Reset Password',
+          style: GoogleFonts.outfit(
+            fontWeight: FontWeight.w800,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : const Color(0xFF0F2027),
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This will reset the device password to the factory default.',
+              style: GoogleFonts.outfit(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white70
+                    : const Color(0xFF37474F),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFA726).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: const Color(0xFFFFA726).withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded,
+                      color: Color(0xFFFFA726), size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'New default password: 1234',
+                      style: GoogleFonts.outfit(
+                        color: const Color(0xFFFFA726),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text(
+              'CANCEL',
+              style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w800, color: Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx); // Close confirm
+              _sendCommand(context, ref, 'RESET_PASSWORD');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFA726),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text('RESET PASSWORD',
                 style: GoogleFonts.outfit(
                     fontWeight: FontWeight.w800, color: Colors.white)),
           ),

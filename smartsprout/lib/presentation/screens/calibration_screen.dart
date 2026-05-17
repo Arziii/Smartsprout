@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -19,18 +18,11 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _entranceController;
 
-  // Local optimistic offset values
-  final Map<int, double?> _localOffsets = {1: null, 2: null, 3: null};
-
-  // Local optimistic precision saturation values
+  // Local optimistic watering triggers
+  final Map<int, double> _localStarts = {1: 50.0, 2: 50.0, 3: 50.0};
   final Map<int, double> _localTargets = {1: 65.0, 2: 65.0, 3: 65.0};
   final Map<int, int> _localTimeouts = {1: 30, 2: 30, 3: 30};
   bool _targetsLoaded = false;
-
-  // Text controllers for each zone
-  late final TextEditingController _ctrl1;
-  late final TextEditingController _ctrl2;
-  late final TextEditingController _ctrl3;
 
   @override
   void initState() {
@@ -39,76 +31,12 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     )..forward();
-
-    _ctrl1 = TextEditingController();
-    _ctrl2 = TextEditingController();
-    _ctrl3 = TextEditingController();
   }
 
   @override
   void dispose() {
-    _ctrl1.dispose();
-    _ctrl2.dispose();
-    _ctrl3.dispose();
     _entranceController.dispose();
     super.dispose();
-  }
-
-  TextEditingController _controllerForZone(int zone) {
-    switch (zone) {
-      case 1: return _ctrl1;
-      case 2: return _ctrl2;
-      case 3: return _ctrl3;
-      default: return _ctrl1;
-    }
-  }
-
-  void _submitOffset(int zone, String text) {
-    final value = double.tryParse(text);
-    if (value == null) return;
-    final clamped = value.clamp(-50.0, 50.0);
-
-    // 1. Optimistic local update
-    setState(() {
-      _localOffsets[zone] = clamped;
-    });
-
-    // 2. Optimistically update the Dashboard state immediately
-    ref.read(sensorDataProvider.notifier).updateCalibration(zone, clamped);
-
-    final dataService = ref.read(dataServiceProvider);
-
-    // 3. Write calibration directly to Firestore (immediate database update)
-    dataService?.updateCalibrationInFirestore(zone, clamped);
-
-    // 4. Send offset command to the Pi via Firebase (so Pi also knows)
-    dataService?.sendCommand({
-      'command': 'set_offset',
-      'zone': zone,
-      'value': clamped,
-    });
-
-    // 5. Force-sync so the Pi pushes fresh sensor data
-    dataService?.forceSync();
-
-    // 6. Show feedback
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Threshold set to ${clamped.toStringAsFixed(0)}% for Zone $zone',
-            style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
-          ),
-          backgroundColor: const Color(0xFF0F2027),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-
-    // Clear focus
-    FocusScope.of(context).unfocus();
   }
 
   @override
@@ -117,11 +45,14 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
     final isConnected = Platform.isLinux || !sensorData.isOffline;
     final moistureData = sensorData.soilMoisture;
 
-    // Initialize local targets from Firestore data on first build
+    // Initialize local sliders ONCE from the persisted triggerSettingsProvider.
+    // This survives navigation — the provider is backed by SharedPreferences.
     if (!_targetsLoaded) {
+      final triggers = ref.read(triggerSettingsProvider);
       for (int z = 1; z <= 3; z++) {
-        _localTargets[z] = sensorData.targetMoisture[z - 1];
-        _localTimeouts[z] = sensorData.maxPumpRuntime[z - 1];
+        _localStarts[z] = triggers.startThreshold[z - 1];
+        _localTargets[z] = triggers.targetMoisture[z - 1];
+        _localTimeouts[z] = triggers.maxPumpRuntime[z - 1];
       }
       _targetsLoaded = true;
     }
@@ -133,21 +64,28 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text('Calibration',
             style: GoogleFonts.outfit(
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF0F2027),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F2027),
               letterSpacing: -0.5,
             )),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: Color(0xFF0F2027), size: 20),
-          onPressed: () => context.canPop() ? context.pop() : context.pushReplacement('/settings'),
+          icon: Icon(Icons.arrow_back_ios_new_rounded,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F2027),
+              size: 20),
+          onPressed: () => context.canPop()
+              ? context.pop()
+              : context.pushReplacement('/settings'),
         ),
       ),
       body: GestureDetector(
@@ -157,16 +95,18 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
             // Background Gradient
             Positioned.fill(
               child: Container(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFFE0ECE9), Color(0xFFB4CDCA)],
+                    colors: Theme.of(context).brightness == Brightness.dark
+                        ? [const Color(0xFF0F172A), const Color(0xFF064E3B)]
+                        : const [Color(0xFFF0FDF4), Color(0xFFCCFBF1)],
                   ),
                 ),
               ),
             ),
-            
+
             // Organic Blob shapes
             Positioned(
               top: -50,
@@ -176,7 +116,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                 height: 300,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFF2BCC71).withOpacity(0.15),
+                  color: const Color(0xFF2BCC71).withValues(alpha: 0.15),
                 ),
               ),
             ),
@@ -188,73 +128,91 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                 height: 400,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.blue.withOpacity(0.1),
+                  color: Colors.blue.withValues(alpha: 0.1),
                 ),
               ),
             ),
 
             SafeArea(
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 children: [
                   _buildInfoBanner(),
                   const SizedBox(height: 25),
-                  _buildSectionHeader('Beds Offset'),
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Column(
-                          children: [
-                            for (int i = 0; i < 3; i++) ...[
-                              _buildAnimatedItem(
-                                i,
-                                _buildCalibrationCard(
-                                  zone: i + 1,
-                                  label: i == 0 ? 'LEFT BED' : i == 1 ? 'CENTER BED' : 'RIGHT BED',
-                                  liveMoisture: liveMoisture(i),
-                                  offsetValue: _localOffsets[i + 1],
-                                  isConnected: isConnected,
-                                ),
+                  _buildSectionHeader('Watering Triggers'),
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Column(
+                        children: [
+                          for (int i = 0; i < 3; i++) ...[
+                            _buildAnimatedItem(
+                              i,
+                              _buildCalibrationCard(
+                                zone: i + 1,
+                                label: i == 0
+                                    ? 'LEFT BED'
+                                    : i == 1
+                                        ? 'CENTER BED'
+                                        : 'RIGHT BED',
+                                liveMoisture: liveMoisture(i),
+                                offsetValue: sensorData.soilOffsets.length > i
+                                    ? sensorData.soilOffsets[i]
+                                    : 0.0,
+                                isConnected: isConnected,
                               ),
-                              const SizedBox(height: 15),
-                            ],
+                            ),
+                            const SizedBox(height: 15),
                           ],
-                        ),
-                        if (!isConnected)
-                          Positioned.fill(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                                child: Container(
-                                  color: Colors.white.withOpacity(0.6),
-                                  alignment: Alignment.center,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const CircularProgressIndicator(color: Color(0xFF2BCC71)),
-                                      const SizedBox(height: 16),
-                                      Text(
-                                        'Searching for Raspberry Pi...',
-                                        style: GoogleFonts.outfit(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 16,
-                                          color: const Color(0xFF0F2027),
-                                        ),
+                        ],
+                      ),
+                      if (!isConnected)
+                        Positioned.fill(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(24),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                              child: Container(
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? const Color(0xFF0F172A).withValues(alpha: 0.6)
+                                    : Colors.white.withValues(alpha: 0.6),
+                                alignment: Alignment.center,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const CircularProgressIndicator(
+                                        color: Color(0xFF2BCC71)),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Searching for Raspberry Pi...',
+                                      style: GoogleFonts.outfit(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 16,
+                                        color: Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.white
+                                            : const Color(0xFF0F2027),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 30),
                   _buildSectionHeader('Reference Reset'),
                   _buildAnimatedItem(
                     4,
                     _buildDryCalibrationButton(isConnected),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildAnimatedItem(
+                    5,
+                    _buildWetCalibrationButton(isConnected),
                   ),
                 ],
               ),
@@ -266,15 +224,19 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
   }
 
   Widget _buildInfoBanner() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.6),
+        color: isDark ? const Color(0xFF0F172A).withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+        border:
+            Border.all(color: isDark ? Colors.white12 : Colors.white.withValues(alpha: 0.8), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F2027).withOpacity(0.05),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : const Color(0xFF0F2027).withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -285,17 +247,18 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFA726).withOpacity(0.15),
+              color: const Color(0xFFFFA726).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.info_outline_rounded, color: Color(0xFFE65100), size: 24),
+            child: const Icon(Icons.info_outline_rounded,
+                color: Color(0xFFE65100), size: 24),
           ),
           const SizedBox(width: 15),
           Expanded(
             child: Text(
-              'Type the desired offset and tap SET. Live moisture is shown below — the offset badge appears in the top-right.',
+              'Set the Start Threshold (pump ON), Target Saturation (pump OFF), and Safety Timeout for each zone. Tap SET TRIGGER RULES to queue the command. The Pi confirms and syncs back.',
               style: GoogleFonts.outfit(
-                color: const Color(0xFF37474F),
+                color: isDark ? Colors.white70 : const Color(0xFF37474F),
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
               ),
@@ -307,6 +270,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
   }
 
   Widget _buildSectionHeader(String title) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(left: 8, bottom: 12),
       child: Text(
@@ -314,7 +278,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
         style: GoogleFonts.outfit(
           fontSize: 12,
           fontWeight: FontWeight.w800,
-          color: const Color(0xFF4A6164),
+          color: isDark ? Colors.white70 : const Color(0xFF4A6164),
           letterSpacing: 1.5,
         ),
       ),
@@ -328,8 +292,6 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
     required double? offsetValue,
     required bool isConnected,
   }) {
-    final ctrl = _controllerForZone(zone);
-
     // Color based on moisture level
     Color moistureColor;
     if (liveMoisture < 25) {
@@ -340,15 +302,19 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
       moistureColor = const Color(0xFF2BCC71);
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.7),
+        color: isDark ? const Color(0xFF0F172A).withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white, width: 2),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F2027).withOpacity(0.05),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : const Color(0xFF0F2027).withValues(alpha: 0.05),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -357,7 +323,7 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header Row: Label + Offset Badge ──
+          // ── Header Row: Label ──
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -366,50 +332,11 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                 style: GoogleFonts.outfit(
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
-                  color: const Color(0xFF0F2027),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : const Color(0xFF0F2027),
                 ),
               ),
-              // Offset badge in upper-right
-              if (offsetValue != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF29B6F6).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF29B6F6).withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.tune_rounded, size: 12, color: const Color(0xFF0277BD)),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${offsetValue >= 0 ? "+" : ""}${offsetValue.toStringAsFixed(1)}%',
-                        style: GoogleFonts.outfit(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                          color: const Color(0xFF0277BD),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    'No offset',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -424,7 +351,9 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                 style: GoogleFonts.outfit(
                   fontWeight: FontWeight.w900,
                   fontSize: 28,
-                  color: const Color(0xFF0F2027),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : const Color(0xFF0F2027),
                 ),
               ),
               const SizedBox(width: 8),
@@ -434,88 +363,49 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                   fontWeight: FontWeight.w700,
                   fontSize: 10,
                   letterSpacing: 1.0,
-                  color: const Color(0xFF4A6164).withOpacity(0.6),
+                  color: const Color(0xFF4A6164).withValues(alpha: 0.6),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 15),
 
-          // ── Offset Input Row ──
-          Row(
-            children: [
-              Expanded(
-                child: Container(
+          // ── Precision Saturation Controls ──
+          _buildPrecisionControls(zone, isConnected),
+
+          const SizedBox(height: 16),
+          // SET trigger button
+          SizedBox(
+            width: double.infinity,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: isConnected ? () => _submitZoneTargets(zone) : null,
+                borderRadius: BorderRadius.circular(14),
+                child: Ink(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF5F5F5),
+                    gradient: LinearGradient(
+                      colors: isConnected
+                          ? [const Color(0xFF2BCC71), const Color(0xFF20A056)]
+                          : [Colors.grey.shade300, Colors.grey.shade400],
+                    ),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: const Color(0xFF2BCC71).withOpacity(0.3),
-                    ),
+                    boxShadow: isConnected
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFF2BCC71)
+                                  .withValues(alpha: 0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ]
+                        : null,
                   ),
-                  child: TextField(
-                    controller: ctrl,
-                    enabled: isConnected,
-                    keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*')),
-                    ],
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 18,
-                      color: const Color(0xFF0F2027),
-                    ),
-                    decoration: InputDecoration(
-                      hintText: '0.0',
-                      hintStyle: GoogleFonts.outfit(
-                        fontWeight: FontWeight.w500,
-                        fontSize: 18,
-                        color: Colors.grey.shade400,
-                      ),
-                      suffixText: '%',
-                      suffixStyle: GoogleFonts.outfit(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                        color: const Color(0xFF4A6164),
-                      ),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    ),
-                    onSubmitted: (text) => _submitOffset(zone, text),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              // SET button
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: isConnected
-                      ? () => _submitOffset(zone, ctrl.text)
-                      : null,
-                  borderRadius: BorderRadius.circular(14),
-                  child: Ink(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: isConnected
-                            ? [const Color(0xFF2BCC71), const Color(0xFF20A056)]
-                            : [Colors.grey.shade300, Colors.grey.shade400],
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: isConnected
-                          ? [
-                              BoxShadow(
-                                color: const Color(0xFF2BCC71).withOpacity(0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-                              ),
-                            ]
-                          : null,
-                    ),
+                  child: Center(
                     child: Text(
-                      'SET',
+                      'SET TRIGGER RULES',
                       style: GoogleFonts.outfit(
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
@@ -526,11 +416,8 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-
-          // ── Precision Saturation Controls ──
-          _buildPrecisionControls(zone, isConnected),
         ],
       ),
     );
@@ -538,29 +425,32 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
 
   /// Builds the precision saturation controls for a zone.
   Widget _buildPrecisionControls(int zone, bool isConnected) {
+    final start = _localStarts[zone] ?? 50.0;
     final target = _localTargets[zone] ?? 65.0;
     final timeout = _localTimeouts[zone] ?? 30;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return AnimatedSize(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       child: Container(
-        margin: const EdgeInsets.only(top: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFF0F9F4),
+          color: isDark ? const Color(0xFF064E3B).withValues(alpha: 0.8) : const Color(0xFFF0F9F4),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF2BCC71).withOpacity(0.2)),
+          border:
+              Border.all(color: const Color(0xFF2BCC71).withValues(alpha: 0.2)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.track_changes_rounded, size: 16, color: const Color(0xFF2BCC71)),
+                const Icon(Icons.tune_rounded,
+                    size: 16, color: Color(0xFF2BCC71)),
                 const SizedBox(width: 6),
                 Text(
-                  'PRECISION SATURATION',
+                  'AUTOMATION SETTINGS',
                   style: GoogleFonts.outfit(
                     fontWeight: FontWeight.w800,
                     fontSize: 11,
@@ -572,19 +462,64 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
             ),
             const SizedBox(height: 14),
 
+            // Start Threshold Slider
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Start Threshold (ON)',
+                    style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: isDark ? Colors.white70 : const Color(0xFF37474F))),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2BCC71).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('${start.round()}%',
+                      style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          color: const Color(0xFF2BCC71))),
+                ),
+              ],
+            ),
+            Slider(
+              value: start,
+              min: 5,
+              max: 95,
+              divisions: 18,
+              activeColor: const Color(0xFF2BCC71),
+              inactiveColor: const Color(0xFF2BCC71).withValues(alpha: 0.15),
+              onChanged: isConnected
+                  ? (val) {
+                      // Validate: Start must be AT LEAST 5% lower than Target
+                      double newVal = val;
+                      if (newVal > target - 5.0) {
+                        newVal = target - 5.0;
+                      }
+                      setState(() => _localStarts[zone] = newVal);
+                    }
+                  : null,
+            ),
+            const SizedBox(height: 4),
+
             // Target Saturation Slider
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Target Saturation',
+                Text('Target Saturation (OFF)',
                     style: GoogleFonts.outfit(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
-                        color: const Color(0xFF37474F))),
+                        color: isDark ? Colors.white70 : const Color(0xFF37474F))),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2BCC71).withOpacity(0.12),
+                    color: const Color(0xFF2BCC71).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text('${target.round()}%',
@@ -601,14 +536,16 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
               max: 100,
               divisions: 18,
               activeColor: const Color(0xFF2BCC71),
-              inactiveColor: const Color(0xFF2BCC71).withOpacity(0.15),
+              inactiveColor: const Color(0xFF2BCC71).withValues(alpha: 0.15),
               onChanged: isConnected
                   ? (val) {
-                      setState(() => _localTargets[zone] = val);
+                      // Validate: Target must be AT LEAST 5% higher than Start
+                      double newVal = val;
+                      if (newVal < start + 5.0) {
+                        newVal = start + 5.0;
+                      }
+                      setState(() => _localTargets[zone] = newVal);
                     }
-                  : null,
-              onChangeEnd: isConnected
-                  ? (val) => _submitZoneTargets(zone)
                   : null,
             ),
 
@@ -622,11 +559,12 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                     style: GoogleFonts.outfit(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
-                        color: const Color(0xFF37474F))),
+                        color: isDark ? Colors.white70 : const Color(0xFF37474F))),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFA726).withOpacity(0.12),
+                    color: const Color(0xFFFFA726).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text('${timeout}s',
@@ -643,14 +581,11 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
               max: 120,
               divisions: 23,
               activeColor: const Color(0xFFFFA726),
-              inactiveColor: const Color(0xFFFFA726).withOpacity(0.15),
+              inactiveColor: const Color(0xFFFFA726).withValues(alpha: 0.15),
               onChanged: isConnected
                   ? (val) {
                       setState(() => _localTimeouts[zone] = val.round());
                     }
-                  : null,
-              onChangeEnd: isConnected
-                  ? (val) => _submitZoneTargets(zone)
                   : null,
             ),
           ],
@@ -660,25 +595,43 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
   }
 
   void _submitZoneTargets(int zone) {
+    final start = _localStarts[zone] ?? 50.0;
     final target = _localTargets[zone] ?? 65.0;
     final timeout = _localTimeouts[zone] ?? 30;
 
-    // Write to Firestore
-    final dataService = ref.read(dataServiceProvider);
-    dataService?.updateZoneTargets(zone, target, timeout);
+    // 1. Persist locally via provider so sliders survive navigation.
+    ref.read(triggerSettingsProvider.notifier).updateZone(
+          zone,
+          start: start,
+          target: target,
+          timeout: timeout,
+        );
 
-    // Show feedback
+    // 2. Zero-Trust Flow: push command to Firestore queue.
+    final dataService = ref.read(dataServiceProvider);
+    dataService?.sendCommand({
+      'command': 'set_triggers',
+      'zone': zone,
+      'start_threshold': start,
+      'target_saturation': target,
+      'safety_timeout': timeout,
+    });
+
+    // 3. Confirm to user.
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Zone $zone: Target ${target.round()}%, Timeout ${timeout}s',
+            'Zone $zone rules queued — Start: ${start.round()}%, Target: ${target.round()}%, Timeout: ${timeout}s',
             style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
           ),
-          backgroundColor: const Color(0xFF0F2027),
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : const Color(0xFF0F2027),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          duration: const Duration(seconds: 2),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 3),
         ),
       );
     }
@@ -697,57 +650,68 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
         child: Ink(
           padding: const EdgeInsets.symmetric(vertical: 20),
           decoration: BoxDecoration(
-             gradient: LinearGradient(
-              colors: isConnected 
-                  ? [const Color(0xFF2BCC71), const Color(0xFF20A056)]
-                  : [Colors.grey.withOpacity(0.4), Colors.grey.withOpacity(0.5)],
+            gradient: LinearGradient(
+              colors: isConnected
+                  ? [const Color(0xFFA1887F), const Color(0xFF795548)]
+                  : [
+                      Colors.grey.withValues(alpha: 0.4),
+                      Colors.grey.withValues(alpha: 0.5)
+                    ],
             ),
             borderRadius: BorderRadius.circular(20),
-            border: isConnected ? null : Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
-            boxShadow: isConnected ? [
-              BoxShadow(
-                color: const Color(0xFF2BCC71).withOpacity(0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
-              )
-            ] : null,
+            border: isConnected
+                ? null
+                : Border.all(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white10
+                        : Colors.white.withValues(alpha: 0.5),
+                    width: 1.5),
+            boxShadow: isConnected
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF795548).withValues(alpha: 0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    )
+                  ]
+                : null,
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: isConnected 
-              ? [
-                  const Icon(Icons.water_drop_outlined, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Text(
-                    'RUN DRY CALIBRATION (ALL ZONES)',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                      color: Colors.white,
-                      letterSpacing: 1.0,
+            children: isConnected
+                ? [
+                    const Icon(Icons.water_drop_outlined, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text(
+                      'RUN DRY CALIBRATION (ALL ZONES)',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: Colors.white,
+                        letterSpacing: 1.0,
+                      ),
                     ),
-                  ),
-                ]
-              : [
-                  const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2.5,
+                  ]
+                : [
+                    const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.5,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'WAITING FOR CONNECTION...',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                      color: Colors.white,
-                      letterSpacing: 1.0,
+                    const SizedBox(width: 12),
+                    Text(
+                      'WAITING FOR CONNECTION...',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: Colors.white,
+                        letterSpacing: 1.0,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
           ),
         ),
       ),
@@ -760,25 +724,35 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
       builder: (dialogCtx) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
         child: AlertDialog(
-          backgroundColor: Colors.white.withOpacity(0.9),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF0F172A).withValues(alpha: 0.9)
+              : Colors.white.withValues(alpha: 0.9),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           title: Text(
             'Confirm Dry Calibration',
             style: GoogleFonts.outfit(
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF0F2027),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F2027),
             ),
           ),
           content: Text(
             'Please ensure all soil sensors are completely dry and exposed to air before running this calibration. This will reset the 0% reference for all zones.',
-            style: GoogleFonts.outfit(color: const Color(0xFF37474F)),
+            style: GoogleFonts.outfit(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white70
+                  : const Color(0xFF37474F),
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogCtx),
               child: Text(
                 'CANCEL',
-                style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: Colors.grey),
+                style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w800, color: Colors.grey),
               ),
             ),
             ElevatedButton(
@@ -789,18 +763,175 @@ class _CalibrationScreenState extends ConsumerState<CalibrationScreen>
                 dataService?.forceSync();
                 Navigator.pop(dialogCtx);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Dry calibration command sent — syncing live data...'),
-                    backgroundColor: const Color(0xFF0F2027),
+                  const SnackBar(
+                    content: Text(
+                        'Dry calibration command sent — syncing live data...'),
+                    backgroundColor: Color(0xFF5D4037),
                     behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 2),
                   ),
                 );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2BCC71),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                backgroundColor: const Color(0xFF795548),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
-              child: Text('CONFIRM', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+              child: Text('CONFIRM',
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w800, color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Wet Calibration ───────────────────────────────────
+
+  Widget _buildWetCalibrationButton(bool isConnected) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: isConnected
+            ? () {
+                _showConfirmWetCalibrationDialog();
+              }
+            : null,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: isConnected
+                  ? [const Color(0xFF29B6F6), const Color(0xFF0288D1)]
+                  : [
+                      Colors.grey.withValues(alpha: 0.4),
+                      Colors.grey.withValues(alpha: 0.5)
+                    ],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: isConnected
+                ? null
+                : Border.all(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white10
+                        : Colors.white.withValues(alpha: 0.5),
+                    width: 1.5),
+            boxShadow: isConnected
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF29B6F6).withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    )
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: isConnected
+                ? [
+                    const Icon(Icons.water_rounded, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text(
+                      'RUN WET CALIBRATION (ALL ZONES)',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: Colors.white,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ]
+                : [
+                    const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.5,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'WAITING FOR CONNECTION...',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: Colors.white,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showConfirmWetCalibrationDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+        child: AlertDialog(
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF0F172A).withValues(alpha: 0.9)
+              : Colors.white.withValues(alpha: 0.9),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Text(
+            'Confirm Wet Calibration',
+            style: GoogleFonts.outfit(
+              fontWeight: FontWeight.w800,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F2027),
+            ),
+          ),
+          content: Text(
+            'Please submerge all soil sensors fully in water (or press them into saturated soil) before confirming. This will reset the 100% reference for all zones.',
+            style: GoogleFonts.outfit(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white70
+                  : const Color(0xFF37474F),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: Text(
+                'CANCEL',
+                style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w800, color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final dataService = ref.read(dataServiceProvider);
+                dataService?.sendCommand({'command': 'run_wet_calibration'});
+                // Auto force-sync so the new wet_raw values appear immediately
+                dataService?.forceSync();
+                Navigator.pop(dialogCtx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'Wet calibration command sent — syncing live data...'),
+                    backgroundColor: Color(0xFF0288D1),
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF29B6F6),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Text('CONFIRM',
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w800, color: Colors.white)),
             ),
           ],
         ),

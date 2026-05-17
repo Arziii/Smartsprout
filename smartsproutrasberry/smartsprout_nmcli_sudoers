@@ -1,0 +1,17 @@
+# /etc/sudoers.d/smartsprout_nmcli
+#
+# Allow the 'smartsprout' service user to run the two specific nmcli
+# commands needed to connect/forget Wi-Fi networks — without a password.
+# This keeps the service non-root while still letting wifi_bridge.py
+# manage network profiles via NetworkManager.
+#
+# Install on the Pi:
+#   sudo cp smartsprout_nmcli_sudoers /etc/sudoers.d/smartsprout_nmcli
+#   sudo chmod 0440 /etc/sudoers.d/smartsprout_nmcli
+#   sudo visudo -c    # verify there are no syntax errors
+
+# Connect to a Wi-Fi network (with or without a password)
+smartsprout ALL=(ALL) NOPASSWD: /usr/bin/nmcli dev wifi connect *
+
+# Forget / delete a saved connection profile
+smartsprout ALL=(ALL) NOPASSWD: /usr/bin/nmcli connection delete *

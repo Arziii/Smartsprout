@@ -2,7 +2,7 @@
 pump_watchdog.py — Safety Pump Timeout Watchdog
 ═══════════════════════════════════════════════════════════
 
-Monitors all relay GPIO pins (Pump + Valves). If any relay stays
+Monitors all relay GPIO pins (3 independent pumps). If any relay stays
 active (LOW) for more than PUMP_TIMEOUT_SECONDS (default: 120s),
 this watchdog forces it HIGH (off) at the hardware level.
 
@@ -29,7 +29,7 @@ _relay_on_since = {}
 def _monitor_relays():
     """Continuously checks all relay pins for timeout violations."""
     timeout = config.PUMP_TIMEOUT_SECONDS
-    all_pins = config.ALL_RELAY_PINS  # [17, 27, 22, 23]
+    all_pins = config.ALL_RELAY_PINS  # [17, 27, 22] — 3 independent pump relays
 
     print(f"[PUMP_WATCHDOG] Monitoring {len(all_pins)} relay pins (timeout: {timeout}s)")
 

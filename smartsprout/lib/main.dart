@@ -4,22 +4,37 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:window_manager/window_manager.dart';
 import 'firebase_options.dart';
 
 import 'core/constants/app_theme.dart';
+import 'presentation/providers/theme_provider.dart';
 import 'routes/app_router.dart';
+import 'core/widgets/kiosk_keyboard_overlay.dart';
+
 
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: '.env');
-
-  // ── Lite Mode: Cap image cache at 50 MB to protect Pi 3B's 1 GB RAM ──
+  
   if (Platform.isLinux) {
-    PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024;
+    await windowManager.ensureInitialized();
+
+    WindowOptions windowOptions = const WindowOptions(
+      fullScreen: true,
+      alwaysOnTop: true,
+      titleBarStyle: TitleBarStyle.hidden,
+    );
+
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    });
   }
+
+  await dotenv.load(fileName: '.env');
 
   if (!Platform.isLinux) {
     await Firebase.initializeApp(
@@ -50,13 +65,22 @@ class _SmartSproutAppState extends ConsumerState<SmartSproutApp> {
   @override
   Widget build(BuildContext context) {
     final goRouter = ref.watch(routerProvider);
+    final currentThemeMode = ref.watch(themeProvider);
 
     return MaterialApp.router(
       scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'Smart Sprout',
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: currentThemeMode,
       routerConfig: goRouter,
       debugShowCheckedModeBanner: false,
+      // ── Linux kiosk: KioskKeyboardHost wraps every route's scaffold,
+      // injects MediaQuery.viewInsets so resizeToAvoidBottomInset works,
+      // and renders the on-screen keyboard overlay at the bottom. ──
+      builder: Platform.isLinux
+          ? (context, child) => KioskKeyboardHost(child: child!)
+          : null,
     );
   }
 }
